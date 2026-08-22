@@ -1,0 +1,14 @@
+{
+  "name": "omot-organizado",
+  "version": "2.0.0",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.0.3",
+    "express": "^4.18.2"
+  }
+}
