@@ -1,4 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType } = require('discord.js');
+const { load, save } = require('../utils/database');
+
 module.exports = {
   data: new SlashCommandBuilder()
    .setName('call')
@@ -8,8 +10,16 @@ module.exports = {
   async execute(interaction, client){
     const canal = interaction.options.getChannel('canal');
     client.canaisGatilho.add(canal.id);
-    const ehJogo = canal.name.toLowerCase().includes('jogo') || canal.name.toLowerCase().includes('game') || canal.name.toLowerCase().includes('divers');
-    const tipo = ehJogo? 'de JOGOS DIVERSOS (com definir jogo)' : 'PADRÃO (Rocket League SideSwipe)';
-    await interaction.reply({ content: `✅ Canal ${canal} configurado como ${tipo}!\nAgora quando entrar nele vai criar: **"${interaction.member.displayName} jogando..."**`, ephemeral: true });
+
+    // SALVA NO ARQUIVO
+    const db = load();
+    if(!db.gatilhos.includes(canal.id)){
+      db.gatilhos.push(canal.id);
+      save(db);
+    }
+
+    const ehJogo = canal.name.toLowerCase().includes('jogo') || canal.name.toLowerCase().includes('divers');
+    const tipo = ehJogo? 'de JOGOS DIVERSOS' : 'PADRÃO';
+    await interaction.reply({ content: `✅ Canal ${canal} salvo como ${tipo} e **gravado**! Agora mesmo se o bot reiniciar ele vai lembrar.`, ephemeral: true });
   }
 };
