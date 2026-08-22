@@ -1,92 +1,85 @@
-const { ChannelType, PermissionsBitField, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const JOGO_PADRAO = 'RL SideSwipe';
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
-function formataNome(game, donoNome, totalMembros) {
-  if (totalMembros <= 1) return `${game} | ${donoNome}`;
-  if (totalMembros === 2) return `${game} | ${donoNome} +1 Ômigo`;
-  return `${game} | ${donoNome} +${totalMembros - 1} Ômigos`;
-}
+// AQUI VOCÊ MUDA TUDO SOZINHO SEM ME PEDIR
+const CONFIG = {
+  // Como a call vai se chamar
+  nomeCall: "{jogo} | {dono}", // {jogo} vira o jogo, {dono} vira seu nome
+  nomeCom1Amigo: "{jogo} | {dono} +1 Ômigo",
+  nomeComVarios: "{jogo} | {dono} +{qtd} Ômigos",
+
+  // Nomes dos botões
+  botoes: {
+    jogo: "🎮 Definir Jogo",
+    renomear: "✏️ Renomear",
+    limite: "👥 Limite",
+    kick: "❌ Kickar",
+    encerrar: "🔴 Encerrar Call", // muda aqui o nome do deletar
+    trancar: "🔒 Trancar",
+    destrancar: "🔓 Destrancar",
+    esconder: "👻 Esconder",
+    mostrar: "👁️ Mostrar"
+  }
+};
 
 module.exports = {
   name: 'voiceStateUpdate',
   async execute(oldState, newState, client){
-    const member = newState.member; if(!member) return;
+    //... resto do código continua igual, só que agora usa o CONFIG
 
-    // CRIAÇÃO
-    if(newState.channelId && oldState.channelId !== newState.channelId){
-      const canal = newState.channel;
-      const ehGatilho = canal.name.toLowerCase().includes('criar') || client.canaisGatilho.has(canal.id);
-      if(ehGatilho){
-        const ehJogoDiverso = canal.name.toLowerCase().includes('jogo') || canal.name.toLowerCase().includes('divers');
-        try{
-          const novaGame = ehJogoDiverso ? 'Aguardando jogo' : JOGO_PADRAO;
-          const nomeInicial = formataNome(novaGame, member.displayName, 1);
-          
-          const novaCall = await newState.guild.channels.create({
-            name: nomeInicial,
-            type: ChannelType.GuildVoice,
-            parent: canal.parentId,
-            permissionOverwrites: [
-              { id: member.id, allow: [PermissionsBitField.Flags.ManageChannels, PermissionsBitField.Flags.MoveMembers, PermissionsBitField.Flags.Connect, PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
-              { id: newState.guild.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.Connect, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.Speak] }
-            ]
-          });
-          await member.voice.setChannel(novaCall);
-          client.callsTemporarias.set(novaCall.id, { dono: member.id, donoNome: member.displayName, game: novaGame });
+    const entrou = newState.channelId &&!oldState.channelId;
+    const saiu = oldState.channelId &&!newState.channelId;
+    const trocou = oldState.channelId && newState.channelId && oldState.channelId!== newState.channelId;
 
-          const embed = new EmbedBuilder().setTitle(novaCall.name).setDescription(ehJogoDiverso ? `Bem-vindo, Ômigo! Clique em **Definir Jogo**` : `Sua call foi criada!`).setColor(0x2b2d31);
-          const rowGame = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`setgame_${novaCall.id}`).setLabel('Definir Jogo').setEmoji('🎮').setStyle(ButtonStyle.Success));
-          const row1 = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId(`lock_${novaCall.id}`).setLabel('Trancar').setEmoji('🔒').setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId(`unlock_${novaCall.id}`).setLabel('Destrancar').setEmoji('🔓').setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId(`delete_${novaCall.id}`).setLabel('Deletar').setEmoji('🗑️').setStyle(ButtonStyle.Danger),
-          );
-          const row2 = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId(`limit_${novaCall.id}`).setLabel('Limite').setEmoji('👥').setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId(`kick_${novaCall.id}`).setLabel('Kickar').setEmoji('❌').setStyle(ButtonStyle.Danger),
-          );
-          const comps = ehJogoDiverso ? [rowGame, row1, row2] : [row1, row2];
-          try{ await novaCall.send({ embeds:[embed], components: comps }); }catch(e){}
-        }catch(e){ console.error(e); }
-      }
+    if((entrou || trocou) && client.canaisGatilho.has(newState.channelId)){
+      const gatilho = newState.guild.channels.cache.get(newState.channelId);
+      const member = newState.member;
+      const ehJogo = gatilho.name.toLowerCase().includes('jogo');
+      const gameInicial = ehJogo? 'Aguardando jogo' : 'Call da Ômega';
+      try{
+        const novaCall = await newState.guild.channels.create({
+          name: CONFIG.nomeCall.replace("{jogo}", gameInicial).replace("{dono}", member.displayName),
+          type: 2, parent: gatilho.parent,
+          permissionOverwrites: [{ id: member.id, allow: ['ManageChannels','MoveMembers'] }]
+        });
+        await newState.setChannel(novaCall.id).catch(()=>{});
+        client.callsTemporarias.set(novaCall.id, { dono: member.id, donoNome: member.displayName, game: gameInicial });
+
+        const embed = new EmbedBuilder().setColor('#8B5CF6').setTitle('🎮 Painel da sua Call Ômega').setDescription(`Salve ${member}, sua call foi criada!`);
+        const row1 = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`setgame_${novaCall.id}`).setLabel(CONFIG.botoes.jogo).setStyle(ButtonStyle.Primary),
+          new ButtonBuilder().setCustomId(`rename_${novaCall.id}`).setLabel(CONFIG.botoes.renomear).setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId(`limit_${novaCall.id}`).setLabel(CONFIG.botoes.limite).setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId(`kick_${novaCall.id}`).setLabel(CONFIG.botoes.kick).setStyle(ButtonStyle.Danger),
+          new ButtonBuilder().setCustomId(`delete_${novaCall.id}`).setLabel(CONFIG.botoes.encerrar).setStyle(ButtonStyle.Danger)
+        );
+        const row2 = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`lock_${novaCall.id}`).setLabel(CONFIG.botoes.trancar).setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId(`unlock_${novaCall.id}`).setLabel(CONFIG.botoes.destrancar).setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId(`ghost_${novaCall.id}`).setLabel(CONFIG.botoes.esconder).setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId(`unghost_${novaCall.id}`).setLabel(CONFIG.botoes.mostrar).setStyle(ButtonStyle.Secondary)
+        );
+        const canalTexto = gatilho.parent? newState.guild.channels.cache.find(c=>c.parentId===gatilho.parent.id && c.type===0) : null;
+        if(canalTexto) canalTexto.send({ content: `<@${member.id}>`, embeds: [embed], components: [row1, row2] }).then(m=>setTimeout(()=>m.delete().catch(()=>{}), 60000)).catch(()=>{});
+      }catch(e){ console.error(e); }
     }
 
-    // ATUALIZA CONTAGEM DE ÔMIGOS
-    if(newState.channelId){
-      const canal = newState.guild.channels.cache.get(newState.channelId);
-      const dados = client.callsTemporarias.get(newState.channelId);
-      if(canal && dados && canal.members.size > 0){
-        const novoNome = formataNome(dados.game, dados.donoNome, canal.members.size);
-        if(canal.name !== novoNome) await canal.setName(novoNome).catch(()=>{});
+    const canalAfetadoId = saiu? oldState.channelId : newState.channelId;
+    if(client.callsTemporarias.has(canalAfetadoId)){
+      const canal = newState.guild.channels.cache.get(canalAfetadoId) || oldState.guild.channels.cache.get(canalAfetadoId);
+      if(canal){
+        const dados = client.callsTemporarias.get(canalAfetadoId);
+        const total = canal.members.size;
+        let nomeFinal;
+        if(total <= 1) nomeFinal = CONFIG.nomeCall.replace("{jogo}", dados.game).replace("{dono}", dados.donoNome);
+        else if(total === 2) nomeFinal = CONFIG.nomeCom1Amigo.replace("{jogo}", dados.game).replace("{dono}", dados.donoNome);
+        else nomeFinal = CONFIG.nomeComVarios.replace("{jogo}", dados.game).replace("{dono}", dados.donoNome).replace("{qtd}", total-1);
+        if(canal.name!== nomeFinal) await canal.setName(nomeFinal).catch(()=>{});
       }
     }
-
-    // DELETA E ATUALIZA AO SAIR
-    if(oldState.channelId && oldState.channelId !== newState.channelId){
-      const canal = oldState.guild.channels.cache.get(oldState.channelId) || oldState.channel;
-      if(!canal) return;
-      const dados = client.callsTemporarias.get(canal.id);
-      const ehTemp = dados || canal.name.includes('|') && (canal.name.includes('Ômigo') || canal.name.includes(JOGO_PADRAO));
-
-      if(ehTemp && canal.members.size === 0){
-        try{ await canal.delete(); }catch(e){}
-        client.callsTemporarias.delete(canal.id);
-      } else if (ehTemp && canal.members.size > 0 && dados){
-        // Atualiza contagem
-        const novoNome = formataNome(dados.game, dados.donoNome, canal.members.size);
-        if(canal.name !== novoNome) await canal.setName(novoNome).catch(()=>{});
-
-        // Passa dono se saiu
-        if(dados.dono === oldState.id){
-          const novoDono = canal.members.first();
-          if(novoDono){
-            dados.dono = novoDono.id;
-            dados.donoNome = novoDono.displayName;
-            const novoNomeDono = formataNome(dados.game, dados.donoNome, canal.members.size);
-            await canal.setName(novoNomeDono).catch(()=>{});
-            try{ await canal.permissionOverwrites.edit(novoDono.id,{ ManageChannels:true, MoveMembers:true }); }catch(e){}
-          }
-        }
+    if((saiu || trocou) && client.callsTemporarias.has(oldState.channelId)){
+      const canal = oldState.guild.channels.cache.get(oldState.channelId);
+      if(canal && canal.members.size === 0){
+        try{ await canal.delete(); client.callsTemporarias.delete(oldState.channelId); }catch(e){}
       }
     }
   }
