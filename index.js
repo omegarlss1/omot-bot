@@ -1,3 +1,5 @@
+client.callsTemporarias = new Map();
+client.canaisGatilho = new Set();
 const { Client, GatewayIntentBits, Collection, Partials } = require('discord.js');
 const fs = require('fs');
 require('dotenv').config();
