@@ -12,13 +12,25 @@ module.exports = {
       const ehGatilho = canal.name.toLowerCase().includes('criar') || client.canaisGatilho?.has(canal.id);
       if (ehGatilho) {
         try {
-          // Evita duplicar se já tem call dele
-          for (const [id, dados] of client.callsTemporarias) {
-            if (dados.dono === member.id) {
-              const c = newState.guild.channels.cache.get(id);
-              if (c) { await member.voice.setChannel(c).catch(()=>{}); return; }
-            }
-          }
+// Só bloqueia usuário comum. ADM / Gerente pode criar várias
+const temCall = [...client.callsTemporarias].find(([id, d]) => d.dono === member.id && newState.guild.channels.cache.get(id));
+if (temCall &&!member.permissions.has(PermissionsBitField.Flags.ManageChannels)) {
+  const c = newState.guild.channels.cache.get(temCall[0]);
+  if (c) { await member.voice.setChannel(c).catch(()=>{}); return; }
+}
+// Se é você (ADM) e sua call antiga tem gente, passa a coroa e deixa criar outra
+if (temCall) {
+  const [oldId, oldDados] = temCall;
+  const oldCanal = newState.guild.channels.cache.get(oldId);
+  if (oldCanal && oldCanal.members.size > 1) {
+    const novoDono = oldCanal.members.filter(m => m.id!== member.id).first();
+    if (novoDono) {
+      oldDados.dono = novoDono.id;
+      await oldCanal.permissionOverwrites.edit(novoDono.id, { ManageChannels: true, MoveMembers: true }).catch(()=>{});
+      await oldCanal.send(`👑 <@${novoDono.id}> agora é dono, o <@${member.id}> foi criar outra call!`).catch(()=>{});
+    }
+  }
+}
 
           const novaCall = await newState.guild.channels.create({
             name: `🎧 Call do ${member.displayName}`,
