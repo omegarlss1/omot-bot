@@ -4,10 +4,9 @@ const path = require('path');
 const { Client, Collection, GatewayIntentBits } = require('discord.js');
 const express = require('express');
 
-// Servidor web para o Render não desligar o bot
 const app = express();
 app.get('/', (req, res) => res.send('Omot online!'));
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`Web server rodando na porta ${PORT}`));
 
 const client = new Client({
