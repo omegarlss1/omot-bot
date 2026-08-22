@@ -1,35 +1,30 @@
-require('dotenv').config();
+const { Client, GatewayIntentBits, Collection, Partials } = require('discord.js');
 const fs = require('fs');
-const path = require('path');
-const { Client, Collection, GatewayIntentBits } = require('discord.js');
+require('dotenv').config();
 const express = require('express');
-
 const app = express();
-app.get('/', (req, res) => res.send('Omot online!'));
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`Web server na porta ${PORT}`));
+app.get('/', (req,res)=>res.send('Ômot online'));
+app.listen(10000, ()=>console.log('Web server na porta 10000'));
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates]
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages],
+  partials: [Partials.Channel]
 });
 
 client.commands = new Collection();
 client.callsTemporarias = new Map();
 client.canaisGatilho = new Set();
 
-const commandsPath = path.join(__dirname, 'commands');
-const commandFiles = fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'));
-for (const file of commandFiles) {
-  const cmd = require(path.join(commandsPath, file));
-  if (cmd.data) client.commands.set(cmd.data.name, cmd);
+// Carrega comandos
+for(const file of fs.readdirSync('./commands').filter(f=>f.endsWith('.js'))){
+  const cmd = require(`./commands/${file}`);
+  client.commands.set(cmd.data.name, cmd);
 }
-
-const eventsPath = path.join(__dirname, 'events');
-const eventFiles = fs.readdirSync(eventsPath).filter(f => f.endsWith('.js'));
-for (const file of eventFiles) {
-  const event = require(path.join(eventsPath, file));
-  if (event.once) client.once(event.name, (...args) => event.execute(...args, client));
-  else client.on(event.name, (...args) => event.execute(...args, client));
+// Carrega eventos
+for(const file of fs.readdirSync('./events').filter(f=>f.endsWith('.js'))){
+  const ev = require(`./events/${file}`);
+  if(ev.once) client.once(ev.name, (...args)=>ev.execute(...args, client));
+  else client.on(ev.name, (...args)=>ev.execute(...args, client));
 }
 
 client.login(process.env.TOKEN);
