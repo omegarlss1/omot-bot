@@ -1,7 +1,7 @@
 {
   "name": "omot-organizado",
   "version": "2.0.0",
-  "main": "index.js",
+  "main": "limpar.js",
   "type": "commonjs",
   "scripts": {
     "start": "node index.js"
