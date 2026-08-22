@@ -33,9 +33,9 @@ module.exports = {
         const row1 = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId(`setgame_${novaCall.id}`).setLabel('🎮 Definir Jogo').setStyle(ButtonStyle.Primary),
           new ButtonBuilder().setCustomId(`rename_${novaCall.id}`).setLabel('✏️ Renomear').setStyle(ButtonStyle.Secondary),
-          new ButtonBuilder().setCustomId(`limit_${novaCall.id}`).setLabel('👥 Limite').setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId(`limit_${novaCall.id}`).setLabel('👥 Limitar').setStyle(ButtonStyle.Secondary),
           new ButtonBuilder().setCustomId(`kick_${novaCall.id}`).setLabel('❌ Kickar').setStyle(ButtonStyle.Danger),
-          new ButtonBuilder().setCustomId(`delete_${novaCall.id}`).setLabel('🔴 Encerrar Call').setStyle(ButtonStyle.Danger) // <--- MUDA AQUI
+          new ButtonBuilder().setCustomId(`delete_${novaCall.id}`).setLabel('🔴 Encerrar').setStyle(ButtonStyle.Danger) // <--- MUDA AQUI
         );
         const row2 = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId(`lock_${novaCall.id}`).setLabel('🔒 Trancar').setStyle(ButtonStyle.Secondary),
