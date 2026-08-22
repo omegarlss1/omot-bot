@@ -12,7 +12,8 @@ module.exports = {
       const gatilho = newState.guild.channels.cache.get(newState.channelId);
       const member = newState.member;
 
-      const ehSideSwipe = gatilho.name.toLowerCase().includes('sideswipe') || gatilho.name.toLowerCase().includes('rl ');
+      const ID_SIDESWIPE = "1540804418792988673"; // seu gatilho de RL SideSwipe
+const ehSideSwipe = newState.channelId === ID_SIDESWIPE;
       const ehDiversos =!ehSideSwipe;
 
       const gameInicial = ehSideSwipe? 'RL SideSwipe' : 'Aguardando jogo';
