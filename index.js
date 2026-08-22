@@ -1,5 +1,3 @@
-client.callsTemporarias = new Map();
-client.canaisGatilho = new Set();
 const { Client, GatewayIntentBits, Collection, Partials } = require('discord.js');
 const fs = require('fs');
 require('dotenv').config();
@@ -14,6 +12,7 @@ const client = new Client({
 });
 
 client.commands = new Collection();
+// ESSAS 2 SÓ PODEM FICAR AQUI, DEPOIS DO CLIENT
 client.callsTemporarias = new Map();
 client.canaisGatilho = new Set();
 
