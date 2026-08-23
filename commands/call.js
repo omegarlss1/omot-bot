@@ -1,29 +1,25 @@
-const { salvarCall } = require('../utils/database');
+const { SlashCommandBuilder, PermissionFlagsBits, ChannelType } = require('discord.js');
+const { load, save } = require('../utils/database');
 
-function nomeCallPara(dados, totalMembros) {
-  if (totalMembros <= 1) return `${dados.game} | ${dados.donoNome}`;
-  if (totalMembros === 2) return `${dados.game} | ${dados.donoNome} +1 Ômigo`;
-  return `${dados.game} | ${dados.donoNome} +${totalMembros - 1} Ômigos`;
-}
+module.exports = {
+  data: new SlashCommandBuilder()
+    .setName('call')
+    .setDescription('Configura as calls temporárias do Ômot')
+    .addChannelOption(o => o.setName('canal').setDescription('Qual canal é o gatilho?').addChannelTypes(ChannelType.GuildVoice).setRequired(true))
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+  async execute(interaction, client) {
+    const canal = interaction.options.getChannel('canal');
+    client.canaisGatilho.add(canal.id);
 
-async function renomearCall(canal, dados) {
-  const nomeFinal = nomeCallPara(dados, canal.members.size);
-  if (canal.name !== nomeFinal) await canal.setName(nomeFinal).catch(() => {});
-}
+    const db = load();
+    if (!db.gatilhos.includes(canal.id)) {
+      db.gatilhos.push(canal.id);
+      save(db);
+    }
 
-// Usado tanto quando o dono sai sem avisar (auto) quanto pelo botão "Passar Dono" (manual).
-// Atualiza Map em memória, database.json, permissões do canal e o nome da call.
-async function transferirDono(client, canal, dadosAtuais, novoDonoMember) {
-  const dadosAtualizados = { ...dadosAtuais, dono: novoDonoMember.id, donoNome: novoDonoMember.displayName };
-  client.callsTemporarias.set(canal.id, dadosAtualizados);
-  salvarCall(canal.id, dadosAtualizados);
-
-  await canal.permissionOverwrites.delete(dadosAtuais.dono).catch(() => {});
-  await canal.permissionOverwrites.edit(novoDonoMember.id, { ManageChannels: true, MoveMembers: true }).catch(() => {});
-  await renomearCall(canal, dadosAtualizados);
-
-  return dadosAtualizados;
-}
-
-module.exports = { transferirDono, renomearCall, nomeCallPara };
+    const ehJogo = canal.name.toLowerCase().includes('jogo') || canal.name.toLowerCase().includes('divers');
+    const tipo = ehJogo ? 'de JOGOS DIVERSOS' : 'PADRÃO';
+    await interaction.reply({ content: `✅ Canal ${canal} salvo como ${tipo} e **gravado**! Agora mesmo se o bot reiniciar ele vai lembrar.`, ephemeral: true });
+  }
+};
 
