@@ -24,7 +24,7 @@ module.exports = {
     const channelEntrou = newState.channelId;
     const channelSaiu = oldState.channelId;
 
-    // 1. Entrada em Canal Gatilho
+    // Criar Call
     if (channelEntrou && client.canaisGatilho.has(channelEntrou)) {
       const guild = newState.guild;
       const member = newState.member;
@@ -54,25 +54,21 @@ module.exports = {
 
       await member.voice.setChannel(newChannel);
 
-      // Embed amigável do Mascote Ômot
       const embed = new EmbedBuilder()
-        .setTitle('⚡ Fala tu! A sala é tua!')
-        .setDescription(`E aí, ${member}! Já criei seu espaço. Usa os botões aí embaixo pra arrumar a sala do seu jeito!`)
-        .setColor('#FF6B00');
+        .setTitle('Painel de Controle da Call')
+        .setDescription(`Call de ${member}\nUsa os botões abaixo para configurar sua sala:`)
+        .setColor('#5865F2');
 
-      // Linha 1: Definir jogo/Nome + Definir limite
       const linha1 = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('btn_rename').setLabel('Definir Jogo / Nome').setStyle(ButtonStyle.Secondary).setEmoji('✏️'),
         new ButtonBuilder().setCustomId('btn_limit_modal').setLabel('Definir Limite').setStyle(ButtonStyle.Success).setEmoji('👥')
       );
 
-      // Linha 2: Trancar/Destrancar + Ocultar/Mostrar
       const linha2 = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('btn_lock').setLabel('Trancar / Destrancar').setStyle(ButtonStyle.Primary).setEmoji('🔒'),
         new ButtonBuilder().setCustomId('btn_hide').setLabel('Ocultar / Mostrar').setStyle(ButtonStyle.Secondary).setEmoji('👁️')
       );
 
-      // Linha 3: Passar Dono + Encerrar
       const linha3 = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('btn_transfer').setLabel('Passar Dono').setStyle(ButtonStyle.Secondary).setEmoji('👑'),
         new ButtonBuilder().setCustomId('btn_close_call').setLabel('Encerrar Call').setStyle(ButtonStyle.Danger).setEmoji('✖️')
@@ -81,7 +77,7 @@ module.exports = {
       await newChannel.send({ embeds: [embed], components: [linha1, linha2, linha3] });
     }
 
-    // 2. Atualização e Saída
+    // Gerenciar Saída e Atualização de Nome
     const canalAtual = newState.channel || oldState.channel;
     if (canalAtual && client.callsTemporarias.has(canalAtual.id)) {
       const dadosCall = client.callsTemporarias.get(canalAtual.id);
@@ -104,7 +100,7 @@ module.exports = {
           [PermissionFlagsBits.Connect]: true
         });
 
-        await canalAtual.send({ content: `👑 O criador vazou! A coroa agora é do(a) ${novoDono}!` });
+        await canalAtual.send({ content: `👑 O dono antigo saiu da call. ${novoDono} agora é o novo dono da sala.` });
       }
 
       const novoNome = gerarNomeCall(dadosCall.tipo, dadosCall.donoNome, dadosCall.jogo, canalAtual.members.size);
@@ -114,4 +110,5 @@ module.exports = {
     }
   }
 };
+
 
