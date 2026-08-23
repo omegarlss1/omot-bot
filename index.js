@@ -2,6 +2,12 @@ const { Client, GatewayIntentBits, Collection, Partials } = require('discord.js'
 const fs = require('fs');
 require('dotenv').config();
 
+const mongoose = require('mongoose');
+
+mongoose.connect(process.env.MONGODB_URI)
+  .then(() => console.log('🍃 Banco de dados MongoDB conectado!'))
+  .catch(err => console.error('❌ Erro no MongoDB:', err));
+
 // Servidor HTTP mínimo só pra satisfazer o healthcheck do Render enquanto o serviço
 // for do tipo "Web Service". Se migrar pra "Background Worker", pode remover isso.
 const express = require('express');
