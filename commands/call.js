@@ -9,17 +9,17 @@ module.exports = {
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
   async execute(interaction, client) {
     const canal = interaction.options.getChannel('canal');
+    
+    // Adiciona o canal na memória do bot
     client.canaisGatilho.add(canal.id);
 
-    const db = load();
-    if (!db.gatilhos.includes(canal.id)) {
-      db.gatilhos.push(canal.id);
-      await salvarGatilho(canal.id);
-    }
+    // Salva direto no banco de dados MongoDB na nuvem
+    await salvarGatilho(canal.id);
 
     const ehJogo = canal.name.toLowerCase().includes('jogo') || canal.name.toLowerCase().includes('divers');
     const tipo = ehJogo ? 'de JOGOS DIVERSOS' : 'PADRÃO';
-    await interaction.reply({ content: `✅ Canal ${canal} salvo como ${tipo} e **gravado**! Agora mesmo se o bot reiniciar ele vai lembrar.`, ephemeral: true });
+    await interaction.reply({ content: `✅ Canal ${canal} salvo como ${tipo} e **gravado no banco de dados**! Agora mesmo se o bot reiniciar ele vai lembrar.`, ephemeral: true });
   }
 };
+
 
