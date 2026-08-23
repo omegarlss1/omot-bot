@@ -1,38 +1,60 @@
-const { load } = require('../utils/database');
+const { load, salvarCall, removerCall } = require('../utils/database');
+
 module.exports = {
   name: 'clientReady',
   once: true,
-  async execute(client){
+  async execute(client) {
     console.log(`Ômot online como ${client.user.tag}!`);
-    
-    // Carrega gatilhos salvos
+
     const db = load();
     client.canaisGatilho = new Set(db.gatilhos || []);
-    console.log(`Gatilhos carregados: ${[...client.canaisGatilho].length}`);
+    client.callsTemporarias = new Map(Object.entries(db.calls || {}));
+    console.log(`Gatilhos carregados: ${client.canaisGatilho.size}`);
+    console.log(`Calls carregadas do banco: ${client.callsTemporarias.size}`);
 
-    // Limpeza de calls órfãs que ficaram presas
-    for (const guild of client.guilds.cache.values()){
-      await guild.channels.fetch().catch(()=>{});
-      for (const canal of guild.channels.cache.values()){
-        if(canal.type === 2 && (canal.name.includes('|') || canal.name.includes('jogando') || canal.name.includes('Ômigo'))){
-          if(canal.members.size === 0){
-            try{ await canal.delete('Limpeza de call órfã'); console.log(`Call órfã deletada: ${canal.name}`); }catch(e){}
-          } else {
-            // Recupera calls que já existiam
-            const ehTemp = canal.name.includes('|');
-            if(ehTemp){
-              const partes = canal.name.split('|');
-              const game = partes[0].trim();
-              const donoNome = partes[1].replace(/\+\d+ Ômigos?/, '').replace('+1 Ômigo','').trim();
-              const dono = canal.members.first();
-              if(dono){
-                client.callsTemporarias.set(canal.id, { dono: dono.id, donoNome: dono.displayName || donoNome, game });
-              }
-            }
+    // Limpeza + reconciliação: confere se as calls salvas ainda existem de verdade
+    for (const guild of client.guilds.cache.values()) {
+      await guild.channels.fetch().catch(() => {});
+
+      for (const canal of guild.channels.cache.values()) {
+        const pareceCallTemp = canal.type === 2 && canal.name.includes('|');
+        if (!pareceCallTemp) continue;
+
+        if (canal.members.size === 0) {
+          // call vazia sobrou de quando o bot caiu -> deleta e limpa do banco
+          try {
+            await canal.delete('Limpeza de call órfã');
+            client.callsTemporarias.delete(canal.id);
+            removerCall(canal.id);
+            console.log(`Call órfã deletada: ${canal.name}`);
+          } catch (e) {}
+          continue;
+        }
+
+        // Se o banco não tem essa call (ex: canal criado/renomeado manualmente),
+        // reconstrói o registro como fallback pelo nome do canal
+        if (!client.callsTemporarias.has(canal.id)) {
+          const partes = canal.name.split('|');
+          const game = partes[0]?.trim() || 'Aguardando jogo';
+          const donoNomeBruto = partes[1]?.replace(/\+\d+ Ômigos?/, '').trim() || '';
+          const donoAtual = canal.members.first();
+          if (donoAtual) {
+            const dados = { dono: donoAtual.id, donoNome: donoAtual.displayName || donoNomeBruto, game };
+            client.callsTemporarias.set(canal.id, dados);
+            salvarCall(canal.id, dados);
           }
         }
       }
+
+      // remove do banco calls que não existem mais no servidor
+      for (const callId of [...client.callsTemporarias.keys()]) {
+        if (!guild.channels.cache.has(callId)) {
+          client.callsTemporarias.delete(callId);
+          removerCall(callId);
+        }
+      }
     }
-    console.log('Limpeza concluída');
+
+    console.log('Limpeza e reconciliação concluídas');
   }
 };
