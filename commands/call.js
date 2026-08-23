@@ -1,4 +1,4 @@
-const { salvarCall } = require('./database');
+const { salvarCall } = require('.utils/database');
 
 function nomeCallPara(dados, totalMembros) {
   if (totalMembros <= 1) return `${dados.game} | ${dados.donoNome}`;
