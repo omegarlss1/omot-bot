@@ -17,7 +17,7 @@ const client = new Client({
 
 client.commands = new Collection();
 client.canaisGatilho = new Set();
-client.callsTemporarias = new Set();
+client.callsTemporarias = new Map();
 
 // Carrega comandos
 const commandsPath = path.join(__dirname, 'commands');
