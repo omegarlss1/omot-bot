@@ -47,20 +47,15 @@ module.exports = {
         if(ehSideSwipe){
           // RL SideSwipe - 8 botões - Renomear sozinho na primeira linha
           rows = [
-            new ActionRowBuilder().addComponents(btnRenomear),
-            new ActionRowBuilder().addComponents(btnLimitar, btnKick),
-            new ActionRowBuilder().addComponents(btnEncerrar, btnTrancar),
-            new ActionRowBuilder().addComponents(btnDestrancar, btnOcultar),
-            new ActionRowBuilder().addComponents(btnReexibir),
+            new ActionRowBuilder().addComponents(btnRenomear,btnLimitar, btnKick, btnEncerrar),
+            new ActionRowBuilder().addComponents(btnTrancar, btnDestrancar, btnOcultar, btnReexibir),
           ];
         } else {
           // Jogos Diversos - 9 botões - 2 por linha
           rows = [
-            new ActionRowBuilder().addComponents(btnJogo, btnRenomear),
-            new ActionRowBuilder().addComponents(btnLimitar, btnKick),
-            new ActionRowBuilder().addComponents(btnEncerrar, btnTrancar),
-            new ActionRowBuilder().addComponents(btnDestrancar, btnOcultar),
-            new ActionRowBuilder().addComponents(btnReexibir),
+            new ActionRowBuilder().addComponents(btnJogo),
+            new ActionRowBuilder().addComponents(btnRenomear, btnLimitar, btnKick, btnEncerrar),
+            new ActionRowBuilder().addComponents(btnTrancar, btnDestrancar, btnOcultar, btnReexibir),
           ];
         }
 
