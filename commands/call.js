@@ -14,7 +14,7 @@ module.exports = {
     const db = load();
     if (!db.gatilhos.includes(canal.id)) {
       db.gatilhos.push(canal.id);
-      save(db);
+      await salvarGatilho(canal.id);
     }
 
     const ehJogo = canal.name.toLowerCase().includes('jogo') || canal.name.toLowerCase().includes('divers');
