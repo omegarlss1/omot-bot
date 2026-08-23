@@ -29,7 +29,7 @@ module.exports = {
 
     const jogoKey = interaction.options.getString('jogo');
     const vagas = interaction.options.getInteger('vagas');
-    const nota = interaction.options.getString('nota') || 'Só entrar no time!';
+    const nota = interaction.options.getString('nota') || 'Bora jogar!';
     const criador = interaction.member;
 
     const config = await JogoCargo.findOne({ guildId: interaction.guildId, jogoKey });
