@@ -3,18 +3,15 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 
-// 1. Servidor Express (Keep-alive no Render)
 const app = express();
 const port = process.env.PORT || 3000;
 app.get('/', (req, res) => res.send('Ômot ativo! 🚀'));
 app.listen(port, () => console.log(`HTTP Server ativo na porta ${port}`));
 
-// 2. Instância do Client
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildVoiceStates,
-    GatewayIntentBits.GuildMembers
+    GatewayIntentBits.GuildVoiceStates
   ]
 });
 
@@ -22,7 +19,7 @@ client.commands = new Collection();
 client.canaisGatilho = new Set();
 client.callsTemporarias = new Set();
 
-// 3. Carregamento Automático de Comandos (/commands)
+// Carrega comandos
 const commandsPath = path.join(__dirname, 'commands');
 if (fs.existsSync(commandsPath)) {
   const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
@@ -35,7 +32,7 @@ if (fs.existsSync(commandsPath)) {
   }
 }
 
-// 4. Carregamento Automático de Eventos (/events)
+// Carrega eventos
 const eventsPath = path.join(__dirname, 'events');
 if (fs.existsSync(eventsPath)) {
   const eventFiles = fs.readdirSync(eventsPath).filter(file => file.endsWith('.js'));
@@ -50,5 +47,4 @@ if (fs.existsSync(eventsPath)) {
   }
 }
 
-const token = process.env.TOKEN || process.env.DISCORD_TOKEN;
-client.login(token);
+client.login(process.env.TOKEN || process.env.DISCORD_TOKEN);
