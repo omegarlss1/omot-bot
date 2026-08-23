@@ -15,6 +15,11 @@ module.exports = {
 
   async execute(interaction, client) {
     const canal = interaction.options.getChannel('canal');
+
+    if (!canal || !canal.id) {
+      return interaction.reply({ content: '❌ Canal de voz inválido.', flags: 64 });
+    }
+
     client.canaisGatilho.add(canal.id);
     await salvarGatilho(canal.id);
 
