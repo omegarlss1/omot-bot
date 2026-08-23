@@ -1,5 +1,6 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { salvarCall, removerCall } = require('../utils/database');
+const { transferirDono, renomearCall } = require('../utils/calls');
 
 const ID_SIDESWIPE = "1540804418792988673";
 
@@ -42,22 +43,24 @@ module.exports = {
         const btnRenomear = new ButtonBuilder().setCustomId(`rename_${novaCall.id}`).setLabel('✏️ Renomear').setStyle(ButtonStyle.Secondary);
         const btnLimitar = new ButtonBuilder().setCustomId(`limit_${novaCall.id}`).setLabel('👥 Limitar').setStyle(ButtonStyle.Secondary);
         const btnKick = new ButtonBuilder().setCustomId(`kick_${novaCall.id}`).setLabel('❌ Kickar').setStyle(ButtonStyle.Danger);
+        const btnTransferir = new ButtonBuilder().setCustomId(`transfer_${novaCall.id}`).setLabel('👑 Passar Dono').setStyle(ButtonStyle.Primary);
         const btnEncerrar = new ButtonBuilder().setCustomId(`delete_${novaCall.id}`).setLabel('🔴 Encerrar').setStyle(ButtonStyle.Danger);
         const btnTrancar = new ButtonBuilder().setCustomId(`lock_${novaCall.id}`).setLabel('🔒 Trancar').setStyle(ButtonStyle.Secondary);
         const btnDestrancar = new ButtonBuilder().setCustomId(`unlock_${novaCall.id}`).setLabel('🔓 Destrancar').setStyle(ButtonStyle.Secondary);
         const btnOcultar = new ButtonBuilder().setCustomId(`ghost_${novaCall.id}`).setLabel('👻 Ocultar').setStyle(ButtonStyle.Secondary);
         const btnReexibir = new ButtonBuilder().setCustomId(`unghost_${novaCall.id}`).setLabel('👁️ Reexibir').setStyle(ButtonStyle.Secondary);
 
+        // Discord permite no máximo 5 botões por linha
         let rows = [];
         if (ehSideSwipe) {
           rows = [
-            new ActionRowBuilder().addComponents(btnRenomear, btnLimitar, btnKick, btnEncerrar),
+            new ActionRowBuilder().addComponents(btnRenomear, btnLimitar, btnKick, btnTransferir, btnEncerrar),
             new ActionRowBuilder().addComponents(btnTrancar, btnDestrancar, btnOcultar, btnReexibir),
           ];
         } else {
           rows = [
             new ActionRowBuilder().addComponents(btnJogo),
-            new ActionRowBuilder().addComponents(btnRenomear, btnLimitar, btnKick, btnEncerrar),
+            new ActionRowBuilder().addComponents(btnRenomear, btnLimitar, btnKick, btnTransferir, btnEncerrar),
             new ActionRowBuilder().addComponents(btnTrancar, btnDestrancar, btnOcultar, btnReexibir),
           ];
         }
@@ -72,12 +75,7 @@ module.exports = {
       const canal = newState.guild.channels.cache.get(canalAfetadoId) || oldState.guild.channels.cache.get(canalAfetadoId);
       if (canal) {
         const dados = client.callsTemporarias.get(canalAfetadoId);
-        const total = canal.members.size;
-        let nomeFinal;
-        if (total <= 1) nomeFinal = `${dados.game} | ${dados.donoNome}`;
-        else if (total === 2) nomeFinal = `${dados.game} | ${dados.donoNome} +1 Ômigo`;
-        else nomeFinal = `${dados.game} | ${dados.donoNome} +${total - 1} Ômigos`;
-        if (canal.name !== nomeFinal) await canal.setName(nomeFinal).catch(() => {});
+        await renomearCall(canal, dados);
       }
     }
 
@@ -85,16 +83,11 @@ module.exports = {
       const canal = oldState.guild.channels.cache.get(oldState.channelId);
       if (canal) {
         const dados = client.callsTemporarias.get(oldState.channelId);
+        // dono saiu sem passar a call pra ninguém -> escolhe automaticamente o próximo membro
         if (dados && oldState.member.id === dados.dono && canal.members.size > 0) {
           const novoDono = canal.members.first();
           if (novoDono) {
-            const dadosAtualizados = { ...dados, dono: novoDono.id, donoNome: novoDono.displayName };
-            client.callsTemporarias.set(canal.id, dadosAtualizados);
-            salvarCall(canal.id, dadosAtualizados);
-
-            // revoga do dono antigo e concede ao novo
-            await canal.permissionOverwrites.delete(dados.dono).catch(() => {});
-            await canal.permissionOverwrites.edit(novoDono.id, { ManageChannels: true, MoveMembers: true }).catch(() => {});
+            await transferirDono(client, canal, dados, novoDono);
             await canal.send(`👑 <@${novoDono.id}> agora é o dono!`).catch(() => {});
           }
         }
@@ -109,3 +102,4 @@ module.exports = {
     }
   }
 };
+
