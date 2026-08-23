@@ -1,6 +1,6 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { salvarCall, removerCall } = require('../utils/database');
-const { transferirDono, renomearCall } = require('../utils/calls');
+const { transferirDono, renomearCallDebounced } = require('../utils/calls');
 
 const ID_SIDESWIPE = "1540804418792988673";
 
@@ -72,11 +72,9 @@ module.exports = {
 
     const canalAfetadoId = saiu ? oldState.channelId : newState.channelId;
     if (client.callsTemporarias.has(canalAfetadoId)) {
-      const canal = newState.guild.channels.cache.get(canalAfetadoId) || oldState.guild.channels.cache.get(canalAfetadoId);
-      if (canal) {
-        const dados = client.callsTemporarias.get(canalAfetadoId);
-        await renomearCall(canal, dados);
-      }
+      // debounced: várias entradas/saídas seguidas viram só 1 chamada de rename alguns
+      // segundos depois, poupando a cota de 2 renomeações/10min do Discord
+      renomearCallDebounced(client, canalAfetadoId);
     }
 
     if ((saiu || trocou) && client.callsTemporarias.has(oldState.channelId)) {
@@ -102,4 +100,5 @@ module.exports = {
     }
   }
 };
+
 
