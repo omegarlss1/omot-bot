@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType } = require('discord.js');
-const { load, save } = require('../utils/database');
+const { salvarGatilho } = require('../utils/database');
 
 module.exports = {
   data: new SlashCommandBuilder()
