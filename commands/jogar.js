@@ -21,7 +21,7 @@ module.exports = {
         .setMaxValue(10))
     .addStringOption(option =>
       option.setName('nota')
-        .setDescription('Recado curto (ex: Falta 1 pro comp)')
+        .setDescription('Recado curto (ex: Falta 1 pra fechar o time)')
         .setRequired(false)),
 
   async execute(interaction, client) {
@@ -29,7 +29,7 @@ module.exports = {
 
     const jogoKey = interaction.options.getString('jogo');
     const vagas = interaction.options.getInteger('vagas');
-    const nota = interaction.options.getString('nota') || 'Só colar na call!';
+    const nota = interaction.options.getString('nota') || 'Só entrar no time!';
     const criador = interaction.member;
 
     const config = await JogoCargo.findOne({ guildId: interaction.guildId, jogoKey });
@@ -58,4 +58,5 @@ module.exports = {
     });
   }
 };
+
 
