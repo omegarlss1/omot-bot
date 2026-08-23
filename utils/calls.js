@@ -11,6 +11,34 @@ async function renomearCall(canal, dados) {
   if (canal.name !== nomeFinal) await canal.setName(nomeFinal).catch(() => {});
 }
 
+// O Discord só permite 2 mudanças de nome por canal a cada 10 min. Como entra/sai gente
+// da call o tempo todo, chamar setName() na hora a cada evento estoura essa cota rápido -
+// e quando estoura, o discord.js FICA ESPERANDO o tempo de espera (podendo passar de 1 min)
+// antes de qualquer outra coisa que dependa do mesmo canal (ex: o dono tentando renomear
+// pelo botão), travando o bot na visão de quem está usando.
+// Aqui, em vez de renomear a cada evento, agrupamos várias mudanças rápidas numa só chamada
+// alguns segundos depois - preserva a cota pra ações manuais do dono.
+const timersRenomear = new Map();
+const DEBOUNCE_MS = 6000;
+
+function renomearCallDebounced(client, canalId) {
+  const timerAntigo = timersRenomear.get(canalId);
+  if (timerAntigo) clearTimeout(timerAntigo);
+
+  const timer = setTimeout(async () => {
+    timersRenomear.delete(canalId);
+    const dados = client.callsTemporarias.get(canalId);
+    if (!dados) return;
+    const canal = client.channels.cache.get(canalId);
+    if (!canal) return;
+    await renomearCall(canal, dados);
+  }, DEBOUNCE_MS);
+
+  timersRenomear.set(canalId, timer);
+}
+
+// Usado tanto quando o dono sai sem avisar (auto) quanto pelo botão "Passar Dono" (manual).
+// Atualiza Map em memória, database.json, permissões do canal e o nome da call.
 async function transferirDono(client, canal, dadosAtuais, novoDonoMember) {
   const dadosAtualizados = { ...dadosAtuais, dono: novoDonoMember.id, donoNome: novoDonoMember.displayName };
   client.callsTemporarias.set(canal.id, dadosAtualizados);
@@ -23,4 +51,4 @@ async function transferirDono(client, canal, dadosAtuais, novoDonoMember) {
   return dadosAtualizados;
 }
 
-module.exports = { transferirDono, renomearCall, nomeCallPara };
+module.exports = { transferirDono, renomearCall, renomearCallDebounced, nomeCallPara };
