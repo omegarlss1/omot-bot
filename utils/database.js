@@ -1,39 +1,50 @@
-const fs = require('fs');
-const path = require('path');
-const file = path.join(__dirname, '../database.json');
+const { Gatilho, Call } = require('../models/Database');
 
-function load() {
+async function carregarGatilhos() {
   try {
-    if (!fs.existsSync(file)) return { gatilhos: [], calls: {} };
-    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-    // garante retrocompatibilidade se o arquivo antigo não tinha "calls"
-    if (!data.calls) data.calls = {};
-    return data;
-  } catch {
-    return { gatilhos: [], calls: {} };
-  }
-}
-
-function save(data) {
-  try {
-    fs.writeFileSync(file, JSON.stringify(data, null, 2));
+    const docs = await Gatilho.find();
+    return docs.map(d => d.channelId);
   } catch (e) {
-    console.error('Erro ao salvar database.json:', e);
+    console.error('Erro ao carregar gatilhos:', e);
+    return [];
   }
 }
 
-// --- Helpers específicos pra calls temporárias, pra não espalhar load/save por todo lado ---
-
-function salvarCall(callId, dados) {
-  const db = load();
-  db.calls[callId] = dados;
-  save(db);
+async function salvarGatilho(channelId) {
+  try {
+    await Gatilho.updateOne({ channelId }, { channelId }, { upsert: true });
+  } catch (e) {
+    console.error('Erro ao salvar gatilho:', e);
+  }
 }
 
-function removerCall(callId) {
-  const db = load();
-  delete db.calls[callId];
-  save(db);
+async function carregarCalls() {
+  try {
+    const docs = await Call.find();
+    const map = new Map();
+    docs.forEach(doc => map.set(doc.callId, { dono: doc.dono, donoNome: doc.donoNome, game: doc.game }));
+    return map;
+  } catch (e) {
+    console.error('Erro ao carregar calls:', e);
+    return new Map();
+  }
 }
 
-module.exports = { load, save, salvarCall, removerCall };
+async function salvarCall(callId, dados) {
+  try {
+    await Call.updateOne({ callId }, { ...dados, callId }, { upsert: true });
+  } catch (e) {
+    console.error('Erro ao salvar call:', e);
+  }
+}
+
+async function removerCall(callId) {
+  try {
+    await Call.deleteOne({ callId });
+  } catch (e) {
+    console.error('Erro ao remover call:', e);
+  }
+}
+
+module.exports = { carregarGatilhos, salvarGatilho, carregarCalls, salvarCall, removerCall };
+
