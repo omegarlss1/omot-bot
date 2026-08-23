@@ -1,4 +1,4 @@
-const { ChannelType } = require('discord.js');
+const { ChannelType, PermissionFlagsBits } = require('discord.js');
 
 module.exports = {
   name: 'voiceStateUpdate',
@@ -6,7 +6,7 @@ module.exports = {
     const channelEntrou = newState.channelId;
     const channelSaiu = oldState.channelId;
 
-    // Entrada em Canal Gatilho -> Cria Call Temporária
+    // 1. Criar call ao entrar no gatilho
     if (channelEntrou && client.canaisGatilho.has(channelEntrou)) {
       const guild = newState.guild;
       const member = newState.member;
@@ -16,18 +16,19 @@ module.exports = {
         name: `🔊 | Call de ${member.displayName}`,
         type: ChannelType.GuildVoice,
         parent: parentCategory || null,
-        permissionOverwrites: newState.channel.permissionOverwrites.cache.map(p => ({
-          id: p.id,
-          allow: p.allow.bitfield,
-          deny: p.deny.bitfield
-        }))
+        permissionOverwrites: [
+          {
+            id: member.id,
+            allow: [PermissionFlagsBits.ManageChannels, PermissionFlagsBits.MoveMembers]
+          }
+        ]
       });
 
       client.callsTemporarias.add(newChannel.id);
       await member.voice.setChannel(newChannel);
     }
 
-    // Saída de Canal Temporário -> Destrói se estiver vazio
+    // 2. Destruir call ao ficar vazia
     if (channelSaiu && client.callsTemporarias.has(channelSaiu)) {
       const channel = oldState.guild.channels.cache.get(channelSaiu);
       if (channel && channel.members.size === 0) {
