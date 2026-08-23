@@ -1,21 +1,80 @@
-const { PermissionFlagsBits, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
+const { PermissionFlagsBits, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder, EmbedBuilder, ButtonBuilder } = require('discord.js');
 
 module.exports = {
   name: 'interactionCreate',
   async execute(interaction, client) {
+    // 1. EXECUÇÃO DE COMANDOS SLASH (/call, /jogar, etc)
     if (interaction.isChatInputCommand()) {
       const command = client.commands.get(interaction.commandName);
       if (command) {
         try {
           await command.execute(interaction, client);
         } catch (err) {
-          console.error(`Erro ao executar ${interaction.commandName}:`, err);
+          console.error(`Erro ao executar /${interaction.commandName}:`, err);
         }
       }
       return;
     }
 
+    // 2. INTERAÇÕES DE BOTÕES
     if (interaction.isButton()) {
+      
+      // ==========================================
+      // [SISTEMA /JOGAR]: BOTÃO "ENTRAR NO TIME"
+      // ==========================================
+      if (interaction.customId.startsWith('btn_join_team_')) {
+        const [, , , criadorId, maxVagasStr] = interaction.customId.split('_');
+        const embedOriginal = interaction.message.embeds[0];
+
+        if (!embedOriginal) return;
+
+        const embedNovo = EmbedBuilder.from(embedOriginal);
+        let descricao = embedNovo.data.description;
+
+        // Evita duplicar o mesmo jogador no time
+        if (descricao.includes(`${interaction.member}`)) {
+          return interaction.reply({ content: '❌ Você já está na lista deste time!', flags: 64 });
+        }
+
+        // Extrai quantidade atual de vagas restantes da descrição do Embed
+        const matchVagas = descricao.match(/👥 \*\*Vagas Restantes:\*\* (\d+)/);
+        let vagasAtuais = matchVagas ? parseInt(matchVagas[1]) : 0;
+
+        if (vagasAtuais <= 0) {
+          return interaction.reply({ content: '❌ O time já está cheio!', flags: 64 });
+        }
+
+        vagasAtuais -= 1;
+
+        // Atualiza o texto da descrição com a nova vaga e insere o membro na lista
+        descricao = descricao.replace(/👥 \*\*Vagas Restantes:\*\* \d+/, `👥 **Vagas Restantes:** ${vagasAtuais}`);
+        descricao += `\n• ${interaction.member}`;
+        embedNovo.setDescription(descricao);
+
+        // Clona e atualiza os componentes
+        const componentes = ActionRowBuilder.from(interaction.message.components[0]);
+
+        // Se as vagas acabarem, desativa o botão de entrada
+        if (vagasAtuais === 0) {
+          componentes.components[0] = ButtonBuilder.from(componentes.components[0])
+            .setDisabled(true)
+            .setLabel('Time Cheio!');
+        }
+
+        await interaction.update({ embeds: [embedNovo], components: [componentes] });
+
+        // Notifica o criador da chamada no privado
+        const criador = await interaction.guild.members.fetch(criadorId).catch(() => null);
+        if (criador) {
+          const nomeJogo = embedOriginal.title ? embedOriginal.title.replace('🎮 Procura-se Time: ', '') : 'Jogo';
+          criador.send(`🎉 **${interaction.member.displayName}** entrou no seu time para **${nomeJogo}**!`).catch(() => {});
+        }
+        return;
+      }
+
+      // ==========================================
+      // [SISTEMA DE CALLS]: BOTÕES DO PAINEL
+      // ==========================================
       const canal = interaction.channel;
       const membro = interaction.member;
 
@@ -26,7 +85,6 @@ module.exports = {
         return interaction.reply({ content: '❌ Apenas o líder da call pode usar esses botões.', flags: 64 });
       }
 
-      // Definir Jogo / Nome
       if (interaction.customId === 'btn_rename') {
         const modal = new ModalBuilder()
           .setCustomId('modal_rename_call')
@@ -43,7 +101,6 @@ module.exports = {
         return interaction.showModal(modal);
       }
 
-      // Definir Limite de Vagas
       if (interaction.customId === 'btn_limit_modal') {
         const modal = new ModalBuilder()
           .setCustomId('modal_limit_call')
@@ -61,7 +118,6 @@ module.exports = {
         return interaction.showModal(modal);
       }
 
-      // Trancar / Destrancar
       if (interaction.customId === 'btn_lock') {
         await interaction.deferReply({ flags: 64 });
         const estaTrancado = !canal.permissionsFor(interaction.guild.roles.everyone).has(PermissionFlagsBits.Connect);
@@ -69,7 +125,6 @@ module.exports = {
         return interaction.editReply({ content: estaTrancado ? '🔓 Call liberada! Agora qualquer um pode entrar.' : '🔒 Tranquei a call! Ninguém mais entra.' });
       }
 
-      // Ocultar / Mostrar
       if (interaction.customId === 'btn_hide') {
         await interaction.deferReply({ flags: 64 });
         const estaVisivel = canal.permissionsFor(interaction.guild.roles.everyone).has(PermissionFlagsBits.ViewChannel);
@@ -77,7 +132,6 @@ module.exports = {
         return interaction.editReply({ content: estaVisivel ? '👁️ Call oculta! Ninguém de fora consegue ver a sala no servidor.' : '👁️ Call visível! Todo mundo consegue ver a sala agora.' });
       }
 
-      // Passar Liderança
       if (interaction.customId === 'btn_transfer') {
         const membrosNaCall = canal.members.filter(m => m.id !== membro.id);
 
@@ -101,7 +155,6 @@ module.exports = {
         return interaction.reply({ content: 'Escolha quem vai ser o novo líder da sala:', components: [selectMenu], flags: 64 });
       }
 
-      // Encerrar Call
       if (interaction.customId === 'btn_close_call') {
         await interaction.reply({ content: 'Fechando a call e desconectando a galera... flw!', flags: 64 });
         client.callsTemporarias.delete(canal.id);
@@ -114,7 +167,7 @@ module.exports = {
       }
     }
 
-    // Modal Renomear
+    // 3. ENVIO DE FORMULÁRIOS (MODAIS DO SISTEMA DE CALLS)
     if (interaction.isModalSubmit() && interaction.customId === 'modal_rename_call') {
       await interaction.deferReply({ flags: 64 });
       const canal = interaction.channel;
@@ -133,7 +186,6 @@ module.exports = {
       return interaction.editReply({ content: `pdp! Jogo alterado para **${novoJogo}**.` });
     }
 
-    // Modal Limite
     if (interaction.isModalSubmit() && interaction.customId === 'modal_limit_call') {
       await interaction.deferReply({ flags: 64 });
       const canal = interaction.channel;
@@ -150,7 +202,7 @@ module.exports = {
       });
     }
 
-    // Menu Troca de Liderança
+    // 4. MENU DE SELEÇÃO (TROCA DE LÍDER DA CALL)
     if (interaction.isStringSelectMenu() && interaction.customId === 'select_pass_dono') {
       await interaction.deferReply({ flags: 64 });
       const canal = interaction.channel;
@@ -178,6 +230,7 @@ module.exports = {
     }
   }
 };
+
 
 
 
