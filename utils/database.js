@@ -1,41 +1,44 @@
 const mongoose = require('mongoose');
 
 const gatilhoSchema = new mongoose.Schema({
-  canalId: { type: String, required: true, unique: true }
+  canalId: { type: String, required: true, unique: true },
+  tipo: { type: String, enum: ['sideswipe', 'diversos'], default: 'sideswipe' }
 });
 
 const Gatilho = mongoose.model('Gatilho', gatilhoSchema);
 
 async function conectarBD() {
   if (mongoose.connection.readyState === 0) {
-    console.log('🍃 Conectando ao MongoDB Atlas...');
-    await mongoose.connect(process.env.MONGODB_URI, {
-      serverSelectionTimeoutMS: 5000
-    });
-    console.log('🍃 Banco de dados MongoDB conectado!');
+    await mongoose.connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 5000 });
   }
 }
 
-async function salvarGatilho(canalId) {
-  if (!canalId) throw new Error('ID do canal não informado.');
+async function salvarGatilho(canalId, tipo) {
+  if (!canalId) throw new Error('ID do canal é obrigatório.');
   await conectarBD();
-  // Busca por { canalId } e atualiza com { canalId }
-  await Gatilho.updateOne({ canalId }, { canalId }, { upsert: true });
+  // Força remoção de índices legados problemáticos
+  await Gatilho.collection.dropIndexes().catch(() => {});
+  await Gatilho.updateOne({ canalId }, { canalId, tipo }, { upsert: true });
 }
 
 async function carregarGatilhos(client) {
   try {
     await conectarBD();
-    // Limpa registros nulos antes de carregar
-    await Gatilho.deleteMany({ canalId: null });
+    // Limpa documentos corrompidos antigos
+    await Gatilho.deleteMany({ $or: [{ canalId: null }, { canalId: { $exists: false } }] });
     
     const gatilhos = await Gatilho.find({});
+    client.gatilhosConfig = new Map(); // Guarda canalId -> tipo
+    
     gatilhos.forEach(g => {
-      if (g.canalId) client.canaisGatilho.add(g.canalId);
+      if (g.canalId) {
+        client.canaisGatilho.add(g.canalId);
+        client.gatilhosConfig.set(g.canalId, g.tipo || 'sideswipe');
+      }
     });
-    console.log(`✅ Gatilhos carregados do MongoDB: ${client.canaisGatilho.size}`);
+    console.log(`✅ Gatilhos carregados: ${client.canaisGatilho.size}`);
   } catch (err) {
-    console.error('❌ Erro ao carregar gatilhos do MongoDB:', err.message);
+    console.error('❌ Erro ao carregar gatilhos:', err.message);
   }
 }
 
