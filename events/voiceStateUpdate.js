@@ -6,64 +6,69 @@ module.exports = {
     const entrou = newState.channelId &&!oldState.channelId;
     const saiu = oldState.channelId &&!newState.channelId;
     const trocou = oldState.channelId && newState.channelId && oldState.channelId!== newState.channelId;
+    const ID_SIDESWIPE = "1540804418792988673";
 
-    // CRIOU CALL
     if((entrou || trocou) && client.canaisGatilho.has(newState.channelId)){
       const gatilho = newState.guild.channels.cache.get(newState.channelId);
       const member = newState.member;
-
-      const ID_SIDESWIPE = "1540804418792988673"; // seu gatilho de RL SideSwipe
-const ehSideSwipe = newState.channelId === ID_SIDESWIPE;
-      const ehDiversos =!ehSideSwipe;
-
+      const temPermCriar = member.permissions.has('ManageChannels');
+      if(!temPermCriar){
+        const jaTemCall = [...client.callsTemporarias.values()].filter(c => c.dono === member.id).length;
+        if(jaTemCall >= 1){
+          await newState.setChannel(null).catch(()=>{});
+          return;
+        }
+      }
+      const ehSideSwipe = newState.channelId === ID_SIDESWIPE;
       const gameInicial = ehSideSwipe? 'RL SideSwipe' : 'Aguardando jogo';
 
       try{
         const novaCall = await newState.guild.channels.create({
           name: `${gameInicial} | ${member.displayName}`,
-          type: 2,
-          parent: gatilho.parent,
+          type: 2, parent: gatilho.parent,
           permissionOverwrites: [{ id: member.id, allow: ['ManageChannels','MoveMembers'] }]
         });
         await newState.setChannel(novaCall.id).catch(()=>{});
-        client.callsTemporarias.set(novaCall.id, { dono: member.id, donoNome: member.displayName, game: gameInicial, tipo: ehSideSwipe? 'sideswipe' : 'diversos' });
+        client.callsTemporarias.set(novaCall.id, { dono: member.id, donoNome: member.displayName, game: gameInicial });
 
-        const embed = new EmbedBuilder()
-         .setColor('#8B5CF6')
-         .setTitle('🎮 Painel da sua Call Ômega')
-         .setDescription(`Salve ${member}, sua call **${gameInicial}** foi criada!\nUse os botões abaixo.`);
+        const embed = new EmbedBuilder().setColor('#8B5CF6').setTitle('🎮 Painel da Call').setDescription(`<@${member.id}> use os botões abaixo pra configurar.`);
 
-        // Botões com os nomes novos que você pediu
         const btnJogo = new ButtonBuilder().setCustomId(`setgame_${novaCall.id}`).setLabel('🎮 Definir Jogo').setStyle(ButtonStyle.Primary);
         const btnRenomear = new ButtonBuilder().setCustomId(`rename_${novaCall.id}`).setLabel('✏️ Renomear').setStyle(ButtonStyle.Secondary);
         const btnLimitar = new ButtonBuilder().setCustomId(`limit_${novaCall.id}`).setLabel('👥 Limitar').setStyle(ButtonStyle.Secondary);
         const btnKick = new ButtonBuilder().setCustomId(`kick_${novaCall.id}`).setLabel('❌ Kickar').setStyle(ButtonStyle.Danger);
         const btnEncerrar = new ButtonBuilder().setCustomId(`delete_${novaCall.id}`).setLabel('🔴 Encerrar').setStyle(ButtonStyle.Danger);
-
         const btnTrancar = new ButtonBuilder().setCustomId(`lock_${novaCall.id}`).setLabel('🔒 Trancar').setStyle(ButtonStyle.Secondary);
         const btnDestrancar = new ButtonBuilder().setCustomId(`unlock_${novaCall.id}`).setLabel('🔓 Destrancar').setStyle(ButtonStyle.Secondary);
         const btnOcultar = new ButtonBuilder().setCustomId(`ghost_${novaCall.id}`).setLabel('👻 Ocultar').setStyle(ButtonStyle.Secondary);
         const btnReexibir = new ButtonBuilder().setCustomId(`unghost_${novaCall.id}`).setLabel('👁️ Reexibir').setStyle(ButtonStyle.Secondary);
 
-        let row1, row2;
-
+        let rows = [];
         if(ehSideSwipe){
-          // RL SideSwipe NÃO tem botão de Definir Jogo
-          row1 = new ActionRowBuilder().addComponents(btnRenomear, btnLimitar, btnKick, btnEncerrar);
-          row2 = new ActionRowBuilder().addComponents(btnTrancar, btnDestrancar, btnOcultar, btnReexibir);
+          // RL SideSwipe - 8 botões - Renomear sozinho na primeira linha
+          rows = [
+            new ActionRowBuilder().addComponents(btnRenomear),
+            new ActionRowBuilder().addComponents(btnLimitar, btnKick),
+            new ActionRowBuilder().addComponents(btnEncerrar, btnTrancar),
+            new ActionRowBuilder().addComponents(btnDestrancar, btnOcultar),
+            new ActionRowBuilder().addComponents(btnReexibir),
+          ];
         } else {
-          // Jogos Diversos TEM botão de Definir Jogo
-          row1 = new ActionRowBuilder().addComponents(btnJogo, btnRenomear, btnLimitar, btnKick, btnEncerrar);
-          row2 = new ActionRowBuilder().addComponents(btnTrancar, btnDestrancar, btnOcultar, btnReexibir);
+          // Jogos Diversos - 9 botões - 2 por linha
+          rows = [
+            new ActionRowBuilder().addComponents(btnJogo, btnRenomear),
+            new ActionRowBuilder().addComponents(btnLimitar, btnKick),
+            new ActionRowBuilder().addComponents(btnEncerrar, btnTrancar),
+            new ActionRowBuilder().addComponents(btnDestrancar, btnOcultar),
+            new ActionRowBuilder().addComponents(btnReexibir),
+          ];
         }
 
-        // ENVIA NO CHAT DA PRÓPRIA CALL CRIADA
-        await novaCall.send({ content: `<@${member.id}>`, embeds: [embed], components: [row1, row2] }).catch(()=>{});
+        await novaCall.send({ embeds: [embed], components: rows }).catch(()=>{});
 
-      }catch(e){ console.error('Erro ao criar call:', e); }
+      }catch(e){ console.error(e); }
     }
 
-    // ATUALIZA NOME: JOGO | DONO + X ÔMIGOS
     const canalAfetadoId = saiu? oldState.channelId : newState.channelId;
     if(client.callsTemporarias.has(canalAfetadoId)){
       const canal = newState.guild.channels.cache.get(canalAfetadoId) || oldState.guild.channels.cache.get(canalAfetadoId);
@@ -78,11 +83,21 @@ const ehSideSwipe = newState.channelId === ID_SIDESWIPE;
       }
     }
 
-    // DELETA QUANDO VAZIA
     if((saiu || trocou) && client.callsTemporarias.has(oldState.channelId)){
       const canal = oldState.guild.channels.cache.get(oldState.channelId);
-      if(canal && canal.members.size === 0){
-        try{ await canal.delete(); client.callsTemporarias.delete(oldState.channelId); }catch(e){}
+      if(canal){
+        const dados = client.callsTemporarias.get(oldState.channelId);
+        if(dados && oldState.member.id === dados.dono && canal.members.size > 0){
+          const novoDono = canal.members.first();
+          if(novoDono){
+            client.callsTemporarias.set(canal.id, {...dados, dono: novoDono.id, donoNome: novoDono.displayName });
+            await canal.permissionOverwrites.edit(novoDono.id, { ManageChannels: true, MoveMembers: true }).catch(()=>{});
+            await canal.send(`👑 <@${novoDono.id}> agora é o dono!`).catch(()=>{});
+          }
+        }
+        if(canal.members.size === 0){
+          try{ await canal.delete(); client.callsTemporarias.delete(oldState.channelId); }catch(e){}
+        }
       }
     }
   }
