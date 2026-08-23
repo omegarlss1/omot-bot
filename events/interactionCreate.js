@@ -19,7 +19,7 @@ module.exports = {
     // 2. BOTÕES
     if (interaction.isButton()) {
       
-      // [/JOGAR]: ENTAR NO TIME
+      // [/JOGAR]: ENTRAR NO TIME
       if (interaction.customId.startsWith('btn_join_team_')) {
         const [, , , criadorId] = interaction.customId.split('_');
         const embedOriginal = interaction.message.embeds[0];
@@ -220,6 +220,7 @@ module.exports = {
     }
   }
 };
+
 
 
 
