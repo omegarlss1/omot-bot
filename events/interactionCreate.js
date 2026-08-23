@@ -1,5 +1,6 @@
 const { PermissionsBitField, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
-const { salvarCall } = require('../utils/database');
+const { salvarCall, removerCall } = require('../utils/database');
+const { transferirDono } = require('../utils/calls');
 
 // pega do cache, e só faz fetch (mais lento) se não achar - evita "Call não existe mais" falso-positivo
 async function pegarCanal(guild, callId) {
@@ -60,10 +61,11 @@ module.exports = {
       return;
     }
 
-    // SELECT MENU - KICKAR
+    // SELECT MENU - KICKAR / TRANSFERIR DONO
     if (interaction.isStringSelectMenu()) {
       await interaction.deferUpdate().catch(() => {});
       const [acao, callId] = interaction.customId.split('_');
+
       if (acao === 'kick-select') {
         const userId = interaction.values[0];
         const member = interaction.guild.members.cache.get(userId);
@@ -71,6 +73,27 @@ module.exports = {
           await member.voice.disconnect().catch(() => {});
           await interaction.followUp({ content: `❌ <@${userId}> kickado da call!`, ephemeral: true }).catch(() => {});
         }
+        return;
+      }
+
+      if (acao === 'transfer-select') {
+        const canal = await pegarCanal(interaction.guild, callId);
+        const dados = client.callsTemporarias.get(callId);
+        if (!canal || !dados) return interaction.followUp({ content: '❌ Call não existe mais.', ephemeral: true }).catch(() => {});
+
+        // só quem era o dono no momento em que abriu o menu pode confirmar a transferência
+        if (interaction.user.id !== dados.dono) {
+          return interaction.followUp({ content: '❌ Só o dono pode confirmar a transferência.', ephemeral: true }).catch(() => {});
+        }
+
+        const novoDonoId = interaction.values[0];
+        const novoDono = canal.members.get(novoDonoId);
+        if (!novoDono) return interaction.followUp({ content: '❌ Esse Ômigo não está mais na call.', ephemeral: true }).catch(() => {});
+
+        await transferirDono(client, canal, dados, novoDono);
+        await interaction.followUp({ content: `👑 Call passada pra <@${novoDonoId}>!`, ephemeral: true }).catch(() => {});
+        await canal.send(`👑 <@${interaction.user.id}> passou a call pra <@${novoDonoId}>!`).catch(() => {});
+        return;
       }
       return;
     }
@@ -116,8 +139,16 @@ module.exports = {
         await interaction.reply({ content: '🗑️ Deletando call...', ephemeral: true });
         await canal.delete().catch(() => {});
         client.callsTemporarias.delete(callId);
-        require('../utils/database').removerCall(callId);
+        removerCall(callId);
         return;
+      }
+      if (acao === 'transfer') {
+        if (canal.members.size <= 1) return interaction.reply({ content: '❌ Não tem ninguém pra passar a call, Ômigo!', ephemeral: true });
+        const options = canal.members.filter(m => m.id !== interaction.user.id).map(m => ({ label: m.displayName.substring(0, 25), value: m.id, description: `@${m.user.username}`.substring(0, 50) })).slice(0, 25);
+        if (options.length === 0) return interaction.reply({ content: '❌ Ninguém pra passar a call', ephemeral: true });
+        const menu = new StringSelectMenuBuilder().setCustomId(`transfer-select_${callId}`).setPlaceholder('Escolha o novo dono').addOptions(options);
+        const row = new ActionRowBuilder().addComponents(menu);
+        return interaction.reply({ content: '👑 Escolha quem vai ser o novo dono:', components: [row], ephemeral: true });
       }
       if (acao === 'rename') {
         const modal = new ModalBuilder().setCustomId(`modal-rename_${callId}`).setTitle('Renomear Call');
@@ -142,3 +173,4 @@ module.exports = {
     } catch (e) { console.error(e); await interaction.reply({ content: '❌ Deu erro', ephemeral: true }).catch(() => {}); }
   }
 };
+
