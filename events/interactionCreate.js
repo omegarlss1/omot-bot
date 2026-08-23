@@ -1,4 +1,5 @@
 const { PermissionFlagsBits, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder, EmbedBuilder, ButtonBuilder } = require('discord.js');
+const { PerfilMembro } = require('../utils/perfilDatabase');
 
 module.exports = {
   name: 'interactionCreate',
@@ -18,6 +19,34 @@ module.exports = {
 
     // 2. BOTÕES
     if (interaction.isButton()) {
+
+      // [BOAS-VINDAS]: INICIAR FICHA DE MEMBRO
+      if (interaction.customId === 'btn_iniciar_ficha') {
+        const modal = new ModalBuilder()
+          .setCustomId('modal_ficha_etapa1')
+          .setTitle('Ficha de Membro - Perfil');
+
+        const inputNick = new TextInputBuilder()
+          .setCustomId('nick_game_input')
+          .setLabel('Seu Nick no Jogo:')
+          .setPlaceholder('Ex: ÔmegaPlayer#1234')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true);
+
+        const inputRank = new TextInputBuilder()
+          .setCustomId('rank_side_input')
+          .setLabel('Rank no RL SideSwipe:')
+          .setPlaceholder('Ex: Bronze, Prata, Ouro, Platina, Diamante...')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true);
+
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(inputNick),
+          new ActionRowBuilder().addComponents(inputRank)
+        );
+
+        return interaction.showModal(modal);
+      }
       
       // [/JOGAR]: ENTRAR NO TIME
       if (interaction.customId.startsWith('btn_join_team_')) {
@@ -158,68 +187,125 @@ module.exports = {
     }
 
     // 3. MODAIS
-    if (interaction.isModalSubmit() && interaction.customId === 'modal_rename_call') {
-      await interaction.deferReply({ flags: 64 });
-      const canal = interaction.channel;
-      const novoJogo = interaction.fields.getTextInputValue('nome_call_input');
-      const dadosCall = client.callsTemporarias.get(canal.id);
+    if (interaction.isModalSubmit()) {
 
-      if (dadosCall) {
-        dadosCall.jogo = novoJogo;
-        const amiguinhos = canal.members.size - 1;
-        let sufixoAmigos = amiguinhos === 1 ? ' +1 Ômigo' : amiguinhos > 1 ? ` +${amiguinhos} Ômigos` : '';
-        const nomeFinal = `🎮 | ${novoJogo} | ${dadosCall.donoNome}${sufixoAmigos}`;
+      // [BOAS-VINDAS]: SALVA PERFIL E CHAMA ETAPA 2 (CARGOS)
+      if (interaction.customId === 'modal_ficha_etapa1') {
+        await interaction.deferReply({ flags: 64 });
 
-        await canal.setName(nomeFinal).catch(() => {});
+        const nick = interaction.fields.getTextInputValue('nick_game_input');
+        const rank = interaction.fields.getTextInputValue('rank_side_input');
+
+        await PerfilMembro.findOneAndUpdate(
+          { guildId: interaction.guildId, userId: interaction.user.id },
+          { nickJogo: nick, rankSideSwipe: rank },
+          { upsert: true, new: true }
+        );
+
+        const selectCargos = new ActionRowBuilder().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId('select_cargos_jogos')
+            .setPlaceholder('Escolha os jogos que quer ser notificado...')
+            .setMinValues(0)
+            .setMaxValues(2)
+            .addOptions([
+              { label: 'RL SideSwipe', value: 'cargo_sideswipe_id', description: 'Avisos de chamadas do SideSwipe' },
+              { label: 'Jogos Diversos', value: 'cargo_diversos_id', description: 'Avisos de chamadas de outros jogos' }
+            ])
+        );
+
+        return interaction.editReply({
+          content: '✅ Perfil salvo! Agora escolha abaixo os avisos que vc quer receber quando chamarem pro time:',
+          components: [selectCargos]
+        });
       }
 
-      return interaction.editReply({ content: `Jogo alterado para **${novoJogo}**.` });
-    }
+      // [CALLS]: RENOMEAR
+      if (interaction.customId === 'modal_rename_call') {
+        await interaction.deferReply({ flags: 64 });
+        const canal = interaction.channel;
+        const novoJogo = interaction.fields.getTextInputValue('nome_call_input');
+        const dadosCall = client.callsTemporarias.get(canal.id);
 
-    if (interaction.isModalSubmit() && interaction.customId === 'modal_limit_call') {
-      await interaction.deferReply({ flags: 64 });
-      const canal = interaction.channel;
-      const valorInput = interaction.fields.getTextInputValue('limite_call_input').trim();
-      const limite = parseInt(valorInput);
+        if (dadosCall) {
+          dadosCall.jogo = novoJogo;
+          const amiguinhos = canal.members.size - 1;
+          let sufixoAmigos = amiguinhos === 1 ? ' +1 Ômigo' : amiguinhos > 1 ? ` +${amiguinhos} Ômigos` : '';
+          const nomeFinal = `🎮 | ${novoJogo} | ${dadosCall.donoNome}${sufixoAmigos}`;
 
-      if (isNaN(limite) || limite < 0 || limite > 99) {
-        return interaction.editReply({ content: '❌ Manda um número válido, de 0 a 99, aí.' });
+          await canal.setName(nomeFinal).catch(() => {});
+        }
+
+        return interaction.editReply({ content: `Jogo alterado para **${novoJogo}**.` });
       }
 
-      await canal.setUserLimit(limite);
-      return interaction.editReply({ 
-        content: limite === 0 ? 'Sem limite de vagas agora.' : `Ajustei o limite pra **${limite} ${limite === 1 ? 'vaga' : 'vagas'}**!` 
-      });
+      // [CALLS]: LIMITE
+      if (interaction.customId === 'modal_limit_call') {
+        await interaction.deferReply({ flags: 64 });
+        const canal = interaction.channel;
+        const valorInput = interaction.fields.getTextInputValue('limite_call_input').trim();
+        const limite = parseInt(valorInput);
+
+        if (isNaN(limite) || limite < 0 || limite > 99) {
+          return interaction.editReply({ content: '❌ Manda um número válido, de 0 a 99, aí.' });
+        }
+
+        await canal.setUserLimit(limite);
+        return interaction.editReply({ 
+          content: limite === 0 ? 'Sem limite de vagas agora.' : `Ajustei o limite pra **${limite} ${limite === 1 ? 'vaga' : 'vagas'}**!` 
+        });
+      }
     }
 
     // 4. SELECT MENUS
-    if (interaction.isStringSelectMenu() && interaction.customId === 'select_pass_dono') {
-      await interaction.deferReply({ flags: 64 });
-      const canal = interaction.channel;
-      const novoDonoId = interaction.values[0];
-      const antigoDono = interaction.member;
-      const novoDono = canal.members.get(novoDonoId);
+    if (interaction.isStringSelectMenu()) {
 
-      if (!novoDono) return interaction.editReply({ content: '❌ Membro não encontrado na call.' });
+      // [BOAS-VINDAS]: ATRIBUI CARGOS E FINALIZA
+      if (interaction.customId === 'select_cargos_jogos') {
+        await interaction.deferReply({ flags: 64 });
 
-      await canal.permissionOverwrites.delete(antigoDono.id).catch(() => {});
-      await canal.permissionOverwrites.edit(novoDono.id, {
-        [PermissionFlagsBits.ManageChannels]: true,
-        [PermissionFlagsBits.MoveMembers]: true,
-        [PermissionFlagsBits.Connect]: true
-      });
+        const cargosSelecionados = interaction.values;
+        const membro = interaction.member;
 
-      const dadosCall = client.callsTemporarias.get(canal.id);
-      if (dadosCall) {
-        dadosCall.donoId = novoDono.id;
-        dadosCall.donoNome = novoDono.displayName;
+        for (const roleId of cargosSelecionados) {
+          if (roleId && !roleId.includes('_id')) {
+            await membro.roles.add(roleId).catch(() => {});
+          }
+        }
+
+        return interaction.editReply({ content: '🎉 Ficha concluída! Vc já tá pronto pra jogar com o time.' });
       }
 
-      await interaction.editReply({ content: `Liderança passada pra ${novoDono}.` });
-      return canal.send({ content: `👑 ${antigoDono} passou a liderança pra ${novoDono}.` });
+      // [CALLS]: TROCA DE LÍDER
+      if (interaction.customId === 'select_pass_dono') {
+        await interaction.deferReply({ flags: 64 });
+        const canal = interaction.channel;
+        const novoDonoId = interaction.values[0];
+        const antigoDono = interaction.member;
+        const novoDono = canal.members.get(novoDonoId);
+
+        if (!novoDono) return interaction.editReply({ content: '❌ Membro não encontrado na call.' });
+
+        await canal.permissionOverwrites.delete(antigoDono.id).catch(() => {});
+        await canal.permissionOverwrites.edit(novoDono.id, {
+          [PermissionFlagsBits.ManageChannels]: true,
+          [PermissionFlagsBits.MoveMembers]: true,
+          [PermissionFlagsBits.Connect]: true
+        });
+
+        const dadosCall = client.callsTemporarias.get(canal.id);
+        if (dadosCall) {
+          dadosCall.donoId = novoDono.id;
+          dadosCall.donoNome = novoDono.displayName;
+        }
+
+        await interaction.editReply({ content: `Liderança passada pra ${novoDono}.` });
+        return canal.send({ content: `👑 ${antigoDono} passou a liderança pra ${novoDono}.` });
+      }
     }
   }
 };
+
 
 
 
