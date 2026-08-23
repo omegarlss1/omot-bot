@@ -1,10 +1,10 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { JogoCargo } = require('../utils/jogosDatabase');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('jogar')
-    .setDescription('Chama a galera para jogar e formar time')
+    .setDescription('Chama pro time e abre as vagas')
     .addStringOption(option =>
       option.setName('jogo')
         .setDescription('Escolha o jogo')
@@ -15,13 +15,13 @@ module.exports = {
         ))
     .addIntegerOption(option =>
       option.setName('vagas')
-        .setDescription('Quantas vagas faltam no time?')
+        .setDescription('Quantas vagas faltam?')
         .setRequired(true)
         .setMinValue(1)
         .setMaxValue(10))
     .addStringOption(option =>
       option.setName('nota')
-        .setDescription('Mensagem opcional (ex: "Falta 1 pra fechar lobby de competitivo")')
+        .setDescription('Recado curto (ex: Falta 1 pro comp)')
         .setRequired(false)),
 
   async execute(interaction, client) {
@@ -32,16 +32,15 @@ module.exports = {
     const nota = interaction.options.getString('nota') || 'Só colar na call!';
     const criador = interaction.member;
 
-    // Busca o cargo configurado para esse jogo no servidor
     const config = await JogoCargo.findOne({ guildId: interaction.guildId, jogoKey });
     const mencaoCargo = config ? `<@&${config.roleId}>` : '';
     const nomeJogo = config ? config.jogoNome : (jogoKey === 'sideswipe' ? 'RL SideSwipe' : 'Jogos Diversos');
 
     const embed = new EmbedBuilder()
       .setTitle(`🎮 Procura-se Time: ${nomeJogo}`)
-      .setDescription(`**${criador.displayName}** está chamando a galera pra jogar!\n\n📌 **Recado:** ${nota}\n👥 **Vagas Restantes:** ${vagas}\n👥 **Jogadores confirmados:**\n• ${criador}`)
+      .setDescription(`**${criador.displayName}** tá chamando pra jogar!\n\n📌 **Recado:** ${nota}\n👥 **Vagas Restantes:** ${vagas}\n👥 **Confirmados:**\n• ${criador}`)
       .setColor('#FF6B00')
-      .setFooter({ text: 'Clique no botão abaixo para entrar na lista!' })
+      .setFooter({ text: 'Clica no botão abaixo pra entrar no time!' })
       .setTimestamp();
 
     const btnEntrar = new ActionRowBuilder().addComponents(
@@ -59,3 +58,4 @@ module.exports = {
     });
   }
 };
+
