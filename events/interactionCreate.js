@@ -15,7 +15,6 @@ module.exports = {
       return;
     }
 
-    // Interações de Botões
     if (interaction.isButton()) {
       const canal = interaction.channel;
       const membro = interaction.member;
@@ -24,10 +23,10 @@ module.exports = {
       const dadosCall = client.callsTemporarias.get(canal.id);
 
       if (dadosCall.donoId !== membro.id) {
-        return interaction.reply({ content: '✋ Calma lá! Só o dono da sala pode mexer nesses botões.', flags: 64 });
+        return interaction.reply({ content: '❌ Apenas o dono atual da call pode usar esse botão.', flags: 64 });
       }
 
-      // 1. DEFINIR JOGO / NOME (Modal)
+      // Definir Jogo / Nome
       if (interaction.customId === 'btn_rename') {
         const modal = new ModalBuilder()
           .setCustomId('modal_rename_call')
@@ -35,8 +34,8 @@ module.exports = {
 
         const inputNome = new TextInputBuilder()
           .setCustomId('nome_call_input')
-          .setLabel('Qual o jogo ou nome da sala?')
-          .setPlaceholder('Ex: Rocket League, Valorant, Fortnite...')
+          .setLabel('Digite o nome do jogo ou da sala:')
+          .setPlaceholder('Ex: Valorant, Rocket League, Roblox...')
           .setStyle(TextInputStyle.Short)
           .setRequired(true);
 
@@ -44,7 +43,7 @@ module.exports = {
         return interaction.showModal(modal);
       }
 
-      // 2. DEFINIR LIMITE (Modal com digitação livre)
+      // Definir Limite
       if (interaction.customId === 'btn_limit_modal') {
         const modal = new ModalBuilder()
           .setCustomId('modal_limit_call')
@@ -52,8 +51,8 @@ module.exports = {
 
         const inputLimite = new TextInputBuilder()
           .setCustomId('limite_call_input')
-          .setLabel('Número máximo de vagas (0 para sem limite):')
-          .setPlaceholder('Ex: 2, 3, 5 ou 0 para ilimitado')
+          .setLabel('Quantidade de vagas (0 para ilimitado, máx 99):')
+          .setPlaceholder('Ex: 2, 3, 5 ou 0')
           .setStyle(TextInputStyle.Short)
           .setMaxLength(2)
           .setRequired(true);
@@ -62,49 +61,49 @@ module.exports = {
         return interaction.showModal(modal);
       }
 
-      // 3. TRANCAR / DESTRANCAR
+      // Trancar / Destrancar
       if (interaction.customId === 'btn_lock') {
         await interaction.deferReply({ flags: 64 });
         const estaTrancado = !canal.permissionsFor(interaction.guild.roles.everyone).has(PermissionFlagsBits.Connect);
         await canal.permissionOverwrites.edit(interaction.guild.roles.everyone, { Connect: estaTrancado ? null : false });
-        return interaction.editReply({ content: estaTrancado ? '🔓 Sala liberada! Pode entrar todo mundo.' : '🔒 Tranquei a sala! Ninguém mais entra.' });
+        return interaction.editReply({ content: estaTrancado ? '🔓 Call destrancada. Qualquer pessoa pode entrar.' : '🔒 Call trancada. Ninguém novo consegue entrar.' });
       }
 
-      // 4. OCULTAR / MOSTRAR
+      // Ocultar / Mostrar
       if (interaction.customId === 'btn_hide') {
         await interaction.deferReply({ flags: 64 });
         const estaVisivel = canal.permissionsFor(interaction.guild.roles.everyone).has(PermissionFlagsBits.ViewChannel);
         await canal.permissionOverwrites.edit(interaction.guild.roles.everyone, { ViewChannel: estaVisivel ? false : null });
-        return interaction.editReply({ content: estaVisivel ? '🙈 Sala escondida! Ninguém vê no servidor.' : '👁️ Sala visível de novo pra galera!' });
+        return interaction.editReply({ content: estaVisivel ? '👁️ Call oculta! Ninguém de fora consegue ver a sala no servidor.' : '👁️ Call visível novamente para o servidor.' });
       }
 
-      // 5. PASSAR DONO
+      // Passar Dono
       if (interaction.customId === 'btn_transfer') {
         const membrosNaCall = canal.members.filter(m => m.id !== membro.id);
 
         if (membrosNaCall.size === 0) {
-          return interaction.reply({ content: '❌ Não tem ninguém aqui pra receber a coroa!', flags: 64 });
+          return interaction.reply({ content: '❌ Não há outros membros na call para transferir a posse.', flags: 64 });
         }
 
         const menuOpcoes = membrosNaCall.map(m => ({
           label: m.displayName,
           value: m.id,
-          description: `Passar a liderança para ${m.user.username}`
+          description: `Transferir a posse para ${m.user.username}`
         }));
 
         const selectMenu = new ActionRowBuilder().addComponents(
           new StringSelectMenuBuilder()
             .setCustomId('select_pass_dono')
-            .setPlaceholder('Escolha o novo líder...')
+            .setPlaceholder('Selecione o novo dono...')
             .addOptions(menuOpcoes)
         );
 
-        return interaction.reply({ content: '👑 Escolha pra quem vai passar a coroa:', components: [selectMenu], flags: 64 });
+        return interaction.reply({ content: 'Selecione quem será o novo dono da call:', components: [selectMenu], flags: 64 });
       }
 
-      // 6. ENCERRAR CALL
+      // Encerrar Call
       if (interaction.customId === 'btn_close_call') {
-        await interaction.reply({ content: '💥 Fechando a firma! Desconectando todo mundo...', flags: 64 });
+        await interaction.reply({ content: 'Encerrando a call e desconectando os membros...', flags: 64 });
         client.callsTemporarias.delete(canal.id);
 
         for (const [_, member] of canal.members) {
@@ -115,7 +114,7 @@ module.exports = {
       }
     }
 
-    // Processa Modal de Renomear
+    // Modal Renomear
     if (interaction.isModalSubmit() && interaction.customId === 'modal_rename_call') {
       await interaction.deferReply({ flags: 64 });
       const canal = interaction.channel;
@@ -131,27 +130,27 @@ module.exports = {
         await canal.setName(nomeFinal).catch(() => {});
       }
 
-      return interaction.editReply({ content: `✏️ Boa! Jogo alterado para **${novoJogo}**.` });
+      return interaction.editReply({ content: `✅ Jogo alterado para **${novoJogo}**.` });
     }
 
-    // Processa Modal de Limite
+    // Modal Limite
     if (interaction.isModalSubmit() && interaction.customId === 'modal_limit_call') {
       await interaction.deferReply({ flags: 64 });
       const canal = interaction.channel;
       const valorInput = interaction.fields.getTextInputValue('limite_call_input').trim();
       const limite = parseInt(valorInput);
 
-      if (isNaN(limite) || limite < 0) {
-        return interaction.editReply({ content: '❌ Digita um número válido aí! (ex: 2, 3 ou 0).' });
+      if (isNaN(limite) || limite < 0 || limite > 99) {
+        return interaction.editReply({ content: '❌ Digite um número válido entre 0 e 99.' });
       }
 
       await canal.setUserLimit(limite);
       return interaction.editReply({ 
-        content: limite === 0 ? '👥 Limite removido! Cabe todo mundo.' : `👥 Vagas ajustadas para **${limite} ${limite === 1 ? 'membro' : 'membros'}**!` 
+        content: limite === 0 ? '👥 Limite de vagas removido.' : `👥 Limite ajustado para **${limite} ${limite === 1 ? 'vaga' : 'vagas'}**.` 
       });
     }
 
-    // Processa Troca de Dono
+    // Menu Troca de Dono
     if (interaction.isStringSelectMenu() && interaction.customId === 'select_pass_dono') {
       await interaction.deferReply({ flags: 64 });
       const canal = interaction.channel;
@@ -159,7 +158,7 @@ module.exports = {
       const antigoDono = interaction.member;
       const novoDono = canal.members.get(novoDonoId);
 
-      if (!novoDono) return interaction.editReply({ content: '❌ Não achei o membro na sala.' });
+      if (!novoDono) return interaction.editReply({ content: '❌ Membro não encontrado na call.' });
 
       await canal.permissionOverwrites.delete(antigoDono.id).catch(() => {});
       await canal.permissionOverwrites.edit(novoDono.id, {
@@ -174,10 +173,11 @@ module.exports = {
         dadosCall.donoNome = novoDono.displayName;
       }
 
-      await interaction.editReply({ content: `✅ Coroa repassada para ${novoDono}!` });
-      return canal.send({ content: `👑 ${antigoDono} passou a liderança para ${novoDono}!` });
+      await interaction.editReply({ content: `✅ Posse da call transferida para ${novoDono}.` });
+      return canal.send({ content: `👑 ${antigoDono} transferiu a posse da call para ${novoDono}.` });
     }
   }
 };
+
 
 
