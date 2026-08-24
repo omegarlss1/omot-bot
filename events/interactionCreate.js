@@ -415,7 +415,7 @@ module.exports = {
         cooldownsChamarTime.set(interaction.user.id, Date.now());
 
         await canalProcura.send({
-          content: `${mencaoCargo} 🎮 **${interaction.member.displayName}** chamou pro **${nomeJogo}**!`,
+          content: `${mencaoCargo} 🎮 ${interaction.member.displayName} chamou pro ${nomeJogo}!`,
           embeds: [embed],
           components: [rowBotoes]
         });
