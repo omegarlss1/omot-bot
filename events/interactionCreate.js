@@ -1,4 +1,4 @@
-const { PermissionFlagsBits, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder, EmbedBuilder, ButtonBuilder } = require('discord.js');
+const { PermissionFlagsBits, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { PerfilMembro } = require('../utils/perfilDatabase');
 
 module.exports = {
@@ -35,10 +35,10 @@ module.exports = {
 
         const inputRank = new TextInputBuilder()
           .setCustomId('rank_side_input')
-          .setLabel('Rank no RL SideSwipe:')
+          .setLabel('Rank no RL SideSwipe (deixe em branco se não joga):')
           .setPlaceholder('Ex: Bronze, Prata, Ouro, Platina, Diamante...')
           .setStyle(TextInputStyle.Short)
-          .setRequired(true);
+          .setRequired(false);
 
         modal.addComponents(
           new ActionRowBuilder().addComponents(inputNick),
@@ -47,7 +47,30 @@ module.exports = {
 
         return interaction.showModal(modal);
       }
-      
+
+      // [/JOGAR]: CANCELAR PROCURA
+      if (interaction.customId.startsWith('btn_cancel_team_')) {
+        const [, , , criadorId] = interaction.customId.split('_');
+
+        if (interaction.user.id !== criadorId) {
+          return interaction.reply({ content: '❌ Apenas quem criou a chamada pode cancelar a procura!', flags: 64 });
+        }
+
+        const embedOriginal = interaction.message.embeds[0];
+        if (!embedOriginal) return;
+
+        const embedCancelada = EmbedBuilder.from(embedOriginal)
+          .setTitle(`${embedOriginal.title} [CANCELADO]`)
+          .setColor('#7289DA')
+          .setDescription(`❌ **A procura por time foi cancelada pelo líder ${interaction.member}.**`);
+
+        const rowDesativada = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('disabled_cancel').setLabel('Procura Cancelada').setStyle(ButtonStyle.Secondary).setDisabled(true)
+        );
+
+        return interaction.update({ embeds: [embedCancelada], components: [rowDesativada] });
+      }
+
       // [/JOGAR]: ENTRAR NO TIME
       if (interaction.customId.startsWith('btn_join_team_')) {
         const [, , , criadorId] = interaction.customId.split('_');
@@ -87,7 +110,7 @@ module.exports = {
 
         const criador = await interaction.guild.members.fetch(criadorId).catch(() => null);
         if (criador) {
-          const nomeJogo = embedOriginal.title ? embedOriginal.title.replace('🎮 Procura-se Time: ', '') : 'Jogo';
+          const nomeJogo = embedOriginal.title ? embedOriginal.title.replace('🎮 Procura-se Players para: ', '') : 'Jogo';
           criador.send(`🎉 **${interaction.member.displayName}** entrou no seu time pra **${nomeJogo}**!`).catch(() => {});
         }
         return;
@@ -194,7 +217,7 @@ module.exports = {
         await interaction.deferReply({ flags: 64 });
 
         const nick = interaction.fields.getTextInputValue('nick_game_input');
-        const rank = interaction.fields.getTextInputValue('rank_side_input');
+        const rank = interaction.fields.getTextInputValue('rank_side_input') || 'Não informado';
 
         await PerfilMembro.findOneAndUpdate(
           { guildId: interaction.guildId, userId: interaction.user.id },
@@ -305,6 +328,7 @@ module.exports = {
     }
   }
 };
+
 
 
 
