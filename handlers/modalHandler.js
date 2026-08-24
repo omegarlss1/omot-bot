@@ -18,8 +18,8 @@ module.exports = async function handleModals(interaction) {
     const nota = interaction.fields.getTextInputValue('nota_input');
     const vagas = parseInt(vagasStr);
 
-    if (isNaN(vagas) || vagas < 1 || vagas > 10) {
-      return interaction.editReply({ content: '❌ Manda um número de vagas válido entre 1 e 10!' });
+    if (isNaN(vagas) || vagas < 1) {
+      return interaction.editReply({ content: '❌ Manda um número válido de vagas!' });
     }
 
     const canalProcura = interaction.guild.channels.cache.get(CANAL_PINGS_ID);
@@ -34,10 +34,14 @@ module.exports = async function handleModals(interaction) {
     let descricao = `📢 **${interaction.member.displayName}** tá chamando pra jogar!\n\n`;
     descricao += `👤 **Líder:** ${interaction.member} (Nick: \`${nickRegistrado}\`)\n`;
 
-    if (ehSideSwipe) descricao += `🏆 **Rank:** \`${perfil?.rankSideSwipe || 'Não informado'}\`\n`;
+    if (ehSideSwipe) {
+      descricao += `🏆 **Rank:** \`${perfil?.rankSideSwipe || 'Não informado'}\`\n`;
+    }
+
     if (nota) descricao += `📌 **Recado:** ${nota}\n`;
 
-    descricao += `👥 **Vagas Restantes:** ${vagas}\n\n**Time:**\n• ${interaction.member}`;
+    descricao += `👥 **Vagas Restantes:** ${vagas}\n\n`;
+    descricao += `**Time:**\n• ${interaction.member}`;
 
     const embed = new EmbedBuilder()
       .setTitle(`🎮 Procura-se Players para: ${nomeJogo}`)
@@ -47,7 +51,7 @@ module.exports = async function handleModals(interaction) {
       .setTimestamp();
 
     const rowBotoes = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`btn_join_team_${interaction.user.id}_${vagas}`).setLabel('Entrar no Time').setStyle(ButtonStyle.Success).setEmoji('🎮'),
+      new ButtonBuilder().setCustomId(`btn_join_team_${interaction.user.id}`).setLabel('Entrar no Time').setStyle(ButtonStyle.Success).setEmoji('🎮'),
       new ButtonBuilder().setCustomId(`btn_cancel_team_${interaction.user.id}`).setLabel('Cancelar Procura').setStyle(ButtonStyle.Danger).setEmoji('❌')
     );
 
@@ -122,3 +126,4 @@ module.exports = async function handleModals(interaction) {
     return interaction.editReply({ content: limite === 0 ? 'Sem limite de vagas agora.' : `Ajustei o limite pra **${limite} ${limite === 1 ? 'vaga' : 'vagas'}**!` });
   }
 };
+
