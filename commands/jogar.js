@@ -1,9 +1,9 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { JogoCargo } = require('../utils/jogosDatabase');
+const { PerfilMembro } = require('../utils/perfilDatabase');
 
-// Guardador de tempo de espera por usuário
 const cooldowns = new Map();
-const TEMPO_COOLDOWN = 10 * 60 * 1000; // 10 minutos em milissegundos
+const TEMPO_COOLDOWN = 5 * 60 * 1000; // Cooldown atualizado pra 5 minutos
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -25,14 +25,14 @@ module.exports = {
         .setMaxValue(10))
     .addStringOption(option =>
       option.setName('nota')
-        .setDescription('Recado curto (ex: Falta 1 pra fechar o time)')
+        .setDescription('Obrigatório para Jogos Diversos (nome do jogo). Opcional para SideSwipe.')
         .setRequired(false)),
 
   async execute(interaction, client) {
     const membroId = interaction.user.id;
     const agora = Date.now();
 
-    // Verificação de Cooldown
+    // Verificação de Cooldown (5m)
     if (cooldowns.has(membroId)) {
       const expiracao = cooldowns.get(membroId) + TEMPO_COOLDOWN;
 
@@ -45,39 +45,76 @@ module.exports = {
       }
     }
 
-    await interaction.deferReply();
-
     const jogoKey = interaction.options.getString('jogo');
     const vagas = interaction.options.getInteger('vagas');
-    const nota = interaction.options.getString('nota') || 'Bora jogar!';
+    const nota = interaction.options.getString('nota');
     const criador = interaction.member;
 
+    // Regra: Nome do jogo OBRIGATÓRIO quando for Jogos Diversos
+    if (jogoKey === 'diversos' && !nota) {
+      return interaction.reply({
+        content: '❌ Quando vc escolhe **Jogos Diversos**, é obrigatório colocar o nome do jogo no campo `nota`!',
+        flags: 64
+      });
+    }
+
+    await interaction.deferReply();
+
+    // Puxa perfil do banco pra pegar Nick e Rank
+    const perfil = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: membroId });
+    const nickRegistrado = perfil?.nickJogo || criador.displayName;
+    const rankRegistrado = perfil?.rankSideSwipe || 'Não informado';
+
+    // Puxa o cargo
     const config = await JogoCargo.findOne({ guildId: interaction.guildId, jogoKey });
-    const mencaoCargo = config ? `<@&${config.roleId}>` : '';
-    const nomeJogo = config ? config.jogoNome : (jogoKey === 'sideswipe' ? 'RL SideSwipe' : 'Jogos Diversos');
+    const mencaoCargo = config ? `<@&${config.roleId}>` : (jogoKey === 'sideswipe' ? '<@&1541236990232764416>' : '<@&1541237104754041002>');
+
+    // Título dinâmico
+    const tituloHeader = jogoKey === 'diversos' ? `Procura-se Players para: ${nota}` : `Procura-se Players para: RL SideSwipe`;
+
+    // Monta a descrição
+    let descricao = `📢 **${criador.displayName}** tá chamando pra jogar!\n\n`;
+    descricao += `👤 **Líder:** ${criador} (Nick: \`${nickRegistrado}\`)\n`;
+
+    // Rank APENAS se for RL SideSwipe
+    if (jogoKey === 'sideswipe') {
+      descricao += `🏆 **Rank:** \`${rankRegistrado}\`\n`;
+    }
+
+    if (jogoKey === 'sideswipe' && nota) {
+      descricao += `📌 **Recado:** ${nota}\n`;
+    }
+
+    descricao += `👥 **Vagas Restantes:** ${vagas}\n\n`;
+    descricao += `**Time:**\n• ${criador}`;
 
     const embed = new EmbedBuilder()
-      .setTitle(`🎮 Procura-se Time: ${nomeJogo}`)
-      .setDescription(`**${criador.displayName}** tá chamando pra jogar!\n\n📌 **Recado:** ${nota}\n👥 **Vagas Restantes:** ${vagas}\n👥 **Confirmados:**\n• ${criador}`)
+      .setTitle(`🎮 ${tituloHeader}`)
+      .setDescription(descricao)
       .setColor('#FF6B00')
-      .setFooter({ text: 'Clica no botão abaixo pra entrar no time!' })
+      .setFooter({ text: 'Clica nos botões abaixo pra entrar ou cancelar a busca!' })
       .setTimestamp();
 
-    const btnEntrar = new ActionRowBuilder().addComponents(
+    // Botões: Entrar + Cancelar
+    const rowBotoes = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`btn_join_team_${criador.id}_${vagas}`)
         .setLabel('Entrar no Time')
         .setStyle(ButtonStyle.Success)
-        .setEmoji('🎮')
+        .setEmoji('🎮'),
+      new ButtonBuilder()
+        .setCustomId(`btn_cancel_team_${criador.id}`)
+        .setLabel('Cancelar Procura')
+        .setStyle(ButtonStyle.Danger)
+        .setEmoji('❌')
     );
 
-    // Registra o tempo de uso
     cooldowns.set(membroId, agora);
 
     return interaction.editReply({
       content: mencaoCargo ? `📢 ${mencaoCargo}` : null,
       embeds: [embed],
-      components: [btnEntrar]
+      components: [rowBotoes]
     });
   }
 };
