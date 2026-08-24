@@ -5,10 +5,13 @@ const cooldownsChamarTime = new Map();
 const TEMPO_COOLDOWN = 5 * 60 * 1000;
 const CANAL_PINGS_ID = '1541254928545218610';
 
+// IDs dos cargos de notificação
+const CARGO_SIDESWIPE_ID = '1541236990232764416';
+const CARGO_DIVERSOS_ID = '1541237104754041002';
+
 module.exports = {
   name: 'interactionCreate',
   async execute(interaction, client) {
-    // 1. COMANDOS SLASH (Restrito a ADMs ou utilitários)
     if (interaction.isChatInputCommand()) {
       const command = client.commands.get(interaction.commandName);
       if (command) {
@@ -21,10 +24,9 @@ module.exports = {
       return;
     }
 
-    // 2. BOTÕES
     if (interaction.isButton()) {
 
-      // [PAINEL]: BOTÃO PARA CHAMAR TIME (Abre o Modal)
+      // [PAINEL]: CLICOU EM CHAMA TIME -> MOSTRA O MENU DE ESCOLHA DO JOGO
       if (interaction.customId === 'btn_abrir_modal_jogar') {
         const membroId = interaction.user.id;
         const agora = Date.now();
@@ -40,45 +42,26 @@ module.exports = {
           }
         }
 
-        const modal = new ModalBuilder()
-          .setCustomId('modal_chamar_time')
-          .setTitle('Chamar Time pra Jogar');
-
-        const inputJogo = new TextInputBuilder()
-          .setCustomId('jogo_input')
-          .setLabel('Qual o jogo?')
-          .setPlaceholder('Ex: SideSwipe, Valorant, Roblox, Minecraft...')
-          .setStyle(TextInputStyle.Short)
-          .setRequired(true);
-
-        const inputVagas = new TextInputBuilder()
-          .setCustomId('vagas_input')
-          .setLabel('Quantas vagas faltam? (1 a 10):')
-          .setPlaceholder('Ex: 2')
-          .setStyle(TextInputStyle.Short)
-          .setMaxLength(2)
-          .setRequired(true);
-
-        const inputNota = new TextInputBuilder()
-          .setCustomId('nota_input')
-          .setLabel('Recado / Observação (opcional):')
-          .setPlaceholder('Ex: Vale vaga pra Ouro+, jogando casual...')
-          .setStyle(TextInputStyle.Paragraph)
-          .setRequired(false);
-
-        modal.addComponents(
-          new ActionRowBuilder().addComponents(inputJogo),
-          new ActionRowBuilder().addComponents(inputVagas),
-          new ActionRowBuilder().addComponents(inputNota)
+        const selectJogos = new ActionRowBuilder().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId('select_tipo_jogo_chamada')
+            .setPlaceholder('Escolha o jogo da chamada...')
+            .addOptions([
+              { label: 'RL SideSwipe', value: 'sideswipe', description: 'Notifica a galera do SideSwipe', emoji: '🏎️' },
+              { label: 'Outros Jogos', value: 'diversos', description: 'Notifica a galera de Jogos Diversos', emoji: '🎮' }
+            ])
         );
 
-        return interaction.showModal(modal);
+        return interaction.reply({
+          content: 'Selecione qual jogo vc vai jogar:',
+          components: [selectJogos],
+          flags: 64
+        });
       }
 
       // [PAINEL PRIVADO]: CONSULTAR PERFIL DO USUÁRIO
       if (interaction.customId === 'btn_ver_perfil') {
         await interaction.deferReply({ flags: 64 });
-
         const perfil = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: interaction.user.id });
 
         if (!perfil) {
@@ -285,14 +268,105 @@ module.exports = {
       }
     }
 
-    // 3. MODAIS
+    // 3. SELECT MENUS
+    if (interaction.isStringSelectMenu()) {
+
+      // [PAINEL]: ESCOLHEU O TIPO DE JOGO -> ABRE MODAL ESPECÍFICO
+      if (interaction.customId === 'select_tipo_jogo_chamada') {
+        const tipoJogo = interaction.values[0];
+
+        const modal = new ModalBuilder()
+          .setCustomId(`modal_chamar_time_${tipoJogo}`)
+          .setTitle(tipoJogo === 'sideswipe' ? 'Chamar time: RL SideSwipe' : 'Chamar time: Outros Jogos');
+
+        if (tipoJogo === 'diversos') {
+          const inputNomeJogo = new TextInputBuilder()
+            .setCustomId('nome_jogo_input')
+            .setLabel('Nome do Jogo:')
+            .setPlaceholder('Ex: Valorant, Roblox, Minecraft...')
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true);
+
+          modal.addComponents(new ActionRowBuilder().addComponents(inputNomeJogo));
+        }
+
+        const inputVagas = new TextInputBuilder()
+          .setCustomId('vagas_input')
+          .setLabel('Quantas vagas faltam? (1 a 10):')
+          .setPlaceholder('Ex: 2')
+          .setStyle(TextInputStyle.Short)
+          .setMaxLength(2)
+          .setRequired(true);
+
+        const inputNota = new TextInputBuilder()
+          .setCustomId('nota_input')
+          .setLabel('Recado / Observação (opcional):')
+          .setPlaceholder('Ex: Casual, Duelo 2v2...')
+          .setStyle(TextInputStyle.Paragraph)
+          .setRequired(false);
+
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(inputVagas),
+          new ActionRowBuilder().addComponents(inputNota)
+        );
+
+        return interaction.showModal(modal);
+      }
+
+      // [BOAS-VINDAS / PAINEL]: ATRIBUI CARGOS E FINALIZA
+      if (interaction.customId === 'select_cargos_jogos') {
+        await interaction.deferReply({ flags: 64 });
+        const cargosSelecionados = interaction.values;
+        const membro = interaction.member;
+
+        for (const roleId of cargosSelecionados) {
+          if (roleId) {
+            await membro.roles.add(roleId).catch(() => {});
+          }
+        }
+
+        return interaction.editReply({ content: '🎉 Ficha concluída! Vc já tá pronto pra jogar com o time.' });
+      }
+
+      // [CALLS]: TROCA DE LÍDER
+      if (interaction.customId === 'select_pass_dono') {
+        await interaction.deferReply({ flags: 64 });
+        const canal = interaction.channel;
+        const novoDonoId = interaction.values[0];
+        const antigoDono = interaction.member;
+        const novoDono = canal.members.get(novoDonoId);
+
+        if (!novoDono) return interaction.editReply({ content: '❌ Membro não encontrado na call.' });
+
+        await canal.permissionOverwrites.delete(antigoDono.id).catch(() => {});
+        await canal.permissionOverwrites.edit(novoDono.id, {
+          [PermissionFlagsBits.ManageChannels]: true,
+          [PermissionFlagsBits.MoveMembers]: true,
+          [PermissionFlagsBits.Connect]: true
+        });
+
+        const dadosCall = client.callsTemporarias.get(canal.id);
+        if (dadosCall) {
+          dadosCall.donoId = novoDono.id;
+          dadosCall.donoNome = novoDono.displayName;
+        }
+
+        await interaction.editReply({ content: `Liderança passada pra ${novoDono}.` });
+        return canal.send({ content: `👑 ${antigoDono} passou a liderança pra ${novoDono}.` });
+      }
+    }
+
+    // 4. MODAIS
     if (interaction.isModalSubmit()) {
 
-      // [PAINEL]: PROCESSAR ENVIO DO TIME
-      if (interaction.customId === 'modal_chamar_time') {
+      // [PAINEL]: PROCESSAR ENVIO DO TIME (SIDESWIPE OU DIVERSOS)
+      if (interaction.customId.startsWith('modal_chamar_time_')) {
         await interaction.deferReply({ flags: 64 });
 
-        const nomeJogo = interaction.fields.getTextInputValue('jogo_input');
+        const tipoJogo = interaction.customId.replace('modal_chamar_time_', '');
+        const ehSideSwipe = tipoJogo === 'sideswipe';
+
+        const nomeJogo = ehSideSwipe ? 'RL SideSwipe' : interaction.fields.getTextInputValue('nome_jogo_input');
         const vagasStr = interaction.fields.getTextInputValue('vagas_input').trim();
         const nota = interaction.fields.getTextInputValue('nota_input');
         const vagas = parseInt(vagasStr);
@@ -306,8 +380,7 @@ module.exports = {
           return interaction.editReply({ content: '❌ Canal de chamadas não encontrado no servidor!' });
         }
 
-        const ehSideSwipe = nomeJogo.toLowerCase().includes('side');
-        const cargoId = ehSideSwipe ? '1541236990232764416' : '1541237104754041002';
+        const cargoId = ehSideSwipe ? CARGO_SIDESWIPE_ID : CARGO_DIVERSOS_ID;
         const mencaoCargo = `<@&${cargoId}>`;
 
         const perfil = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: interaction.user.id });
@@ -415,53 +488,6 @@ module.exports = {
         return interaction.editReply({ 
           content: limite === 0 ? 'Sem limite de vagas agora.' : `Ajustei o limite pra **${limite} ${limite === 1 ? 'vaga' : 'vagas'}**!` 
         });
-      }
-    }
-
-    // 4. SELECT MENUS
-    if (interaction.isStringSelectMenu()) {
-
-      // [BOAS-VINDAS / PAINEL]: ATRIBUI CARGOS E FINALIZA
-      if (interaction.customId === 'select_cargos_jogos') {
-        await interaction.deferReply({ flags: 64 });
-
-        const cargosSelecionados = interaction.values;
-        const membro = interaction.member;
-
-        for (const roleId of cargosSelecionados) {
-          if (roleId) {
-            await membro.roles.add(roleId).catch(() => {});
-          }
-        }
-
-        return interaction.editReply({ content: '🎉 Ficha concluída! Vc já tá pronto pra jogar com o time.' });
-      }
-
-      // [CALLS]: TROCA DE LÍDER
-      if (interaction.customId === 'select_pass_dono') {
-        await interaction.deferReply({ flags: 64 });
-        const canal = interaction.channel;
-        const novoDonoId = interaction.values[0];
-        const antigoDono = interaction.member;
-        const novoDono = canal.members.get(novoDonoId);
-
-        if (!novoDono) return interaction.editReply({ content: '❌ Membro não encontrado na call.' });
-
-        await canal.permissionOverwrites.delete(antigoDono.id).catch(() => {});
-        await canal.permissionOverwrites.edit(novoDono.id, {
-          [PermissionFlagsBits.ManageChannels]: true,
-          [PermissionFlagsBits.MoveMembers]: true,
-          [PermissionFlagsBits.Connect]: true
-        });
-
-        const dadosCall = client.callsTemporarias.get(canal.id);
-        if (dadosCall) {
-          dadosCall.donoId = novoDono.id;
-          dadosCall.donoNome = novoDono.displayName;
-        }
-
-        await interaction.editReply({ content: `Liderança passada pra ${novoDono}.` });
-        return canal.send({ content: `👑 ${antigoDono} passou a liderança pra ${novoDono}.` });
       }
     }
   }
