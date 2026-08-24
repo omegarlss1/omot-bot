@@ -9,14 +9,54 @@ module.exports = async function handleSelectMenus(interaction) {
       .setTitle(tipoJogo === 'sideswipe' ? 'Chamar time: RL SideSwipe' : 'Chamar time: Outros Jogos');
 
     if (tipoJogo === 'diversos') {
-      const inputNomeJogo = new TextInputBuilder().setCustomId('nome_jogo_input').setLabel('Nome do Jogo:').setStyle(TextInputStyle.Short).setRequired(true);
-      modal.addComponents(new ActionRowBuilder().addComponents(inputNomeJogo));
+      const inputNomeJogo = new TextInputBuilder()
+        .setCustomId('nome_jogo_input')
+        .setLabel('Nome do Jogo:')
+        .setPlaceholder('Ex: Valorant, Roblox, Minecraft...')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+
+      const inputVagas = new TextInputBuilder()
+        .setCustomId('vagas_input')
+        .setLabel('Quantas vagas faltam?')
+        .setPlaceholder('Ex: 5, 10, 20...')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+
+      const inputNota = new TextInputBuilder()
+        .setCustomId('nota_input')
+        .setLabel('Recado / Observação (opcional):')
+        .setPlaceholder('Ex: Falta 1 pra fechar a private...')
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(false);
+
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(inputNomeJogo),
+        new ActionRowBuilder().addComponents(inputVagas),
+        new ActionRowBuilder().addComponents(inputNota)
+      );
+    } else {
+      // RL SideSwipe
+      const inputVagas = new TextInputBuilder()
+        .setCustomId('vagas_input')
+        .setLabel('Quantas vagas faltam?')
+        .setPlaceholder('Ex: 1, 2, 3...')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+
+      const inputNota = new TextInputBuilder()
+        .setCustomId('nota_input')
+        .setLabel('Recado / Observação (opcional):')
+        .setPlaceholder('Ex: Casual, Duelo 2v2...')
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(false);
+
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(inputVagas),
+        new ActionRowBuilder().addComponents(inputNota)
+      );
     }
 
-    const inputVagas = new TextInputBuilder().setCustomId('vagas_input').setLabel('Quantas vagas faltam? (1 a 10):').setStyle(TextInputStyle.Short).setMaxLength(2).setRequired(true);
-    const inputNota = new TextInputBuilder().setCustomId('nota_input').setLabel('Recado / Observação (opcional):').setStyle(TextInputStyle.Paragraph).setRequired(false);
-
-    modal.addComponents(new ActionRowBuilder().addComponents(inputVagas), new ActionRowBuilder().addComponents(inputNota));
     return interaction.showModal(modal);
   }
 
@@ -26,7 +66,7 @@ module.exports = async function handleSelectMenus(interaction) {
     for (const roleId of interaction.values) {
       if (roleId) await interaction.member.roles.add(roleId).catch(() => {});
     }
-    return interaction.editReply({ content: '🎉 Ficha concluída! Vc já tá pronto pra jogar com o time.' });
+    return interaction.editReply({ content: '🎉 Ficha concluída! Vc já tá pronto pra jogar com a gente.' });
   }
 
   // [CALLS]: TROCA DE LÍDER
@@ -56,3 +96,4 @@ module.exports = async function handleSelectMenus(interaction) {
     return canal.send({ content: `👑 ${antigoDono} passou a liderança pra ${novoDono}.` });
   }
 };
+
