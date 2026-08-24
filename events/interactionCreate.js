@@ -209,8 +209,8 @@ module.exports = {
             .setMinValues(0)
             .setMaxValues(2)
             .addOptions([
-              { label: 'RL SideSwipe', value: 'cargo_sideswipe_id', description: 'Avisos de chamadas do SideSwipe' },
-              { label: 'Jogos Diversos', value: 'cargo_diversos_id', description: 'Avisos de chamadas de outros jogos' }
+              { label: 'RL SideSwipe', value: '1541236990232764416', description: 'Avisos de chamadas do SideSwipe' },
+              { label: 'Jogos Diversos', value: '1541237104754041002', description: 'Avisos de chamadas de outros jogos' }
             ])
         );
 
@@ -268,7 +268,7 @@ module.exports = {
         const membro = interaction.member;
 
         for (const roleId of cargosSelecionados) {
-          if (roleId && !roleId.includes('_id')) {
+          if (roleId) {
             await membro.roles.add(roleId).catch(() => {});
           }
         }
@@ -305,6 +305,7 @@ module.exports = {
     }
   }
 };
+
 
 
 
