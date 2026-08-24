@@ -1,10 +1,14 @@
 const { PermissionFlagsBits, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { PerfilMembro } = require('../utils/perfilDatabase');
 
+const cooldownsChamarTime = new Map();
+const TEMPO_COOLDOWN = 5 * 60 * 1000;
+const CANAL_PINGS_ID = '1541254928545218610';
+
 module.exports = {
   name: 'interactionCreate',
   async execute(interaction, client) {
-    // 1. COMANDOS SLASH
+    // 1. COMANDOS SLASH (Restrito a ADMs ou utilitários)
     if (interaction.isChatInputCommand()) {
       const command = client.commands.get(interaction.commandName);
       if (command) {
@@ -19,6 +23,57 @@ module.exports = {
 
     // 2. BOTÕES
     if (interaction.isButton()) {
+
+      // [PAINEL]: BOTÃO PARA CHAMAR TIME (Abre o Modal)
+      if (interaction.customId === 'btn_abrir_modal_jogar') {
+        const membroId = interaction.user.id;
+        const agora = Date.now();
+
+        if (cooldownsChamarTime.has(membroId)) {
+          const expiracao = cooldownsChamarTime.get(membroId) + TEMPO_COOLDOWN;
+          if (agora < expiracao) {
+            const tempoRestante = Math.ceil((expiracao - agora) / 1000 / 60);
+            return interaction.reply({
+              content: `❌ Vc precisa esperar **${tempoRestante} min** pra chamar o time de novo.`,
+              flags: 64
+            });
+          }
+        }
+
+        const modal = new ModalBuilder()
+          .setCustomId('modal_chamar_time')
+          .setTitle('Chamar Time pra Jogar');
+
+        const inputJogo = new TextInputBuilder()
+          .setCustomId('jogo_input')
+          .setLabel('Qual o jogo?')
+          .setPlaceholder('Ex: SideSwipe, Valorant, Roblox, Minecraft...')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true);
+
+        const inputVagas = new TextInputBuilder()
+          .setCustomId('vagas_input')
+          .setLabel('Quantas vagas faltam? (1 a 10):')
+          .setPlaceholder('Ex: 2')
+          .setStyle(TextInputStyle.Short)
+          .setMaxLength(2)
+          .setRequired(true);
+
+        const inputNota = new TextInputBuilder()
+          .setCustomId('nota_input')
+          .setLabel('Recado / Observação (opcional):')
+          .setPlaceholder('Ex: Vale vaga pra Ouro+, jogando casual...')
+          .setStyle(TextInputStyle.Paragraph)
+          .setRequired(false);
+
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(inputJogo),
+          new ActionRowBuilder().addComponents(inputVagas),
+          new ActionRowBuilder().addComponents(inputNota)
+        );
+
+        return interaction.showModal(modal);
+      }
 
       // [PAINEL PRIVADO]: CONSULTAR PERFIL DO USUÁRIO
       if (interaction.customId === 'btn_ver_perfil') {
@@ -69,7 +124,7 @@ module.exports = {
         return interaction.showModal(modal);
       }
 
-      // [/JOGAR]: CANCELAR PROCURA
+      // [CHAMADAS]: CANCELAR PROCURA
       if (interaction.customId.startsWith('btn_cancel_team_')) {
         const [, , , criadorId] = interaction.customId.split('_');
 
@@ -92,7 +147,7 @@ module.exports = {
         return interaction.update({ embeds: [embedCancelada], components: [rowDesativada] });
       }
 
-      // [/JOGAR]: ENTRAR NO TIME
+      // [CHAMADAS]: ENTRAR NO TIME
       if (interaction.customId.startsWith('btn_join_team_')) {
         const [, , , criadorId] = interaction.customId.split('_');
         const embedOriginal = interaction.message.embeds[0];
@@ -233,6 +288,68 @@ module.exports = {
     // 3. MODAIS
     if (interaction.isModalSubmit()) {
 
+      // [PAINEL]: PROCESSAR ENVIO DO TIME
+      if (interaction.customId === 'modal_chamar_time') {
+        await interaction.deferReply({ flags: 64 });
+
+        const nomeJogo = interaction.fields.getTextInputValue('jogo_input');
+        const vagasStr = interaction.fields.getTextInputValue('vagas_input').trim();
+        const nota = interaction.fields.getTextInputValue('nota_input');
+        const vagas = parseInt(vagasStr);
+
+        if (isNaN(vagas) || vagas < 1 || vagas > 10) {
+          return interaction.editReply({ content: '❌ Manda um número de vagas válido entre 1 e 10!' });
+        }
+
+        const canalProcura = interaction.guild.channels.cache.get(CANAL_PINGS_ID);
+        if (!canalProcura) {
+          return interaction.editReply({ content: '❌ Canal de chamadas não encontrado no servidor!' });
+        }
+
+        const ehSideSwipe = nomeJogo.toLowerCase().includes('side');
+        const cargoId = ehSideSwipe ? '1541236990232764416' : '1541237104754041002';
+        const mencaoCargo = `<@&${cargoId}>`;
+
+        const perfil = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: interaction.user.id });
+        const nickRegistrado = perfil?.nickJogo || interaction.member.displayName;
+
+        let descricao = `📢 **${interaction.member.displayName}** tá chamando pra jogar!\n\n`;
+        descricao += `👤 **Líder:** ${interaction.member} (Nick: \`${nickRegistrado}\`)\n`;
+
+        if (ehSideSwipe) {
+          descricao += `🏆 **Rank:** \`${perfil?.rankSideSwipe || 'Não informado'}\`\n`;
+        }
+
+        if (nota) {
+          descricao += `📌 **Recado:** ${nota}\n`;
+        }
+
+        descricao += `👥 **Vagas Restantes:** ${vagas}\n\n`;
+        descricao += `**Time:**\n• ${interaction.member}`;
+
+        const embed = new EmbedBuilder()
+          .setTitle(`🎮 Procura-se Players para: ${nomeJogo}`)
+          .setDescription(descricao)
+          .setColor('#FF6B00')
+          .setFooter({ text: 'Clica nos botões abaixo pra entrar ou cancelar a busca!' })
+          .setTimestamp();
+
+        const rowBotoes = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`btn_join_team_${interaction.user.id}_${vagas}`).setLabel('Entrar no Time').setStyle(ButtonStyle.Success).setEmoji('🎮'),
+          new ButtonBuilder().setCustomId(`btn_cancel_team_${interaction.user.id}`).setLabel('Cancelar Procura').setStyle(ButtonStyle.Danger).setEmoji('❌')
+        );
+
+        cooldownsChamarTime.set(interaction.user.id, Date.now());
+
+        await canalProcura.send({
+          content: `${mencaoCargo} 🎮 **${interaction.member.displayName}** chamou pro **${nomeJogo}**!`,
+          embeds: [embed],
+          components: [rowBotoes]
+        });
+
+        return interaction.editReply({ content: `✅ Chamada de time postada no canal ${canalProcura}!` });
+      }
+
       // [BOAS-VINDAS / PAINEL]: SALVA PERFIL E CHAMA ETAPA 2 (CARGOS)
       if (interaction.customId === 'modal_ficha_etapa1') {
         await interaction.deferReply({ flags: 64 });
@@ -349,6 +466,7 @@ module.exports = {
     }
   }
 };
+
 
 
 
