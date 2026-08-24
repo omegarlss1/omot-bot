@@ -5,8 +5,8 @@ const { PerfilMembro } = require('../utils/perfilDatabase');
 const cooldowns = new Map();
 const TEMPO_COOLDOWN = 5 * 60 * 1000;
 
-// Cole aqui o ID do canal onde o comando deve rodar!
-const CANAL_PERMITIDO_ID = 'COLE_AQUI_O_ID_DO_CANAL_PINGS'; 
+// ID do canal exclusivo para chamadas de jogos
+const CANAL_PERMITIDO_ID = '1541254928545218610'; 
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -122,6 +122,7 @@ module.exports = {
     });
   }
 };
+
 
 
 
