@@ -3,6 +3,7 @@ const { PerfilMembro } = require('../utils/perfilDatabase');
 
 const cooldownsChamarTime = new Map();
 const TEMPO_COOLDOWN = 5 * 60 * 1000;
+const TEMPO_LIMPEZA_MENSAGEM = 3 * 60 * 1000; // 3 minutos pra deletar a mensagem final
 
 module.exports = async function handleButtons(interaction, client) {
   // [PAINEL]: CLICOU EM CHAMA TIME
@@ -74,13 +75,20 @@ module.exports = async function handleButtons(interaction, client) {
     const embedCancelada = EmbedBuilder.from(embedOriginal)
       .setTitle(`${embedOriginal.title} [CANCELADO]`)
       .setColor('#7289DA')
-      .setDescription(`❌ **A procura por time foi cancelada pelo líder ${interaction.member}.**`);
+      .setDescription(`${embedOriginal.description}\n\n❌ **Procura cancelada pelo líder ${interaction.member}.**\n*(Essa mensagem vai sumir em 3 min)*`);
 
     const rowDesativada = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('disabled_cancel').setLabel('Procura Cancelada').setStyle(ButtonStyle.Secondary).setDisabled(true)
     );
 
-    return interaction.update({ embeds: [embedCancelada], components: [rowDesativada] });
+    await interaction.update({ embeds: [embedCancelada], components: [rowDesativada] });
+
+    // Apaga a mensagem após 3 minutos
+    setTimeout(() => {
+      interaction.message.delete().catch(() => {});
+    }, TEMPO_LIMPEZA_MENSAGEM);
+
+    return;
   }
 
   // [CHAMADAS]: ENTRAR NO TIME
@@ -106,13 +114,21 @@ module.exports = async function handleButtons(interaction, client) {
     vagasAtuais -= 1;
     descricao = descricao.replace(/👥 \*\*Vagas Restantes:\*\* \d+/, `👥 **Vagas Restantes:** ${vagasAtuais}`);
     descricao += `\n• ${interaction.member}`;
-    embedNovo.setDescription(descricao);
 
     const componentes = ActionRowBuilder.from(interaction.message.components[0]);
+
     if (vagasAtuais === 0) {
+      embedNovo.setTitle(`${embedOriginal.title} [CHEIO]`);
+      descricao += `\n\n🎉 **Time fechado!**\n*(Essa mensagem vai sumir em 3 min)*`;
       componentes.components[0] = ButtonBuilder.from(componentes.components[0]).setDisabled(true).setLabel('Time Cheio!');
+      
+      // Apaga a mensagem após 3 minutos quando o time encher
+      setTimeout(() => {
+        interaction.message.delete().catch(() => {});
+      }, TEMPO_LIMPEZA_MENSAGEM);
     }
 
+    embedNovo.setDescription(descricao);
     await interaction.update({ embeds: [embedNovo], components: [componentes] });
 
     const criador = await interaction.guild.members.fetch(criadorId).catch(() => null);
@@ -163,7 +179,7 @@ module.exports = async function handleButtons(interaction, client) {
 
   if (interaction.customId === 'btn_transfer') {
     const membrosNaCall = canal.members.filter(m => m.id !== membro.id);
-    if (membrosNaCall.size === 0) return interaction.reply({ content: '❌ Chama mais alguém primeiro pra passar a liderança!', flags: 64 });
+    if (membrosNaCall.size === 0) return interaction.reply({ content: '❌ Chama mais gente primeiro pra passar a liderança!', flags: 64 });
 
     const menuOpcoes = membrosNaCall.map(m => ({ label: m.displayName, value: m.id, description: `Passar a liderança pra ${m.user.username}` }));
     const selectMenu = new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('select_pass_dono').setPlaceholder('Escolha o novo líder...').addOptions(menuOpcoes));
@@ -177,3 +193,4 @@ module.exports = async function handleButtons(interaction, client) {
     return canal.delete().catch(() => {});
   }
 };
+
