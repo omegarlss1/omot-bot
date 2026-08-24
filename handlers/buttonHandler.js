@@ -75,7 +75,7 @@ module.exports = async function handleButtons(interaction, client) {
     const embedCancelada = EmbedBuilder.from(embedOriginal)
       .setTitle(`${embedOriginal.title} [CANCELADO]`)
       .setColor('#7289DA')
-      .setDescription(`${embedOriginal.description}\n\n❌ **Procura cancelada pelo líder ${interaction.member}.**\n*(Essa mensagem vai sumir em 3 min)*`);
+      .setDescription(`${embedOriginal.description}\n\n❌ **Procura cancelada pelo líder ${interaction.member}.**\n*(Essa mensagem vai sumir em 2 horas)*`);
 
     const rowDesativada = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('disabled_cancel').setLabel('Procura Cancelada').setStyle(ButtonStyle.Secondary).setDisabled(true)
