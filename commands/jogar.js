@@ -3,7 +3,10 @@ const { JogoCargo } = require('../utils/jogosDatabase');
 const { PerfilMembro } = require('../utils/perfilDatabase');
 
 const cooldowns = new Map();
-const TEMPO_COOLDOWN = 5 * 60 * 1000; // Cooldown atualizado pra 5 minutos
+const TEMPO_COOLDOWN = 5 * 60 * 1000;
+
+// Cole aqui o ID do canal onde o comando deve rodar!
+const CANAL_PERMITIDO_ID = 'COLE_AQUI_O_ID_DO_CANAL_PINGS'; 
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -29,6 +32,14 @@ module.exports = {
         .setRequired(false)),
 
   async execute(interaction, client) {
+    // Trava de Canal
+    if (interaction.channelId !== CANAL_PERMITIDO_ID) {
+      return interaction.reply({
+        content: `❌ Esse comando só pode ser usado no canal <#${CANAL_PERMITIDO_ID}>!`,
+        flags: 64
+      });
+    }
+
     const membroId = interaction.user.id;
     const agora = Date.now();
 
@@ -50,7 +61,6 @@ module.exports = {
     const nota = interaction.options.getString('nota');
     const criador = interaction.member;
 
-    // Regra: Nome do jogo OBRIGATÓRIO quando for Jogos Diversos
     if (jogoKey === 'diversos' && !nota) {
       return interaction.reply({
         content: '❌ Quando vc escolhe **Jogos Diversos**, é obrigatório colocar o nome do jogo no campo `nota`!',
@@ -60,23 +70,18 @@ module.exports = {
 
     await interaction.deferReply();
 
-    // Puxa perfil do banco pra pegar Nick e Rank
     const perfil = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: membroId });
     const nickRegistrado = perfil?.nickJogo || criador.displayName;
     const rankRegistrado = perfil?.rankSideSwipe || 'Não informado';
 
-    // Puxa o cargo
     const config = await JogoCargo.findOne({ guildId: interaction.guildId, jogoKey });
     const mencaoCargo = config ? `<@&${config.roleId}>` : (jogoKey === 'sideswipe' ? '<@&1541236990232764416>' : '<@&1541237104754041002>');
 
-    // Título dinâmico
     const tituloHeader = jogoKey === 'diversos' ? `Procura-se Players para: ${nota}` : `Procura-se Players para: RL SideSwipe`;
 
-    // Monta a descrição
     let descricao = `📢 **${criador.displayName}** tá chamando pra jogar!\n\n`;
     descricao += `👤 **Líder:** ${criador} (Nick: \`${nickRegistrado}\`)\n`;
 
-    // Rank APENAS se for RL SideSwipe
     if (jogoKey === 'sideswipe') {
       descricao += `🏆 **Rank:** \`${rankRegistrado}\`\n`;
     }
@@ -95,7 +100,6 @@ module.exports = {
       .setFooter({ text: 'Clica nos botões abaixo pra entrar ou cancelar a busca!' })
       .setTimestamp();
 
-    // Botões: Entrar + Cancelar
     const rowBotoes = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`btn_join_team_${criador.id}_${vagas}`)
@@ -118,6 +122,7 @@ module.exports = {
     });
   }
 };
+
 
 
 
