@@ -3,7 +3,7 @@ const { PerfilMembro } = require('../utils/perfilDatabase');
 
 const cooldownsChamarTime = new Map();
 const TEMPO_COOLDOWN = 5 * 60 * 1000;
-const TEMPO_LIMPEZA_MENSAGEM = 3 * 60 * 1000; // 3 minutos pra deletar a mensagem final
+const TEMPO_LIMPEZA_MENSAGEM = 2 * 60 * 60 * 1000; // 3 minutos pra deletar a mensagem final
 
 module.exports = async function handleButtons(interaction, client) {
   // [PAINEL]: CLICOU EM CHAMA TIME
