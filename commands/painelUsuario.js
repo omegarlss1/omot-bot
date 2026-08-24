@@ -9,10 +9,18 @@ module.exports = {
   async execute(interaction) {
     const embed = new EmbedBuilder()
       .setTitle('⚙️ CENTRAL DO JOGADOR')
-      .setDescription('Use o seu espaço privado no servidor! Todas as ações acionadas aqui são vistas **apenas por você**.\n\nClica nos botões para gerenciar seu perfil ou avisos:')
+      .setDescription('Use os botões abaixo para acessar suas ações privadas ou iniciar uma nova busca de time!\n\n' +
+        '🚀 **Chama Time**: Cria um aviso e abre vagas pra jogar.\n' +
+        '✏️ **Editar Ficha**: Altera seu Nick e Rank.\n' +
+        '👤 **Meu Perfil**: Veja seus dados cadastrados.')
       .setColor('#7289DA');
 
     const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('btn_abrir_modal_jogar')
+        .setLabel('Chama Time')
+        .setStyle(ButtonStyle.Success)
+        .setEmoji('🚀'),
       new ButtonBuilder()
         .setCustomId('btn_iniciar_ficha')
         .setLabel('Editar Ficha')
@@ -29,3 +37,4 @@ module.exports = {
     return interaction.reply({ content: 'Central do Jogador enviada!', flags: 64 });
   }
 };
+
