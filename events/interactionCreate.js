@@ -20,7 +20,28 @@ module.exports = {
     // 2. BOTÕES
     if (interaction.isButton()) {
 
-      // [BOAS-VINDAS]: INICIAR FICHA DE MEMBRO
+      // [PAINEL PRIVADO]: CONSULTAR PERFIL DO USUÁRIO
+      if (interaction.customId === 'btn_ver_perfil') {
+        await interaction.deferReply({ flags: 64 });
+
+        const perfil = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: interaction.user.id });
+
+        if (!perfil) {
+          return interaction.editReply({ content: '❌ Vc ainda não preencheu sua ficha! Clica em **Editar Ficha** pra cadastrar.' });
+        }
+
+        const embedPerfil = new EmbedBuilder()
+          .setTitle(`👤 Seu Perfil - ${interaction.user.username}`)
+          .addFields(
+            { name: '🎮 Nick no Jogo', value: `\`${perfil.nickJogo}\``, inline: true },
+            { name: '🏆 Rank SideSwipe', value: `\`${perfil.rankSideSwipe || 'Não informado'}\``, inline: true }
+          )
+          .setColor('#00FF7F');
+
+        return interaction.editReply({ embeds: [embedPerfil] });
+      }
+
+      // [BOAS-VINDAS / PAINEL]: INICIAR FICHA DE MEMBRO
       if (interaction.customId === 'btn_iniciar_ficha') {
         const modal = new ModalBuilder()
           .setCustomId('modal_ficha_etapa1')
@@ -212,7 +233,7 @@ module.exports = {
     // 3. MODAIS
     if (interaction.isModalSubmit()) {
 
-      // [BOAS-VINDAS]: SALVA PERFIL E CHAMA ETAPA 2 (CARGOS)
+      // [BOAS-VINDAS / PAINEL]: SALVA PERFIL E CHAMA ETAPA 2 (CARGOS)
       if (interaction.customId === 'modal_ficha_etapa1') {
         await interaction.deferReply({ flags: 64 });
 
@@ -283,7 +304,7 @@ module.exports = {
     // 4. SELECT MENUS
     if (interaction.isStringSelectMenu()) {
 
-      // [BOAS-VINDAS]: ATRIBUI CARGOS E FINALIZA
+      // [BOAS-VINDAS / PAINEL]: ATRIBUI CARGOS E FINALIZA
       if (interaction.customId === 'select_cargos_jogos') {
         await interaction.deferReply({ flags: 64 });
 
@@ -328,6 +349,7 @@ module.exports = {
     }
   }
 };
+
 
 
 
