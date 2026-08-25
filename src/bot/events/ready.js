@@ -1,4 +1,4 @@
-const { syncGuildGames } = require('../features/games/catalog');
+const { syncGuildGames } = require('../../features/games/catalog');
 
 module.exports = {
   name: 'clientReady',

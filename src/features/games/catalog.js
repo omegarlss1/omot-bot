@@ -1,5 +1,5 @@
-const config = require('../config');
-const JogoCargo = require('../db/models/jogoCargo');
+const config = require('../../config');
+const JogoCargo = require('../../db/models/jogoCargo');
 
 function defaults() {
   return config.games.map((game) => ({
