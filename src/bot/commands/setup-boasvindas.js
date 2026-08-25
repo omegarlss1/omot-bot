@@ -9,15 +9,13 @@ module.exports = {
   async execute(interaction) {
     const embed = new EmbedBuilder()
       .setTitle('🚀 BEM-VINDO À ÔMEGA!')
-      .setDescription('Pra interagir no servidor e ser chamado pros times, cria sua ficha aqui rapidinho!\n\nClica no botão abaixo pra preencher seu perfil e escolher os cargos de jogos que quer ser mencionado.')
+      .setDescription(
+        'Pra interagir no servidor e ser chamado pros times, cria sua ficha aqui rapidinho!\n\nClica no botão abaixo pra preencher seu perfil e escolher os cargos de jogos que quer ser mencionado.'
+      )
       .setColor('#FF6B00');
 
     const btn = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('btn_iniciar_ficha')
-        .setLabel('Criar Ficha de Membro')
-        .setStyle(ButtonStyle.Primary)
-        .setEmoji('📋')
+      new ButtonBuilder().setCustomId('btn_iniciar_ficha').setLabel('Criar Ficha de Membro').setStyle(ButtonStyle.Primary).setEmoji('📋')
     );
 
     await interaction.channel.send({ embeds: [embed], components: [btn] });
