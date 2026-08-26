@@ -10,18 +10,13 @@ const {
 } = require('discord.js');
 const { gerarNomeCall } = require('./naming');
 const { transferirLideranca, encerrarCall, atualizarPainel } = require('./service');
+const { adquirirLockCall } = require('./lock');
+const { comTimeout } = require('./timeout');
 const mensagens = require('./messages');
-
-function comTimeout(promise, tempo = 5000) {
-  let temporizador;
-  const timeout = new Promise((resolve, reject) => {
-    temporizador = setTimeout(() => reject(Object.assign(new Error('Call operation timed out'), { code: 'CALL_TIMEOUT' })), tempo);
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(temporizador));
-}
 
 async function exigirCallDoLider(interaction) {
   const client = interaction.client;
+  interaction.liberarLockCall = await adquirirLockCall(interaction.channelId);
   const canal = await interaction.guild.channels.fetch(interaction.channelId).catch((error) => {
     if (error.code !== 10003) console.error('Erro ao buscar canal da call:', error);
     return null;
@@ -29,7 +24,7 @@ async function exigirCallDoLider(interaction) {
   if (!canal) {
     return { ok: false, reply: { content: mensagens.canalInexistente, components: [] } };
   }
-  const dadosCall = await comTimeout(client.stores.calls.buscar(canal.id));
+  const dadosCall = await comTimeout(() => client.stores.calls.buscar(canal.id));
 
   if (!dadosCall) {
     return { ok: false, reply: { content: mensagens.callNaoEncontrada, flags: 64 } };
@@ -63,7 +58,7 @@ async function onLock(interaction) {
 
   const { canal } = check;
   const estaTrancado = !canal.permissionsFor(interaction.guild.roles.everyone).has(PermissionFlagsBits.Connect);
-  await comTimeout(canal.permissionOverwrites.edit(interaction.guild.roles.everyone, { Connect: estaTrancado ? null : false }));
+  await comTimeout(() => canal.permissionOverwrites.edit(interaction.guild.roles.everyone, { Connect: estaTrancado ? null : false }));
   return interaction.editReply({ content: estaTrancado ? mensagens.callLiberada : mensagens.callTrancada });
 }
 
@@ -74,9 +69,9 @@ async function onHide(interaction) {
 
   const { canal } = check;
   const estaVisivel = canal.permissionsFor(interaction.guild.roles.everyone).has(PermissionFlagsBits.ViewChannel);
-  await comTimeout(canal.permissionOverwrites.edit(interaction.guild.roles.everyone, { ViewChannel: estaVisivel ? false : null }));
-  await comTimeout(interaction.client.stores.calls.atualizar(canal.id, { hidden: estaVisivel }));
-  await comTimeout(atualizarPainel(canal, interaction.client));
+  await comTimeout(() => canal.permissionOverwrites.edit(interaction.guild.roles.everyone, { ViewChannel: estaVisivel ? false : null }));
+  await comTimeout(() => interaction.client.stores.calls.atualizar(canal.id, { hidden: estaVisivel }));
+  await comTimeout(() => atualizarPainel(canal, interaction.client));
   return interaction.editReply({ content: estaVisivel ? mensagens.callOculta : mensagens.callVisivel });
 }
 
@@ -128,7 +123,7 @@ async function onModalRename(interaction) {
       if (!botMember || !canal.permissionsFor(botMember).has(PermissionFlagsBits.ManageChannels)) {
         return interaction.editReply({ content: mensagens.nomeSemPermissao });
       }
-      await comTimeout(canal.setName(nomeFinal.slice(0, 100)));
+      await comTimeout(() => canal.setName(nomeFinal.slice(0, 100)));
     } catch (error) {
       console.error(`Erro ao renomear a call ${canal.id}:`, {
         message: error?.message,
@@ -139,7 +134,7 @@ async function onModalRename(interaction) {
     }
     dadosCall.jogo = novoJogo;
     try {
-      await comTimeout(interaction.client.stores.calls.atualizar(canal.id, { jogo: novoJogo }));
+      await comTimeout(() => interaction.client.stores.calls.atualizar(canal.id, { jogo: novoJogo }));
     } catch (error) {
       console.error(`Erro ao persistir o nome da call ${canal.id}:`, {
         message: error?.message,
@@ -164,7 +159,7 @@ async function onModalLimit(interaction) {
     return interaction.editReply({ content: mensagens.limiteInvalido });
   }
 
-  await comTimeout(canal.setUserLimit(limite));
+  await comTimeout(() => canal.setUserLimit(limite));
   return interaction.editReply({
     content: mensagens.limiteAtualizado(limite)
   });
@@ -182,7 +177,7 @@ async function onSelectPassDono(interaction) {
   if (!novoDono || novoDono.user.bot) return interaction.editReply({ content: mensagens.membroNaoEncontradoLideranca });
 
   try {
-    await comTimeout(transferirLideranca(canal, check.dadosCall.donoId, novoDono, interaction.client));
+    await comTimeout((ativo) => transferirLideranca(canal, check.dadosCall.donoId, novoDono, interaction.client, ativo));
   } catch (error) {
     console.error(`Erro no handler de transferência de liderança da call ${canal.id}:`, {
       message: error?.message,
@@ -271,11 +266,11 @@ async function onSelectMemberAction(interaction, action) {
   }
 
   if (action === 'ban') {
-    await comTimeout(interaction.client.stores.calls.atualizar(check.canal.id, {
+    await comTimeout(() => interaction.client.stores.calls.atualizar(check.canal.id, {
       bannedUserIds: [...check.dadosCall.bannedUserIds, memberId]
     }));
   }
-  await comTimeout(membro.voice.disconnect());
+  await comTimeout(() => membro.voice.disconnect());
   return interaction.editReply({ content: action === 'ban' ? mensagens.banido : mensagens.removido });
 }
 
@@ -283,7 +278,7 @@ async function onInvite(interaction) {
   await interaction.deferReply({ flags: 64 });
   const check = await exigirCallDoLider(interaction);
   if (!check.ok) return interaction.editReply(check.reply);
-  const convite = await comTimeout(check.canal.createInvite({ maxAge: 3600, maxUses: 0, unique: true }).catch((error) => {
+  const convite = await comTimeout(() => check.canal.createInvite({ maxAge: 3600, maxUses: 0, unique: true }).catch((error) => {
     if (error.code === 10003) return null;
     throw error;
   }));

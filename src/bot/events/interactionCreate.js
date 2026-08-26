@@ -35,6 +35,8 @@ module.exports = {
         stack: err?.stack
       });
       await responderErro(interaction);
+    } finally {
+      interaction.liberarLockCall?.();
     }
   }
 };

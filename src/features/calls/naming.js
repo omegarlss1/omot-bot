@@ -9,7 +9,8 @@ function gerarNomeCall(tipo, donoNome, jogo, totalMembros) {
   }
 
   if (tipo === 'sideswipe') {
-    return `🎮 | RL SideSwipe | ${donoNome}${sufixoAmigos}`;
+    const nomeJogo = jogo || 'RL SideSwipe';
+    return `🎮 | ${nomeJogo} | ${donoNome}${sufixoAmigos}`;
   }
 
   const nomeJogo = jogo || 'Jogos Diversos';
