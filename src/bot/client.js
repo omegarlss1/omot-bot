@@ -9,6 +9,10 @@ function createBot() {
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates]
   });
 
+  client.rest.on('rateLimited', (dadosRateLimit) => {
+    console.log('REST rate limited:', dadosRateLimit);
+  });
+
   client.commands = new Collection();
   client.stores = {
     calls: new CallsStore(),
