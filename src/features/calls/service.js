@@ -27,15 +27,21 @@ async function criarCallTemporaria(newState, client) {
     ]
   });
 
-  await client.stores.calls.criar(newChannel.id, guild.id, {
-    donoId: member.id,
-    donoNome: member.displayName,
-    tipo,
-    jogo: tipo === 'sideswipe' ? 'RL SideSwipe' : null
-  });
+  try {
+    await client.stores.calls.criar(newChannel.id, guild.id, {
+      donoId: member.id,
+      donoNome: member.displayName,
+      tipo,
+      jogo: tipo === 'sideswipe' ? 'RL SideSwipe' : null
+    });
 
-  await member.voice.setChannel(newChannel);
-  await newChannel.send(montarPainelCall(member));
+    await member.voice.setChannel(newChannel);
+    await newChannel.send(montarPainelCall(member));
+  } catch (error) {
+    await client.stores.calls.remover(newChannel.id).catch(() => {});
+    await newChannel.delete().catch(() => {});
+    throw error;
+  }
 }
 
 async function transferirLideranca(canal, antigoDonoId, novoDono, client) {

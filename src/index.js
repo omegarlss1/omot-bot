@@ -6,6 +6,8 @@ const { createBot } = require('./bot/client');
 async function main() {
   let client = null;
 
+  if (!config.token) throw new Error('TOKEN não definida.');
+
   startHttpServer(() => ({
     ready: Boolean(client?.isReady()),
     tag: client?.user?.tag || null

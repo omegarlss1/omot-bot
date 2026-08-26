@@ -68,9 +68,20 @@ async function onModalFichaEtapa1(interaction) {
 
 async function onSelectCargos(interaction) {
   await interaction.deferReply({ flags: 64 });
-  for (const roleId of interaction.values) {
-    if (roleId) await interaction.member.roles.add(roleId).catch(() => {});
+  const games = await getGames(interaction.guildId);
+  const roleIds = games.map((game) => game.roleId).filter(Boolean);
+  const selecionados = new Set(interaction.values);
+  const adicionar = roleIds.filter((roleId) => selecionados.has(roleId));
+  const remover = roleIds.filter((roleId) => !selecionados.has(roleId));
+  const resultados = await Promise.allSettled([
+    adicionar.length ? interaction.member.roles.add(adicionar) : Promise.resolve(),
+    remover.length ? interaction.member.roles.remove(remover) : Promise.resolve()
+  ]);
+
+  if (resultados.some((resultado) => resultado.status === 'rejected')) {
+    return interaction.editReply({ content: '⚠️ O perfil foi salvo, mas não consegui atualizar todos os cargos. Verifique as permissões do bot.' });
   }
+
   return interaction.editReply({ content: '🎉 Ficha concluída! Vc já tá pronto pra jogar com a gente.' });
 }
 

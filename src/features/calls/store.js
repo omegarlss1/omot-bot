@@ -47,25 +47,25 @@ class CallsStore {
   }
 
   async criar(channelId, guildId, dados) {
-    this.mem.set(channelId, { ...dados });
     await CallTemporaria.updateOne(
       { channelId },
       { channelId, guildId, ...dados },
       { upsert: true }
     );
+    this.mem.set(channelId, { ...dados });
   }
 
   async atualizar(channelId, patch) {
     const atual = this.mem.get(channelId);
     if (!atual) return null;
-    Object.assign(atual, patch);
     await CallTemporaria.updateOne({ channelId }, { $set: patch });
+    Object.assign(atual, patch);
     return atual;
   }
 
   async remover(channelId) {
-    this.mem.delete(channelId);
     await CallTemporaria.deleteOne({ channelId });
+    this.mem.delete(channelId);
   }
 }
 

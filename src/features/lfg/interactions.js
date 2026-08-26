@@ -14,6 +14,19 @@ const { getGames, getGame } = require('../games/catalog');
 const { CooldownStore } = require('./cooldown');
 
 const cooldown = new CooldownStore(config.lfg.cooldownMs);
+const chamadasEmAtualizacao = new Map();
+
+async function comBloqueioDaChamada(messageId, action) {
+  const anterior = chamadasEmAtualizacao.get(messageId) || Promise.resolve();
+  const atual = anterior.catch(() => {}).then(action);
+  chamadasEmAtualizacao.set(messageId, atual);
+
+  try {
+    return await atual;
+  } finally {
+    if (chamadasEmAtualizacao.get(messageId) === atual) chamadasEmAtualizacao.delete(messageId);
+  }
+}
 
 function agendarLimpeza(message) {
   setTimeout(() => {
@@ -172,45 +185,48 @@ async function onCancelarTime(interaction) {
 }
 
 async function onEntrarTime(interaction) {
-  const criadorId = interaction.customId.replace('btn_join_team_', '');
-  const embedOriginal = interaction.message.embeds[0];
-  if (!embedOriginal) return;
+  return comBloqueioDaChamada(interaction.message.id, async () => {
+    const criadorId = interaction.customId.replace('btn_join_team_', '');
+    const mensagemAtual = await interaction.channel.messages.fetch(interaction.message.id).catch(() => null);
+    const embedOriginal = mensagemAtual?.embeds[0];
+    if (!embedOriginal) return;
 
-  const embedNovo = EmbedBuilder.from(embedOriginal);
-  let descricao = embedNovo.data.description;
+    const embedNovo = EmbedBuilder.from(embedOriginal);
+    let descricao = embedNovo.data.description;
 
-  if (descricao.includes(`${interaction.member}`)) {
-    return interaction.reply({ content: '❌ Vc já tá nesse time!', flags: 64 });
-  }
+    if (descricao.includes(`${interaction.member}`)) {
+      return interaction.reply({ content: '❌ Vc já tá nesse time!', flags: 64 });
+    }
 
-  const matchVagas = descricao.match(/👥 \*\*Vagas Restantes:\*\* (\d+)/);
-  let vagasAtuais = matchVagas ? parseInt(matchVagas[1], 10) : 0;
+    const matchVagas = descricao.match(/👥 \*\*Vagas Restantes:\*\* (\d+)/);
+    let vagasAtuais = matchVagas ? parseInt(matchVagas[1], 10) : 0;
 
-  if (vagasAtuais <= 0) {
-    return interaction.reply({ content: '❌ O time já tá cheio!', flags: 64 });
-  }
+    if (vagasAtuais <= 0) {
+      return interaction.reply({ content: '❌ O time já tá cheio!', flags: 64 });
+    }
 
-  vagasAtuais -= 1;
-  descricao = descricao.replace(/👥 \*\*Vagas Restantes:\*\* \d+/, `👥 **Vagas Restantes:** ${vagasAtuais}`);
-  descricao += `\n• ${interaction.member}`;
+    vagasAtuais -= 1;
+    descricao = descricao.replace(/👥 \*\*Vagas Restantes:\*\* \d+/, `👥 **Vagas Restantes:** ${vagasAtuais}`);
+    descricao += `\n• ${interaction.member}`;
 
-  const componentes = ActionRowBuilder.from(interaction.message.components[0]);
+    const componentes = ActionRowBuilder.from(mensagemAtual.components[0]);
 
-  if (vagasAtuais === 0) {
-    embedNovo.setTitle(`${embedOriginal.title} [CHEIO]`);
-    descricao += `\n\n🎉 **Time fechado!**\n*(Essa mensagem vai sumir em 3 min)*`;
-    componentes.components[0] = ButtonBuilder.from(componentes.components[0]).setDisabled(true).setLabel('Time Cheio!');
-    agendarLimpeza(interaction.message);
-  }
+    if (vagasAtuais === 0) {
+      embedNovo.setTitle(`${embedOriginal.title} [CHEIO]`);
+      descricao += `\n\n🎉 **Time fechado!**\n*(Essa mensagem vai sumir em 3 min)*`;
+      componentes.components[0] = ButtonBuilder.from(componentes.components[0]).setDisabled(true).setLabel('Time Cheio!');
+      agendarLimpeza(mensagemAtual);
+    }
 
-  embedNovo.setDescription(descricao);
-  await interaction.update({ embeds: [embedNovo], components: [componentes] });
+    embedNovo.setDescription(descricao);
+    await interaction.update({ embeds: [embedNovo], components: [componentes] });
 
-  const criador = await interaction.guild.members.fetch(criadorId).catch(() => null);
-  if (criador) {
-    const nomeJogo = embedOriginal.title ? embedOriginal.title.replace('🎮 Procura-se Players para: ', '') : 'Jogo';
-    criador.send(`🎉 **${interaction.member.displayName}** entrou no seu time pra **${nomeJogo}**!`).catch(() => {});
-  }
+    const criador = await interaction.guild.members.fetch(criadorId).catch(() => null);
+    if (criador) {
+      const nomeJogo = embedOriginal.title ? embedOriginal.title.replace('🎮 Procura-se Players para: ', '') : 'Jogo';
+      criador.send(`🎉 **${interaction.member.displayName}** entrou no seu time pra **${nomeJogo}**!`).catch(() => {});
+    }
+  });
 }
 
 function register(registry) {
