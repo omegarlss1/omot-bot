@@ -66,6 +66,12 @@ async function atualizarPainel(canal, client) {
 }
 
 async function encerrarCall(canal, client) {
+  const mensagens = await canal.messages.fetch({ limit: 50 }).catch(() => null);
+  if (mensagens) {
+    await Promise.all(mensagens
+      .filter((mensagem) => mensagem.author.id === client.user.id && mensagem.components.length > 0)
+      .map((mensagem) => mensagem.edit({ components: [] }).catch(() => {})));
+  }
   await client.stores.calls.remover(canal.id);
   for (const [, member] of canal.members) {
     await member.voice.disconnect().catch(() => {});

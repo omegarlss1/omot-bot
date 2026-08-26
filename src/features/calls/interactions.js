@@ -4,6 +4,8 @@ const {
   TextInputStyle,
   ActionRowBuilder,
   StringSelectMenuBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   PermissionFlagsBits
 } = require('discord.js');
 const { gerarNomeCall } = require('./naming');
@@ -12,7 +14,13 @@ const mensagens = require('./messages');
 
 async function exigirCallDoLider(interaction) {
   const client = interaction.client;
-  const canal = interaction.channel;
+  const canal = await interaction.guild.channels.fetch(interaction.channelId).catch((error) => {
+    if (error.code !== 10003) console.error('Erro ao buscar canal da call:', error);
+    return null;
+  });
+  if (!canal) {
+    return { ok: false, reply: { content: mensagens.canalInexistente, components: [] } };
+  }
   const dadosCall = await client.stores.calls.buscar(canal.id);
 
   if (!dadosCall) {
@@ -69,22 +77,12 @@ async function onTransfer(interaction) {
   const check = await exigirCallDoLider(interaction);
   if (!check.ok) return interaction.editReply(check.reply);
 
-    const membrosNaCall = check.canal.members.filter((m) => m.id !== interaction.member.id && !m.user.bot).first(25);
-  if (membrosNaCall.size === 0) {
+  const membrosNaCall = obterMembrosAcao(check.canal, interaction.member.id);
+  if (membrosNaCall.length === 0) {
     return interaction.editReply({ content: mensagens.semMembrosParaTransferir });
   }
 
-  const menuOpcoes = membrosNaCall.map((m) => ({
-    label: m.displayName,
-    value: m.id,
-    description: `Passar a liderança pra ${m.user.username}`
-  }));
-
-  const selectMenu = new ActionRowBuilder().addComponents(
-    new StringSelectMenuBuilder().setCustomId('select_pass_dono').setPlaceholder('Escolha o novo líder...').addOptions(menuOpcoes)
-  );
-
-  return interaction.editReply({ content: mensagens.selecioneLider, components: [selectMenu] });
+  return interaction.editReply(paginacaoMembros('transfer', 0, membrosNaCall, mensagens.selecioneLider));
 }
 
 async function onClose(interaction) {
@@ -100,7 +98,7 @@ async function onModalRename(interaction) {
   await interaction.deferReply({ flags: 64 });
   const check = await exigirCallDoLider(interaction);
   if (!check.ok) return interaction.editReply(check.reply);
-  const canal = interaction.channel;
+  const canal = check.canal;
   const novoJogo = interaction.fields.getTextInputValue('nome_call_input').trim();
   const dadosCall = check.dadosCall;
 
@@ -127,7 +125,7 @@ async function onModalLimit(interaction) {
   await interaction.deferReply({ flags: 64 });
   const check = await exigirCallDoLider(interaction);
   if (!check.ok) return interaction.editReply(check.reply);
-  const canal = interaction.channel;
+  const canal = check.canal;
   const limite = parseInt(interaction.fields.getTextInputValue('limite_call_input').trim(), 10);
 
   if (isNaN(limite) || limite < 0 || limite > 99) {
@@ -144,26 +142,56 @@ async function onSelectPassDono(interaction) {
   await interaction.deferReply({ flags: 64 });
   const check = await exigirCallDoLider(interaction);
   if (!check.ok) return interaction.editReply(check.reply);
-  const canal = interaction.channel;
+  const canal = check.canal;
   const novoDonoId = interaction.values[0];
   const antigoDono = interaction.member;
   const novoDono = canal.members.get(novoDonoId);
 
-  if (!novoDono) return interaction.editReply({ content: mensagens.membroNaoEncontradoLideranca });
+  if (!novoDono || novoDono.user.bot) return interaction.editReply({ content: mensagens.membroNaoEncontradoLideranca });
 
-  await transferirLideranca(canal, check.dadosCall.donoId, novoDono, interaction.client);
+  try {
+    await transferirLideranca(canal, check.dadosCall.donoId, novoDono, interaction.client);
+  } catch (error) {
+    if (error.code === 10003) {
+      await interaction.client.stores.calls.remover(canal.id).catch(() => {});
+      return interaction.editReply({ content: mensagens.canalInexistente, components: [] });
+    }
+    throw error;
+  }
   await interaction.editReply({ content: mensagens.liderancaTransferida });
   return canal.send({ content: mensagens.liderancaPublica(antigoDono, novoDono) });
 }
 
-function menuMembro(customId, membros) {
+function obterMembrosAcao(canal, membroAtualId) {
+  return [...canal.members.values()]
+    .filter((membro) => membro.id !== membroAtualId && !membro.user.bot);
+}
+
+function paginacaoMembros(action, pagina, membros, texto) {
+  const totalPaginas = Math.ceil(membros.length / 25);
+  const inicio = pagina * 25;
+  const paginaAtual = membros.slice(inicio, inicio + 25);
+  const componentes = [menuMembro(`select_${action}_call_${pagina}`, paginaAtual, texto)];
+
+  if (totalPaginas > 1) {
+    const navegacao = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`call_page_${action}_${pagina - 1}`).setLabel(mensagens.paginaAnterior).setStyle(ButtonStyle.Secondary).setDisabled(pagina === 0),
+      new ButtonBuilder().setCustomId(`call_page_${action}_${pagina + 1}`).setLabel(mensagens.proximaPagina).setStyle(ButtonStyle.Secondary).setDisabled(pagina === totalPaginas - 1)
+    );
+    componentes.push(navegacao);
+  }
+
+  return { content: `${texto} (${pagina + 1}/${totalPaginas})`, components: componentes };
+}
+
+function menuMembro(customId, membros, texto) {
   const opcoes = membros.map((membro) => ({
     label: membro.displayName.slice(0, 100),
     value: membro.id,
     description: membro.user.username.slice(0, 100)
   }));
   return new ActionRowBuilder().addComponents(
-    new StringSelectMenuBuilder().setCustomId(customId).setPlaceholder(mensagens.selecioneMembro).addOptions(opcoes)
+    new StringSelectMenuBuilder().setCustomId(customId).setPlaceholder(texto).addOptions(opcoes)
   );
 }
 
@@ -171,12 +199,24 @@ async function onMemberAction(interaction, action) {
   await interaction.deferReply({ flags: 64 });
   const check = await exigirCallDoLider(interaction);
   if (!check.ok) return interaction.editReply(check.reply);
-    const membrosNaCall = check.canal.members.filter((m) => m.id !== interaction.member.id && !m.user.bot).first(25);
-  if (membrosNaCall.size === 0) return interaction.editReply({ content: mensagens.semAlvos });
-  return interaction.editReply({
-    content: mensagens.selecioneMembro,
-    components: [menuMembro(`select_${action}_call`, [...membrosNaCall.values()])]
-  });
+  const membrosNaCall = obterMembrosAcao(check.canal, interaction.member.id);
+  if (membrosNaCall.length === 0) return interaction.editReply({ content: mensagens.semAlvos });
+  return interaction.editReply(paginacaoMembros(action, 0, membrosNaCall, mensagens.selecioneMembro));
+}
+
+async function onCallPage(interaction) {
+  await interaction.deferUpdate();
+  const check = await exigirCallDoLider(interaction);
+  if (!check.ok) return interaction.editReply(check.reply);
+  const [, , action, paginaTexto] = interaction.customId.split('_');
+  const pagina = Number(paginaTexto);
+  const membros = obterMembrosAcao(check.canal, interaction.member.id);
+  const totalPaginas = Math.ceil(membros.length / 25);
+  if (!Number.isInteger(pagina) || pagina < 0 || pagina >= totalPaginas) {
+    return interaction.editReply({ content: mensagens.paginaIndisponivel, components: [] });
+  }
+  const texto = action === 'transfer' ? mensagens.selecioneLider : mensagens.selecioneMembro;
+  return interaction.editReply(paginacaoMembros(action, pagina, membros, texto));
 }
 
 async function onSelectMemberAction(interaction, action) {
@@ -184,7 +224,7 @@ async function onSelectMemberAction(interaction, action) {
   const check = await exigirCallDoLider(interaction);
   if (!check.ok) return interaction.editReply(check.reply);
   const memberId = interaction.values[0];
-  const membro = interaction.channel.members.get(memberId);
+  const membro = check.canal.members.get(memberId);
   if (!membro || membro.user.bot || membro.id === check.dadosCall.donoId) {
     return interaction.editReply({ content: mensagens.membroNaoEncontrado });
   }
@@ -194,7 +234,7 @@ async function onSelectMemberAction(interaction, action) {
   }
 
   if (action === 'ban') {
-    await interaction.client.stores.calls.atualizar(interaction.channel.id, {
+    await interaction.client.stores.calls.atualizar(check.canal.id, {
       bannedUserIds: [...check.dadosCall.bannedUserIds, memberId]
     });
   }
@@ -206,7 +246,10 @@ async function onInvite(interaction) {
   await interaction.deferReply({ flags: 64 });
   const check = await exigirCallDoLider(interaction);
   if (!check.ok) return interaction.editReply(check.reply);
-  const convite = await interaction.channel.createInvite({ maxAge: 3600, maxUses: 0, unique: true }).catch(() => null);
+  const convite = await check.canal.createInvite({ maxAge: 3600, maxUses: 0, unique: true }).catch((error) => {
+    if (error.code === 10003) return null;
+    throw error;
+  });
   return interaction.editReply({ content: convite ? mensagens.conviteGerado(convite.url) : mensagens.conviteFalhou });
 }
 
@@ -220,11 +263,13 @@ function register(registry) {
   registry.button('btn_kick', (interaction) => onMemberAction(interaction, 'kick'));
   registry.button('btn_ban', (interaction) => onMemberAction(interaction, 'ban'));
   registry.button('btn_invite', onInvite);
+  registry.button((customId) => /^call_page_(transfer|kick|ban)_\d+$/.test(customId), onCallPage);
   registry.modal('modal_rename_call', onModalRename);
   registry.modal('modal_limit_call', onModalLimit);
   registry.select('select_pass_dono', onSelectPassDono);
-  registry.select('select_kick_call', (interaction) => onSelectMemberAction(interaction, 'kick'));
-  registry.select('select_ban_call', (interaction) => onSelectMemberAction(interaction, 'ban'));
+  registry.select(/^select_transfer_call_\d+$/, onSelectPassDono);
+  registry.select(/^select_kick_call_\d+$/, (interaction) => onSelectMemberAction(interaction, 'kick'));
+  registry.select(/^select_ban_call_\d+$/, (interaction) => onSelectMemberAction(interaction, 'ban'));
 }
 
 module.exports = { register };

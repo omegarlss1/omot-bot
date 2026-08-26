@@ -1,5 +1,6 @@
 function matches(pattern, customId) {
   if (typeof pattern === 'function') return pattern(customId);
+  if (pattern instanceof RegExp) return pattern.test(customId);
   if (pattern.endsWith('*')) return customId.startsWith(pattern.slice(0, -1));
   return customId === pattern;
 }

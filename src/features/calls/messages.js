@@ -25,7 +25,11 @@ const mensagens = {
   semAlvos: '❌ Não há membros humanos disponíveis para esta ação.',
   nomeInvalido: '❌ Informe um nome entre 1 e 100 caracteres.',
   nomeAtualizado: '✅ Nome da call atualizado.',
-  nomeFalhou: '❌ Não foi possível atualizar o nome da call. Verifique as permissões do bot.'
+  nomeFalhou: '❌ Não foi possível atualizar o nome da call. Verifique as permissões do bot.',
+  canalInexistente: '❌ Esta call não existe mais.',
+  paginaAnterior: 'Página anterior',
+  proximaPagina: 'Próxima página',
+  paginaIndisponivel: '❌ Esta página de membros não está mais disponível.'
 };
 
 module.exports = mensagens;
