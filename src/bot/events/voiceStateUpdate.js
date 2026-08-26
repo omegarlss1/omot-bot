@@ -18,14 +18,26 @@ module.exports = {
 
     if (canalAtual.members.size === 0) {
       await client.stores.calls.remover(canalAtual.id);
-      await canalAtual.delete().catch(() => {});
+      await canalAtual.delete().catch((error) => {
+        console.error(`Erro ao excluir call vazia ${canalAtual.id}:`, {
+          message: error?.message,
+          code: error?.code,
+          stack: error?.stack
+        });
+      });
       return;
     }
 
     const dadosCall = client.stores.calls.get(canalAtual.id);
 
     if (channelEntrou === canalAtual.id && dadosCall.bannedUserIds?.includes(newState.member.id)) {
-      await newState.member.voice.disconnect().catch(() => {});
+      await newState.member.voice.disconnect().catch((error) => {
+        console.error(`Erro ao remover membro banido da call ${canalAtual.id}:`, {
+          message: error?.message,
+          code: error?.code,
+          stack: error?.stack
+        });
+      });
       return;
     }
 

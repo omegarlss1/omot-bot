@@ -29,7 +29,11 @@ module.exports = {
       await client.features.dispatch(interaction);
     } catch (err) {
       const nome = interaction.commandName || interaction.customId || 'interação';
-      console.error(`Erro ao processar ${nome}:`, err);
+      console.error(`Erro ao processar ${nome}:`, {
+        message: err?.message,
+        code: err?.code,
+        stack: err?.stack
+      });
       await responderErro(interaction);
     }
   }

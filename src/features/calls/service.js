@@ -45,13 +45,28 @@ async function criarCallTemporaria(newState, client) {
 }
 
 async function transferirLideranca(canal, antigoDonoId, novoDono, client) {
-  await canal.permissionOverwrites.delete(antigoDonoId).catch(() => {});
-  await canal.permissionOverwrites.edit(novoDono.id, PERMISSOES_LIDER);
-  await client.stores.calls.atualizar(canal.id, {
-    donoId: novoDono.id,
-    donoNome: novoDono.displayName
-  });
-  await atualizarPainel(canal, client);
+  try {
+    await canal.permissionOverwrites.delete(antigoDonoId).catch((error) => {
+      console.error(`Erro ao remover permissões do antigo líder ${canal.id}:`, {
+        message: error?.message,
+        code: error?.code,
+        stack: error?.stack
+      });
+    });
+    await canal.permissionOverwrites.edit(novoDono.id, PERMISSOES_LIDER);
+    await client.stores.calls.atualizar(canal.id, {
+      donoId: novoDono.id,
+      donoNome: novoDono.displayName
+    });
+    await atualizarPainel(canal, client);
+  } catch (error) {
+    console.error(`Erro ao transferir liderança da call ${canal.id}:`, {
+      message: error?.message,
+      code: error?.code,
+      stack: error?.stack
+    });
+    throw error;
+  }
 }
 
 async function atualizarPainel(canal, client) {
@@ -85,7 +100,15 @@ async function atualizarNomeCall(canal, client) {
 
   const novoNome = gerarNomeCall(dadosCall.tipo, dadosCall.donoNome, dadosCall.jogo, canal.members.size);
   if (canal.name !== novoNome) {
-    await canal.setName(novoNome).catch(() => {});
+    try {
+      await canal.setName(novoNome);
+    } catch (error) {
+      console.error(`Erro ao atualizar automaticamente o nome da call ${canal.id}:`, {
+        message: error?.message,
+        code: error?.code,
+        stack: error?.stack
+      });
+    }
   }
 }
 

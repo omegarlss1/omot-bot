@@ -116,6 +116,13 @@ async function onModalRename(interaction) {
 
   if (dadosCall) {
     const nomeFinal = gerarNomeCall(dadosCall.tipo, dadosCall.donoNome, novoJogo, canal.members.size);
+    const partesNome = nomeFinal.split('|').map((parte) => parte.trim());
+    console.log('Dados para renomear call:', {
+      tipoCall: dadosCall.tipo,
+      textoJogoAntesDoDivisor: novoJogo,
+      parteFixaDepoisDoDivisor: partesNome.slice(2).join(' | '),
+      nomeFinal
+    });
     try {
       const botMember = canal.guild.members.me;
       if (!botMember || !canal.permissionsFor(botMember).has(PermissionFlagsBits.ManageChannels)) {
@@ -123,14 +130,22 @@ async function onModalRename(interaction) {
       }
       await comTimeout(canal.setName(nomeFinal.slice(0, 100)));
     } catch (error) {
-      console.error(`Erro ao renomear a call ${canal.id}:`, error);
+      console.error(`Erro ao renomear a call ${canal.id}:`, {
+        message: error?.message,
+        code: error?.code,
+        stack: error?.stack
+      });
       return interaction.editReply({ content: error.code === 'CALL_TIMEOUT' ? mensagens.operacaoExpirada : mensagens.nomeFalhou });
     }
     dadosCall.jogo = novoJogo;
     try {
       await comTimeout(interaction.client.stores.calls.atualizar(canal.id, { jogo: novoJogo }));
     } catch (error) {
-      console.error(`Erro ao persistir o nome da call ${canal.id}:`, error);
+      console.error(`Erro ao persistir o nome da call ${canal.id}:`, {
+        message: error?.message,
+        code: error?.code,
+        stack: error?.stack
+      });
       return interaction.editReply({ content: mensagens.operacaoExpirada });
     }
   }
@@ -169,6 +184,11 @@ async function onSelectPassDono(interaction) {
   try {
     await comTimeout(transferirLideranca(canal, check.dadosCall.donoId, novoDono, interaction.client));
   } catch (error) {
+    console.error(`Erro no handler de transferência de liderança da call ${canal.id}:`, {
+      message: error?.message,
+      code: error?.code,
+      stack: error?.stack
+    });
     if (error.code === 10003) {
       await interaction.client.stores.calls.remover(canal.id).catch(() => {});
       return interaction.editReply({ content: mensagens.canalInexistente, components: [] });
