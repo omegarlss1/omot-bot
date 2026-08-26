@@ -4,31 +4,30 @@ const {
   TextInputStyle,
   ActionRowBuilder,
   StringSelectMenuBuilder,
+  UserSelectMenuBuilder,
   PermissionFlagsBits
 } = require('discord.js');
 const { gerarNomeCall } = require('./naming');
-const { transferirLideranca, encerrarCall } = require('./service');
+const { transferirLideranca, encerrarCall, atualizarPainel } = require('./service');
+const mensagens = require('./messages');
 
-function exigirCallDoLider(interaction) {
+async function exigirCallDoLider(interaction) {
   const client = interaction.client;
   const canal = interaction.channel;
-  const dadosCall = client.stores.calls.get(canal.id);
+  const dadosCall = await client.stores.calls.buscar(canal.id);
 
   if (!dadosCall) {
-    return { ok: false, reply: { content: '❌ Esse painel só funciona em calls temporárias do Ômot.', flags: 64 } };
+    return { ok: false, reply: { content: mensagens.callNaoEncontrada, flags: 64 } };
   }
 
   if (dadosCall.donoId !== interaction.member.id) {
-    return { ok: false, reply: { content: '❌ Apenas o líder da call pode usar esses botões.', flags: 64 } };
+    return { ok: false, reply: { content: mensagens.semPermissao, flags: 64 } };
   }
 
   return { ok: true, canal, dadosCall, client };
 }
 
 async function onRename(interaction) {
-  const check = exigirCallDoLider(interaction);
-  if (!check.ok) return interaction.reply(check.reply);
-
   const modal = new ModalBuilder().setCustomId('modal_rename_call').setTitle('Definir Jogo');
   const inputNome = new TextInputBuilder().setCustomId('nome_call_input').setLabel('Qual o jogo?').setStyle(TextInputStyle.Short).setRequired(true);
   modal.addComponents(new ActionRowBuilder().addComponents(inputNome));
@@ -36,9 +35,6 @@ async function onRename(interaction) {
 }
 
 async function onLimitModal(interaction) {
-  const check = exigirCallDoLider(interaction);
-  if (!check.ok) return interaction.reply(check.reply);
-
   const modal = new ModalBuilder().setCustomId('modal_limit_call').setTitle('Definir Vagas');
   const inputLimite = new TextInputBuilder().setCustomId('limite_call_input').setLabel('Vagas (0 = sem limite):').setStyle(TextInputStyle.Short).setMaxLength(2).setRequired(true);
   modal.addComponents(new ActionRowBuilder().addComponents(inputLimite));
@@ -46,34 +42,37 @@ async function onLimitModal(interaction) {
 }
 
 async function onLock(interaction) {
-  const check = exigirCallDoLider(interaction);
-  if (!check.ok) return interaction.reply(check.reply);
-
   await interaction.deferReply({ flags: 64 });
+  const check = await exigirCallDoLider(interaction);
+  if (!check.ok) return interaction.editReply(check.reply);
+
   const { canal } = check;
   const estaTrancado = !canal.permissionsFor(interaction.guild.roles.everyone).has(PermissionFlagsBits.Connect);
   await canal.permissionOverwrites.edit(interaction.guild.roles.everyone, { Connect: estaTrancado ? null : false });
-  return interaction.editReply({ content: estaTrancado ? '🔓 Call liberada!' : '🔒 Call trancada!' });
+  return interaction.editReply({ content: estaTrancado ? mensagens.callLiberada : mensagens.callTrancada });
 }
 
 async function onHide(interaction) {
-  const check = exigirCallDoLider(interaction);
-  if (!check.ok) return interaction.reply(check.reply);
-
   await interaction.deferReply({ flags: 64 });
+  const check = await exigirCallDoLider(interaction);
+  if (!check.ok) return interaction.editReply(check.reply);
+
   const { canal } = check;
   const estaVisivel = canal.permissionsFor(interaction.guild.roles.everyone).has(PermissionFlagsBits.ViewChannel);
   await canal.permissionOverwrites.edit(interaction.guild.roles.everyone, { ViewChannel: estaVisivel ? false : null });
-  return interaction.editReply({ content: estaVisivel ? '👁️ Call oculta!' : '👁️ Call visível!' });
+  await interaction.client.stores.calls.atualizar(canal.id, { hidden: estaVisivel });
+  await atualizarPainel(canal, interaction.client);
+  return interaction.editReply({ content: estaVisivel ? mensagens.callOculta : mensagens.callVisivel });
 }
 
 async function onTransfer(interaction) {
-  const check = exigirCallDoLider(interaction);
-  if (!check.ok) return interaction.reply(check.reply);
+  await interaction.deferReply({ flags: 64 });
+  const check = await exigirCallDoLider(interaction);
+  if (!check.ok) return interaction.editReply(check.reply);
 
   const membrosNaCall = check.canal.members.filter((m) => m.id !== interaction.member.id);
   if (membrosNaCall.size === 0) {
-    return interaction.reply({ content: '❌ Chama mais gente primeiro pra passar a liderança!', flags: 64 });
+    return interaction.editReply({ content: mensagens.semMembrosParaTransferir });
   }
 
   const menuOpcoes = membrosNaCall.map((m) => ({
@@ -86,22 +85,25 @@ async function onTransfer(interaction) {
     new StringSelectMenuBuilder().setCustomId('select_pass_dono').setPlaceholder('Escolha o novo líder...').addOptions(menuOpcoes)
   );
 
-  return interaction.reply({ content: 'Escolha o novo líder:', components: [selectMenu], flags: 64 });
+  return interaction.editReply({ content: mensagens.selecioneLider, components: [selectMenu] });
 }
 
 async function onClose(interaction) {
-  const check = exigirCallDoLider(interaction);
-  if (!check.ok) return interaction.reply(check.reply);
+  await interaction.deferReply({ flags: 64 });
+  const check = await exigirCallDoLider(interaction);
+  if (!check.ok) return interaction.editReply(check.reply);
 
-  await interaction.reply({ content: 'Fechando a call e desconectando todo mundo... flw!', flags: 64 });
+  await interaction.editReply({ content: mensagens.callFechando });
   return encerrarCall(check.canal, check.client);
 }
 
 async function onModalRename(interaction) {
   await interaction.deferReply({ flags: 64 });
+  const check = await exigirCallDoLider(interaction);
+  if (!check.ok) return interaction.editReply(check.reply);
   const canal = interaction.channel;
   const novoJogo = interaction.fields.getTextInputValue('nome_call_input');
-  const dadosCall = interaction.client.stores.calls.get(canal.id);
+  const dadosCall = check.dadosCall;
 
   if (dadosCall) {
     dadosCall.jogo = novoJogo;
@@ -110,36 +112,84 @@ async function onModalRename(interaction) {
     await canal.setName(nomeFinal).catch(() => {});
   }
 
-  return interaction.editReply({ content: `Jogo alterado para **${novoJogo}**.` });
+  return interaction.editReply({ content: mensagens.jogoAlterado(novoJogo) });
 }
 
 async function onModalLimit(interaction) {
   await interaction.deferReply({ flags: 64 });
+  const check = await exigirCallDoLider(interaction);
+  if (!check.ok) return interaction.editReply(check.reply);
   const canal = interaction.channel;
   const limite = parseInt(interaction.fields.getTextInputValue('limite_call_input').trim(), 10);
 
   if (isNaN(limite) || limite < 0 || limite > 99) {
-    return interaction.editReply({ content: '❌ Manda um número válido, de 0 a 99, aí.' });
+    return interaction.editReply({ content: mensagens.limiteInvalido });
   }
 
   await canal.setUserLimit(limite);
   return interaction.editReply({
-    content: limite === 0 ? 'Sem limite de vagas agora.' : `Ajustei o limite pra **${limite} ${limite === 1 ? 'vaga' : 'vagas'}**!`
+    content: mensagens.limiteAtualizado(limite)
   });
 }
 
 async function onSelectPassDono(interaction) {
   await interaction.deferReply({ flags: 64 });
+  const check = await exigirCallDoLider(interaction);
+  if (!check.ok) return interaction.editReply(check.reply);
   const canal = interaction.channel;
   const novoDonoId = interaction.values[0];
   const antigoDono = interaction.member;
   const novoDono = canal.members.get(novoDonoId);
 
-  if (!novoDono) return interaction.editReply({ content: '❌ Membro não encontrado na call.' });
+  if (!novoDono) return interaction.editReply({ content: mensagens.membroNaoEncontradoLideranca });
 
-  await transferirLideranca(canal, antigoDono.id, novoDono, interaction.client);
-  await interaction.editReply({ content: `Liderança passada pra ${novoDono}.` });
-  return canal.send({ content: `👑 ${antigoDono} passou a liderança pra ${novoDono}.` });
+  await transferirLideranca(canal, check.dadosCall.donoId, novoDono, interaction.client);
+  await interaction.editReply({ content: mensagens.liderancaTransferida });
+  return canal.send({ content: mensagens.liderancaPublica(antigoDono, novoDono) });
+}
+
+function menuMembro(customId) {
+  return new ActionRowBuilder().addComponents(
+    new UserSelectMenuBuilder().setCustomId(customId).setPlaceholder(mensagens.selecioneMembro)
+  );
+}
+
+async function onMemberAction(interaction, action) {
+  await interaction.deferReply({ flags: 64 });
+  const check = await exigirCallDoLider(interaction);
+  if (!check.ok) return interaction.editReply(check.reply);
+  return interaction.editReply({ content: mensagens.selecioneMembro, components: [menuMembro(`select_${action}_call`)] });
+}
+
+async function onSelectMemberAction(interaction, action) {
+  await interaction.deferReply({ flags: 64 });
+  const check = await exigirCallDoLider(interaction);
+  if (!check.ok) return interaction.editReply(check.reply);
+  const memberId = interaction.values[0];
+  const membro = interaction.channel.members.get(memberId);
+  if (!membro || membro.id === check.dadosCall.donoId) {
+    return interaction.editReply({ content: mensagens.membroNaoEncontrado });
+  }
+
+  if (action === 'ban' && check.dadosCall.bannedUserIds.includes(memberId)) {
+    return interaction.editReply({ content: mensagens.jaBanido });
+  }
+
+  if (action === 'ban') {
+    await interaction.client.stores.calls.atualizar(interaction.channel.id, {
+      bannedUserIds: [...check.dadosCall.bannedUserIds, memberId]
+    });
+  }
+  await membro.voice.disconnect().catch(() => {});
+  return interaction.editReply({ content: action === 'ban' ? mensagens.banido : mensagens.removido });
+}
+
+async function onInvite(interaction) {
+  await interaction.deferReply({ flags: 64 });
+  const check = await exigirCallDoLider(interaction);
+  if (!check.ok) return interaction.editReply(check.reply);
+  const convite = await interaction.channel.createInvite({ maxAge: 3600, maxUses: 0, unique: true }).catch(() => null);
+  return interaction.editReply({ content: convite ? mensagens.conviteGerado(convite.url) : mensagens.conviteFalhou });
 }
 
 function register(registry) {
@@ -149,9 +199,14 @@ function register(registry) {
   registry.button('btn_hide', onHide);
   registry.button('btn_transfer', onTransfer);
   registry.button('btn_close_call', onClose);
+  registry.button('btn_kick', (interaction) => onMemberAction(interaction, 'kick'));
+  registry.button('btn_ban', (interaction) => onMemberAction(interaction, 'ban'));
+  registry.button('btn_invite', onInvite);
   registry.modal('modal_rename_call', onModalRename);
   registry.modal('modal_limit_call', onModalLimit);
   registry.select('select_pass_dono', onSelectPassDono);
+  registry.select('select_kick_call', (interaction) => onSelectMemberAction(interaction, 'kick'));
+  registry.select('select_ban_call', (interaction) => onSelectMemberAction(interaction, 'ban'));
 }
 
 module.exports = { register };

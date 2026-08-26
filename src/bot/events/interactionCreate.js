@@ -1,5 +1,7 @@
+const mensagens = require('../../features/calls/messages');
+
 async function responderErro(interaction) {
-  const payload = { content: '❌ Deu ruim ao processar isso. Tenta de novo em instantes.', flags: 64 };
+  const payload = { content: mensagens.erroGenerico, flags: 64 };
   if (interaction.deferred || interaction.replied) {
     await interaction.followUp(payload).catch(() => {});
     return;

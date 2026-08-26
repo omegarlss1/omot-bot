@@ -1,4 +1,5 @@
 const { criarCallTemporaria, transferirLideranca, atualizarNomeCall } = require('../../features/calls/service');
+const mensagens = require('../../features/calls/messages');
 
 module.exports = {
   name: 'voiceStateUpdate',
@@ -23,10 +24,16 @@ module.exports = {
 
     const dadosCall = client.stores.calls.get(canalAtual.id);
 
+    if (channelEntrou === canalAtual.id && dadosCall.bannedUserIds?.includes(newState.member.id)) {
+      await newState.member.voice.disconnect().catch(() => {});
+      return;
+    }
+
     if (channelSaiu === canalAtual.id && oldState.member.id === dadosCall.donoId) {
       const novoDono = canalAtual.members.first();
+      if (!novoDono) return;
       await transferirLideranca(canalAtual, oldState.member.id, novoDono, client);
-      await canalAtual.send({ content: `👑 O antigo líder saiu da call. ${novoDono} assumiu a liderança!` });
+      await canalAtual.send({ content: `${mensagens.liderancaTransferida} ${novoDono} assumiu a liderança.` });
     }
 
     await atualizarNomeCall(canalAtual, client);

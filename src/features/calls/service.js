@@ -51,6 +51,18 @@ async function transferirLideranca(canal, antigoDonoId, novoDono, client) {
     donoId: novoDono.id,
     donoNome: novoDono.displayName
   });
+  await atualizarPainel(canal, client);
+}
+
+async function atualizarPainel(canal, client) {
+  const mensagens = await canal.messages.fetch({ limit: 50 }).catch(() => null);
+  const mensagem = mensagens?.find((item) => item.author.id === client.user.id
+    && item.embeds[0]?.title === 'Painel de Controle da Call');
+  if (!mensagem) return;
+
+  const dadosCall = client.stores.calls.get(canal.id);
+  const membro = canal.guild.members.cache.get(dadosCall?.donoId) || canal.guild.members.me;
+  if (membro) await mensagem.edit(montarPainelCall(membro)).catch(() => {});
 }
 
 async function encerrarCall(canal, client) {
@@ -76,5 +88,6 @@ module.exports = {
   transferirLideranca,
   encerrarCall,
   atualizarNomeCall,
+  atualizarPainel,
   PERMISSOES_LIDER
 };

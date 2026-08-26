@@ -21,7 +21,13 @@ function montarPainelCall(member) {
     new ButtonBuilder().setCustomId('btn_close_call').setLabel('Encerrar Call').setStyle(ButtonStyle.Danger).setEmoji('✖️')
   );
 
-  return { embeds: [embed], components: [linha1, linha2, linha3] };
+  const linha4 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('btn_kick').setLabel('Kickar').setStyle(ButtonStyle.Danger).setEmoji('👢'),
+    new ButtonBuilder().setCustomId('btn_ban').setLabel('Banir').setStyle(ButtonStyle.Danger).setEmoji('⛔'),
+    new ButtonBuilder().setCustomId('btn_invite').setLabel('Gerar convite').setStyle(ButtonStyle.Success).setEmoji('🔗')
+  );
+
+  return { embeds: [embed], components: [linha1, linha2, linha3, linha4] };
 }
 
 module.exports = { montarPainelCall };

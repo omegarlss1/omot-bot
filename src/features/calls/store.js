@@ -35,11 +35,17 @@ class CallsStore {
         continue;
       }
 
+      await channel.permissionOverwrites.edit(channel.guild.roles.everyone, {
+        ViewChannel: doc.hidden ? false : null
+      }).catch(() => {});
+
       this.mem.set(doc.channelId, {
         donoId: doc.donoId,
         donoNome: doc.donoNome,
         tipo: doc.tipo,
-        jogo: doc.jogo
+        jogo: doc.jogo,
+        hidden: doc.hidden,
+        bannedUserIds: [...(doc.bannedUserIds || [])]
       });
     }
 
@@ -52,7 +58,7 @@ class CallsStore {
       { channelId, guildId, ...dados },
       { upsert: true }
     );
-    this.mem.set(channelId, { ...dados });
+    this.mem.set(channelId, { hidden: false, bannedUserIds: [], ...dados });
   }
 
   async atualizar(channelId, patch) {
@@ -61,6 +67,22 @@ class CallsStore {
     await CallTemporaria.updateOne({ channelId }, { $set: patch });
     Object.assign(atual, patch);
     return atual;
+  }
+
+  async buscar(channelId) {
+    const doc = await CallTemporaria.findOne({ channelId }).lean();
+    if (!doc) return null;
+
+    const dados = {
+      donoId: doc.donoId,
+      donoNome: doc.donoNome,
+      tipo: doc.tipo,
+      jogo: doc.jogo,
+      hidden: doc.hidden,
+      bannedUserIds: [...(doc.bannedUserIds || [])]
+    };
+    this.mem.set(channelId, dados);
+    return dados;
   }
 
   async remover(channelId) {

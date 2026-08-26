@@ -1,0 +1,27 @@
+const mensagens = {
+  callNaoEncontrada: '❌ Esta call temporária não está mais disponível.',
+  semPermissao: '❌ Apenas o líder atual da call pode usar este botão.',
+  erroGenerico: '❌ Não foi possível processar esta interação. Tente novamente.',
+  callOculta: '✅ Call ocultada.',
+  callVisivel: '✅ Call visível.',
+  selecioneMembro: 'Selecione um membro da call:',
+  membroNaoEncontrado: '❌ O membro selecionado não está nesta call.',
+  removido: '✅ Membro removido da call.',
+  banido: '✅ Membro removido e impedido de retornar a esta call.',
+  jaBanido: '⚠️ Este membro já está banido desta call.',
+  conviteGerado: (url) => `✅ Convite da call: ${url}`,
+  conviteFalhou: '❌ Não foi possível gerar um convite para esta call.',
+  liderancaTransferida: '✅ Liderança transferida.',
+  membroNaoEncontradoLideranca: '❌ Membro não encontrado na call.',
+  semMembrosParaTransferir: '❌ Não há outros membros na call para transferir a liderança.',
+  selecioneLider: 'Selecione o novo líder:',
+  liderancaPublica: (antigoDono, novoDono) => `${antigoDono} transferiu a liderança para ${novoDono}.`,
+  callFechando: 'Fechando a call e desconectando os membros.',
+  jogoAlterado: (jogo) => `✅ Jogo alterado para **${jogo}**.`,
+  limiteInvalido: '❌ Informe um número válido entre 0 e 99.',
+  limiteAtualizado: (limite) => limite === 0 ? '✅ Call sem limite de vagas.' : `✅ Limite ajustado para **${limite} ${limite === 1 ? 'vaga' : 'vagas'}**.`,
+  callLiberada: '✅ Call liberada.',
+  callTrancada: '✅ Call trancada.'
+};
+
+module.exports = mensagens;
