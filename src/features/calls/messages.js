@@ -21,7 +21,11 @@ const mensagens = {
   limiteInvalido: '❌ Informe um número válido entre 0 e 99.',
   limiteAtualizado: (limite) => limite === 0 ? '✅ Call sem limite de vagas.' : `✅ Limite ajustado para **${limite} ${limite === 1 ? 'vaga' : 'vagas'}**.`,
   callLiberada: '✅ Call liberada.',
-  callTrancada: '✅ Call trancada.'
+  callTrancada: '✅ Call trancada.',
+  semAlvos: '❌ Não há membros humanos disponíveis para esta ação.',
+  nomeInvalido: '❌ Informe um nome entre 1 e 100 caracteres.',
+  nomeAtualizado: '✅ Nome da call atualizado.',
+  nomeFalhou: '❌ Não foi possível atualizar o nome da call. Verifique as permissões do bot.'
 };
 
 module.exports = mensagens;

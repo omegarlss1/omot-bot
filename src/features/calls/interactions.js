@@ -4,7 +4,6 @@ const {
   TextInputStyle,
   ActionRowBuilder,
   StringSelectMenuBuilder,
-  UserSelectMenuBuilder,
   PermissionFlagsBits
 } = require('discord.js');
 const { gerarNomeCall } = require('./naming');
@@ -28,8 +27,8 @@ async function exigirCallDoLider(interaction) {
 }
 
 async function onRename(interaction) {
-  const modal = new ModalBuilder().setCustomId('modal_rename_call').setTitle('Definir Jogo');
-  const inputNome = new TextInputBuilder().setCustomId('nome_call_input').setLabel('Qual o jogo?').setStyle(TextInputStyle.Short).setRequired(true);
+  const modal = new ModalBuilder().setCustomId('modal_rename_call').setTitle('Renomear call');
+  const inputNome = new TextInputBuilder().setCustomId('nome_call_input').setLabel('Novo nome da call').setStyle(TextInputStyle.Short).setMaxLength(100).setRequired(true);
   modal.addComponents(new ActionRowBuilder().addComponents(inputNome));
   return interaction.showModal(modal);
 }
@@ -70,7 +69,7 @@ async function onTransfer(interaction) {
   const check = await exigirCallDoLider(interaction);
   if (!check.ok) return interaction.editReply(check.reply);
 
-  const membrosNaCall = check.canal.members.filter((m) => m.id !== interaction.member.id);
+    const membrosNaCall = check.canal.members.filter((m) => m.id !== interaction.member.id && !m.user.bot).first(25);
   if (membrosNaCall.size === 0) {
     return interaction.editReply({ content: mensagens.semMembrosParaTransferir });
   }
@@ -102,17 +101,26 @@ async function onModalRename(interaction) {
   const check = await exigirCallDoLider(interaction);
   if (!check.ok) return interaction.editReply(check.reply);
   const canal = interaction.channel;
-  const novoJogo = interaction.fields.getTextInputValue('nome_call_input');
+  const novoJogo = interaction.fields.getTextInputValue('nome_call_input').trim();
   const dadosCall = check.dadosCall;
 
-  if (dadosCall) {
-    dadosCall.jogo = novoJogo;
-    await interaction.client.stores.calls.atualizar(canal.id, { jogo: novoJogo });
-    const nomeFinal = gerarNomeCall(dadosCall.tipo, dadosCall.donoNome, novoJogo, canal.members.size);
-    await canal.setName(nomeFinal).catch(() => {});
+  if (!novoJogo || novoJogo.length > 100) {
+    return interaction.editReply({ content: mensagens.nomeInvalido });
   }
 
-  return interaction.editReply({ content: mensagens.jogoAlterado(novoJogo) });
+  if (dadosCall) {
+    const nomeFinal = gerarNomeCall(dadosCall.tipo, dadosCall.donoNome, novoJogo, canal.members.size);
+    try {
+      await canal.setName(nomeFinal.slice(0, 100));
+    } catch (error) {
+      console.error(`Erro ao renomear a call ${canal.id}:`, error);
+      return interaction.editReply({ content: mensagens.nomeFalhou });
+    }
+    dadosCall.jogo = novoJogo;
+    await interaction.client.stores.calls.atualizar(canal.id, { jogo: novoJogo });
+  }
+
+  return interaction.editReply({ content: mensagens.nomeAtualizado });
 }
 
 async function onModalLimit(interaction) {
@@ -148,9 +156,14 @@ async function onSelectPassDono(interaction) {
   return canal.send({ content: mensagens.liderancaPublica(antigoDono, novoDono) });
 }
 
-function menuMembro(customId) {
+function menuMembro(customId, membros) {
+  const opcoes = membros.map((membro) => ({
+    label: membro.displayName.slice(0, 100),
+    value: membro.id,
+    description: membro.user.username.slice(0, 100)
+  }));
   return new ActionRowBuilder().addComponents(
-    new UserSelectMenuBuilder().setCustomId(customId).setPlaceholder(mensagens.selecioneMembro)
+    new StringSelectMenuBuilder().setCustomId(customId).setPlaceholder(mensagens.selecioneMembro).addOptions(opcoes)
   );
 }
 
@@ -158,7 +171,12 @@ async function onMemberAction(interaction, action) {
   await interaction.deferReply({ flags: 64 });
   const check = await exigirCallDoLider(interaction);
   if (!check.ok) return interaction.editReply(check.reply);
-  return interaction.editReply({ content: mensagens.selecioneMembro, components: [menuMembro(`select_${action}_call`)] });
+    const membrosNaCall = check.canal.members.filter((m) => m.id !== interaction.member.id && !m.user.bot).first(25);
+  if (membrosNaCall.size === 0) return interaction.editReply({ content: mensagens.semAlvos });
+  return interaction.editReply({
+    content: mensagens.selecioneMembro,
+    components: [menuMembro(`select_${action}_call`, [...membrosNaCall.values()])]
+  });
 }
 
 async function onSelectMemberAction(interaction, action) {
@@ -167,7 +185,7 @@ async function onSelectMemberAction(interaction, action) {
   if (!check.ok) return interaction.editReply(check.reply);
   const memberId = interaction.values[0];
   const membro = interaction.channel.members.get(memberId);
-  if (!membro || membro.id === check.dadosCall.donoId) {
+  if (!membro || membro.user.bot || membro.id === check.dadosCall.donoId) {
     return interaction.editReply({ content: mensagens.membroNaoEncontrado });
   }
 
