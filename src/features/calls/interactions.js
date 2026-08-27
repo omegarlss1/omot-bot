@@ -14,9 +14,11 @@ const { adquirirLockCall } = require('./lock');
 const { comTimeout } = require('./timeout');
 const mensagens = require('./messages');
 
+const TEMPO_ESPERA_CALL = 30000;
+
 async function exigirCallDoLider(interaction) {
   const client = interaction.client;
-  interaction.liberarLockCall = await comTimeout((estaAtivo) => adquirirLockCall(interaction.channelId, estaAtivo));
+  interaction.liberarLockCall = await comTimeout((estaAtivo) => adquirirLockCall(interaction.channelId, estaAtivo), TEMPO_ESPERA_CALL);
   const canal = await interaction.guild.channels.fetch(interaction.channelId).catch((error) => {
     if (error.code !== 10003) console.error('Erro ao buscar canal da call:', error);
     return null;
@@ -58,7 +60,7 @@ async function onLock(interaction) {
 
   const { canal } = check;
   const estaTrancado = !canal.permissionsFor(interaction.guild.roles.everyone).has(PermissionFlagsBits.Connect);
-  await comTimeout(() => canal.permissionOverwrites.edit(interaction.guild.roles.everyone, { Connect: estaTrancado ? null : false }));
+  await comTimeout(() => canal.permissionOverwrites.edit(interaction.guild.roles.everyone, { Connect: estaTrancado ? null : false }), TEMPO_ESPERA_CALL);
   return interaction.editReply({ content: estaTrancado ? mensagens.callLiberada : mensagens.callTrancada });
 }
 
@@ -69,7 +71,7 @@ async function onHide(interaction) {
 
   const { canal } = check;
   const estaVisivel = canal.permissionsFor(interaction.guild.roles.everyone).has(PermissionFlagsBits.ViewChannel);
-  await comTimeout(() => canal.permissionOverwrites.edit(interaction.guild.roles.everyone, { ViewChannel: estaVisivel ? false : null }));
+  await comTimeout(() => canal.permissionOverwrites.edit(interaction.guild.roles.everyone, { ViewChannel: estaVisivel ? false : null }), TEMPO_ESPERA_CALL);
   await comTimeout(() => interaction.client.stores.calls.atualizar(canal.id, { hidden: estaVisivel }));
   await comTimeout(() => atualizarPainel(canal, interaction.client));
   return interaction.editReply({ content: estaVisivel ? mensagens.callOculta : mensagens.callVisivel });

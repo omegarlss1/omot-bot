@@ -3,6 +3,8 @@ const { adquirirLockCall } = require('../../features/calls/lock');
 const { comTimeout } = require('../../features/calls/timeout');
 const mensagens = require('../../features/calls/messages');
 
+const TEMPO_ESPERA_CALL = 30000;
+
 module.exports = {
   name: 'voiceStateUpdate',
   async execute(oldState, newState) {
@@ -21,7 +23,7 @@ module.exports = {
       const canalExistente = await comTimeout(() => client.channels.fetch(canalAtual.id).catch(() => null));
       if (!canalExistente) return;
 
-      const liberarLock = await comTimeout((estaAtivo) => adquirirLockCall(canalAtual.id, estaAtivo));
+      const liberarLock = await comTimeout((estaAtivo) => adquirirLockCall(canalAtual.id, estaAtivo), TEMPO_ESPERA_CALL);
       try {
       if (canalAtual.members.size === 0) {
         await client.stores.calls.remover(canalAtual.id);
