@@ -9,7 +9,11 @@ async function adquirirLockCall(channelId, estaAtivo = () => true) {
   locks.set(channelId, atual);
 
   await anterior;
-  if (!estaAtivo()) return () => {};
+  if (!estaAtivo()) {
+    liberar();
+    if (locks.get(channelId) === atual) locks.delete(channelId);
+    return () => {};
+  }
   let liberado = false;
   return () => {
     if (liberado) return;
