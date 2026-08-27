@@ -16,7 +16,7 @@ const mensagens = require('./messages');
 
 async function exigirCallDoLider(interaction) {
   const client = interaction.client;
-  interaction.liberarLockCall = await adquirirLockCall(interaction.channelId);
+  interaction.liberarLockCall = await comTimeout((estaAtivo) => adquirirLockCall(interaction.channelId, estaAtivo));
   const canal = await interaction.guild.channels.fetch(interaction.channelId).catch((error) => {
     if (error.code !== 10003) console.error('Erro ao buscar canal da call:', error);
     return null;

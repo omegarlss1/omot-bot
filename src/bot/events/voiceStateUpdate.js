@@ -6,22 +6,23 @@ const mensagens = require('../../features/calls/messages');
 module.exports = {
   name: 'voiceStateUpdate',
   async execute(oldState, newState) {
-    const client = newState.client;
-    const channelEntrou = newState.channelId;
-    const channelSaiu = oldState.channelId;
-
-    if (channelEntrou && client.stores.gatilhos.has(channelEntrou)) {
-      await criarCallTemporaria(newState, client);
-      return;
-    }
-
-    const canalAtual = newState.channel || oldState.channel;
-    if (!canalAtual || !client.stores.calls.has(canalAtual.id)) return;
-    const canalExistente = await comTimeout(() => client.channels.fetch(canalAtual.id).catch(() => null));
-    if (!canalExistente) return;
-
-    const liberarLock = await adquirirLockCall(canalAtual.id);
     try {
+      const client = newState.client;
+      const channelEntrou = newState.channelId;
+      const channelSaiu = oldState.channelId;
+
+      if (channelEntrou && client.stores.gatilhos.has(channelEntrou)) {
+        await criarCallTemporaria(newState, client);
+        return;
+      }
+
+      const canalAtual = newState.channel || oldState.channel;
+      if (!canalAtual || !client.stores.calls.has(canalAtual.id)) return;
+      const canalExistente = await comTimeout(() => client.channels.fetch(canalAtual.id).catch(() => null));
+      if (!canalExistente) return;
+
+      const liberarLock = await comTimeout((estaAtivo) => adquirirLockCall(canalAtual.id, estaAtivo));
+      try {
       if (canalAtual.members.size === 0) {
         await client.stores.calls.remover(canalAtual.id);
         await canalAtual.delete().catch((error) => {
@@ -55,8 +56,15 @@ module.exports = {
       }
 
       await comTimeout((ativo) => atualizarNomeCall(canalAtual, client, ativo));
-    } finally {
-      liberarLock();
+      } finally {
+        liberarLock();
+      }
+    } catch (error) {
+      console.error(`Erro ao processar atualização de voz da call:`, {
+        message: error?.message,
+        code: error?.code,
+        stack: error?.stack
+      });
     }
   }
 };
