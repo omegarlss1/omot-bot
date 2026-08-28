@@ -14,6 +14,12 @@ module.exports = {
       const channelSaiu = oldState.channelId;
 
       if (channelEntrou && client.stores.gatilhos.has(channelEntrou)) {
+        const member = newState.member || await newState.guild.members.fetch(newState.id).catch(() => null);
+        if (!member) {
+          console.error(`Member ausente ao tentar criar call temporária, channelId: ${channelEntrou}, userId: ${newState.id}`);
+          return;
+        }
+        newState.member = member;
         await criarCallTemporaria(newState, client);
         return;
       }
@@ -39,22 +45,36 @@ module.exports = {
 
       const dadosCall = client.stores.calls.get(canalAtual.id);
 
-      if (channelEntrou === canalAtual.id && dadosCall.bannedUserIds?.includes(newState.member.id)) {
-        await newState.member.voice.disconnect().catch((error) => {
-          console.error(`Erro ao remover membro banido da call ${canalAtual.id}:`, {
-            message: error?.message,
-            code: error?.code,
-            stack: error?.stack
+      if (channelEntrou === canalAtual.id) {
+        const member = newState.member || await newState.guild.members.fetch(newState.id).catch(() => null);
+        if (!member) {
+          console.error(`Member ausente ao verificar banimento da call, channelId: ${canalAtual.id}, userId: ${newState.id}`);
+          return;
+        }
+        if (dadosCall.bannedUserIds?.includes(member.id)) {
+          await member.voice.disconnect().catch((error) => {
+            console.error(`Erro ao remover membro banido da call ${canalAtual.id}:`, {
+              message: error?.message,
+              code: error?.code,
+              stack: error?.stack
+            });
           });
-        });
-        return;
+          return;
+        }
       }
 
-      if (channelSaiu === canalAtual.id && oldState.member.id === dadosCall.donoId) {
-        const novoDono = canalAtual.members.first();
-        if (!novoDono) return;
-        await comTimeout((ativo) => transferirLideranca(canalAtual, oldState.member.id, novoDono, client, ativo));
-        await comTimeout((ativo) => ativo() ? canalAtual.send({ content: `${mensagens.liderancaTransferida} ${novoDono} assumiu a liderança.` }) : undefined);
+      if (channelSaiu === canalAtual.id) {
+        const member = oldState.member || await oldState.guild.members.fetch(oldState.id).catch(() => null);
+        if (!member) {
+          console.error(`Member ausente ao transferir liderança da call, channelId: ${canalAtual.id}, userId: ${oldState.id}`);
+          return;
+        }
+        if (member.id === dadosCall.donoId) {
+          const novoDono = canalAtual.members.first();
+          if (!novoDono) return;
+          await comTimeout((ativo) => transferirLideranca(canalAtual, member.id, novoDono, client, ativo));
+          await comTimeout((ativo) => ativo() ? canalAtual.send({ content: `${mensagens.liderancaTransferida} ${novoDono} assumiu a liderança.` }) : undefined);
+        }
       }
 
       await comTimeout((ativo) => atualizarNomeCall(canalAtual, client, ativo));

@@ -11,6 +11,10 @@ const PERMISSOES_LIDER = {
 async function criarCallTemporaria(newState, client) {
   const guild = newState.guild;
   const member = newState.member;
+  if (!member) {
+    console.error(`Member ausente ao tentar criar call temporária, channelId: ${newState.channelId}, userId: ${newState.id}`);
+    return;
+  }
   const parentCategory = newState.channel.parentId;
   const tipo = client.stores.gatilhos.tipo(newState.channelId);
   const nomeInicial = gerarNomeCall(tipo, member.displayName, null, 1);

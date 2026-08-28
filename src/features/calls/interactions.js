@@ -71,10 +71,19 @@ async function onHide(interaction) {
 
   const { canal } = check;
   const estaVisivel = canal.permissionsFor(interaction.guild.roles.everyone).has(PermissionFlagsBits.ViewChannel);
-  await comTimeout(() => canal.permissionOverwrites.edit(interaction.guild.roles.everyone, { ViewChannel: estaVisivel ? false : null }), TEMPO_ESPERA_CALL);
-  await comTimeout(() => interaction.client.stores.calls.atualizar(canal.id, { hidden: estaVisivel }));
-  await comTimeout(() => atualizarPainel(canal, interaction.client));
-  return interaction.editReply({ content: estaVisivel ? mensagens.callOculta : mensagens.callVisivel });
+  await Promise.all([
+    comTimeout(() => canal.permissionOverwrites.edit(interaction.guild.roles.everyone, { ViewChannel: estaVisivel ? false : null }), TEMPO_ESPERA_CALL),
+    comTimeout(() => interaction.client.stores.calls.atualizar(canal.id, { hidden: estaVisivel }))
+  ]);
+  const resposta = await interaction.editReply({ content: estaVisivel ? mensagens.callOculta : mensagens.callVisivel });
+  atualizarPainel(canal, interaction.client).catch((error) => {
+    console.error(`Erro ao atualizar painel da call ${canal.id}:`, {
+      message: error?.message,
+      code: error?.code,
+      stack: error?.stack
+    });
+  });
+  return resposta;
 }
 
 async function onTransfer(interaction) {
