@@ -5,7 +5,8 @@ const { montarPainelCall } = require('./panel');
 const PERMISSOES_LIDER = {
   [PermissionFlagsBits.ManageChannels]: true,
   [PermissionFlagsBits.MoveMembers]: true,
-  [PermissionFlagsBits.Connect]: true
+  [PermissionFlagsBits.Connect]: true,
+  [PermissionFlagsBits.ViewChannel]: true
 };
 
 async function criarCallTemporaria(newState, client) {
@@ -26,7 +27,7 @@ async function criarCallTemporaria(newState, client) {
     permissionOverwrites: [
       {
         id: member.id,
-        allow: [PermissionFlagsBits.ManageChannels, PermissionFlagsBits.MoveMembers, PermissionFlagsBits.Connect]
+        allow: [PermissionFlagsBits.ManageChannels, PermissionFlagsBits.MoveMembers, PermissionFlagsBits.Connect, PermissionFlagsBits.ViewChannel]
       }
     ]
   });
