@@ -64,17 +64,16 @@ async function onLock(interaction) {
   return interaction.editReply({ content: estaTrancado ? mensagens.callLiberada : mensagens.callTrancada });
 }
 
-async function onHide(interaction) {
+async function alterarVisibilidade(interaction, ocultar) {
   await interaction.deferUpdate();
   await interaction.editReply({});
   const check = await exigirCallDoLider(interaction);
   if (!check.ok) return interaction.followUp({ ...check.reply, flags: 64 });
 
   const { canal } = check;
-  const estaVisivel = canal.permissionsFor(interaction.guild.roles.everyone).has(PermissionFlagsBits.ViewChannel);
   await Promise.all([
-    comTimeout(() => canal.permissionOverwrites.edit(interaction.guild.roles.everyone, { ViewChannel: estaVisivel ? false : null }), TEMPO_ESPERA_CALL),
-    comTimeout(() => interaction.client.stores.calls.atualizar(canal.id, { hidden: estaVisivel }))
+    comTimeout(() => canal.permissionOverwrites.edit(interaction.guild.roles.everyone, { ViewChannel: ocultar ? false : null }), TEMPO_ESPERA_CALL),
+    comTimeout(() => interaction.client.stores.calls.atualizar(canal.id, { hidden: ocultar }))
   ]);
   try {
     await atualizarPainel(canal, interaction.client);
@@ -85,7 +84,15 @@ async function onHide(interaction) {
       stack: error?.stack
     });
   }
-  return interaction.followUp({ content: estaVisivel ? mensagens.callOculta : mensagens.callVisivel, flags: 64 });
+  return interaction.followUp({ content: ocultar ? mensagens.callOculta : mensagens.callVisivel, flags: 64 });
+}
+
+async function onHide(interaction) {
+  return alterarVisibilidade(interaction, true);
+}
+
+async function onShow(interaction) {
+  return alterarVisibilidade(interaction, false);
 }
 
 async function onTransfer(interaction) {
@@ -303,6 +310,7 @@ function register(registry) {
   registry.button('btn_limit_modal', onLimitModal);
   registry.button('btn_lock', onLock);
   registry.button('btn_hide', onHide);
+  registry.button('btn_show', onShow);
   registry.button('btn_transfer', onTransfer);
   registry.button('btn_close_call', onClose);
   registry.button('btn_kick', (interaction) => onMemberAction(interaction, 'kick'));
