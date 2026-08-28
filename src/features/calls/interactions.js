@@ -66,6 +66,7 @@ async function onLock(interaction) {
 
 async function onHide(interaction) {
   await interaction.deferUpdate();
+  await interaction.editReply({});
   const check = await exigirCallDoLider(interaction);
   if (!check.ok) return interaction.followUp({ ...check.reply, flags: 64 });
 
