@@ -13,8 +13,7 @@ function montarPainelCall(member) {
 
   const linha2 = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('btn_lock').setLabel('Trancar / Destrancar').setStyle(ButtonStyle.Primary).setEmoji('🔒'),
-    new ButtonBuilder().setCustomId('btn_hide').setLabel('Ocultar').setStyle(ButtonStyle.Secondary).setEmoji('🙈'),
-    new ButtonBuilder().setCustomId('btn_show').setLabel('Mostrar').setStyle(ButtonStyle.Secondary).setEmoji('👁️')
+    new ButtonBuilder().setCustomId('btn_hide').setLabel('Ocultar / Mostrar').setStyle(ButtonStyle.Secondary).setEmoji('👁️')
   );
 
   const linha3 = new ActionRowBuilder().addComponents(
