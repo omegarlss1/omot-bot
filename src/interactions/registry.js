@@ -34,8 +34,22 @@ class InteractionRegistry {
     const found = list.find((entry) => matches(entry.pattern, interaction.customId));
     if (!found) return false;
 
-    await found.execute(interaction);
-    return true;
+    try {
+      await found.execute(interaction);
+      return true;
+    } catch (err) {
+      const nome = interaction.customId || interaction.type || 'interação';
+      console.error(`Erro ao executar handler de interação ${nome}:`, {
+        type: interaction?.type,
+        customId: interaction?.customId,
+        userId: interaction?.user?.id,
+        guildId: interaction?.guildId,
+        message: err?.message,
+        code: err?.code,
+        stack: err?.stack
+      });
+      throw err;
+    }
   }
 }
 
