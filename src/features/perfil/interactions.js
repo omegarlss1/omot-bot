@@ -688,37 +688,43 @@ async function onModalFichaPerfil(interaction) {
 
   if (!validacaoEtapa.ok) {
     const dadosParaReabrir = { ...dadosExistentes };
-    fichaEmAndamento.set(interaction.user.id, dadosParaReabrir);
-    if (!interaction || typeof interaction.showModal !== 'function') {
-      console.log('[ficha-modal-showModal-missing-on-error]', { customId: interaction?.customId, hasShowModal: typeof interaction?.showModal === 'function' });
-      return;
-    }
+    const modalReaberto = buildFichaModalEtapa(etapaAtual, dadosParaReabrir, {
+      erro: validacaoEtapa.erro,
+      campoErroId: validacaoEtapa.campoId
+    });
+
     console.log('[ficha-modal-reopen-erro]', {
       customId: interaction.customId,
       etapaAtual,
       showModalType: typeof interaction.showModal,
       valoresPreenchidos: Object.keys(dadosParaReabrir).length
     });
-    return interaction.showModal(buildFichaModalEtapa(etapaAtual, dadosParaReabrir, {
-      erro: validacaoEtapa.erro,
-      campoErroId: validacaoEtapa.campoId
-    }));
+
+    setImmediate(() => {
+      const estadoAtual = normalizarDadosFicha(fichaEmAndamento.get(interaction.user.id));
+      fichaEmAndamento.set(interaction.user.id, { ...estadoAtual, ...dadosParaReabrir, etapa: etapaAtual });
+    });
+
+    return interaction.showModal(modalReaberto);
   }
 
-  const dadosPersistidos = salvarDadosFichaUsuario(interaction.user.id, dadosExistentes);
-
   if (etapaAtual < FICHA_MODAL_STEPS.length - 1) {
-    if (!interaction || typeof interaction.showModal !== 'function') {
-      console.log('[ficha-modal-showModal-missing-on-next]', { customId: interaction?.customId, hasShowModal: typeof interaction?.showModal === 'function' });
-      return;
-    }
+    const dadosAtual = { ...dadosExistentes };
+    const modalSeguinte = buildFichaModalEtapa(etapaAtual + 1, dadosAtual);
+
     console.log('[ficha-modal-next-step]', {
       customId: interaction.customId,
       proximaEtapa: etapaAtual + 1,
       showModalType: typeof interaction.showModal,
-      valoresPreenchidos: Object.keys(dadosPersistidos).length
+      valoresPreenchidos: Object.keys(dadosAtual).length
     });
-    return interaction.showModal(buildFichaModalEtapa(etapaAtual + 1, dadosPersistidos));
+
+    setImmediate(() => {
+      const estadoAtual = normalizarDadosFicha(fichaEmAndamento.get(interaction.user.id));
+      fichaEmAndamento.set(interaction.user.id, { ...estadoAtual, ...dadosAtual, etapa: etapaAtual + 1 });
+    });
+
+    return interaction.showModal(modalSeguinte);
   }
 
   await interaction.deferReply({ flags: 64 });
