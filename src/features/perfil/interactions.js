@@ -55,6 +55,34 @@ function resetarFichaEmAndamento(userId) {
   fichaEmAndamento.set(userId, {});
 }
 
+function prepararDadosFichaSalva(perfil) {
+  if (!perfil) return {};
+
+  const dataNascimento = perfil.dataNascimento && /^\d{4}-\d{2}-\d{2}$/.test(perfil.dataNascimento)
+    ? `${perfil.dataNascimento.slice(8, 10)}/${perfil.dataNascimento.slice(5, 7)}/${perfil.dataNascimento.slice(0, 4)}`
+    : perfil.dataNascimento;
+
+  return normalizarDadosFicha({
+    nome_comum_input: perfil.nomeComum,
+    data_nascimento_input: dataNascimento,
+    estado_input: perfil.estado,
+    pais_input: perfil.pais,
+    bio_input: perfil.bio,
+    cla_atual_input: perfil.claAtual,
+    nick_principal_input: perfil.nick_principal,
+    clas_anteriores_input: Array.isArray(perfil.clasAnteriores) ? perfil.clasAnteriores.join(', ') : perfil.clasAnteriores,
+    modo_favorito_input: perfil.modoFavorito,
+    controle_tipo_input: perfil.controleTipo,
+    tiktok_input: perfil.tiktok,
+    instagram_input: perfil.instagram,
+    input: perfil.input,
+    rank_x1: perfil.rankX1,
+    rank_x2: perfil.rankX2,
+    pico_rank: perfil.picoRank,
+    nicks_secundarios: perfil.nicks_secundarios
+  });
+}
+
 const VALORES_INPUT_PERMITIDOS = ['Touch', 'Controle', 'Híbrido'];
 const VALORES_PLATAFORMA_PERMITIDAS = ['Android', 'iOS'];
 const VALORES_RANK_PERMITIDOS = ['Bronze', 'Prata', 'Ouro', 'Platina', 'Diamante', 'Champion', 'Grand Champion'];
@@ -400,10 +428,26 @@ async function onIniciarFicha(interaction) {
     return;
   }
 
-  resetarFichaEmAndamento(interaction.user.id);
+  const perfilSalvo = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: interaction.user.id }).lean();
+  const dadosSalvos = prepararDadosFichaSalva(perfilSalvo);
+  fichaEmAndamento.set(interaction.user.id, dadosSalvos);
+  const componentes = buildFichaSelects(dadosSalvos);
+  const selecoesCompletas = OBRIGATORIOS.every((campo) => dadosSalvos[campo]);
+
+  if (selecoesCompletas) {
+    componentes.push(new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('btn_continuar_ficha')
+        .setLabel('Continuar com os dados salvos')
+        .setStyle(ButtonStyle.Success)
+    ));
+  }
+
   return interaction.reply({
-    content: 'Antes de abrir a ficha, escolha as opções fixas abaixo para ficar tudo consistente:',
-    components: buildFichaSelects(),
+    content: perfilSalvo
+      ? 'Encontramos sua ficha anterior. Revise os selects ou continue para editar os dados salvos:'
+      : 'Antes de abrir a ficha, escolha as opções fixas abaixo para ficar tudo consistente:',
+    components: componentes,
     ephemeral: true
   });
 }
@@ -465,7 +509,7 @@ async function onContinuarFicha(interaction) {
     return interaction.reply({ content: `❌ Faltam opções obrigatórias: ${faltando.map((campo) => nomesCampos[campo]).join(', ')}.`, ephemeral: true });
   }
 
-  return interaction.showModal(buildFichaModalEtapa(0));
+  return interaction.showModal(buildFichaModalEtapa(0, dados));
 }
 
 async function onContinuarFichaEtapa(interaction) {
