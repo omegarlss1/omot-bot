@@ -704,7 +704,7 @@ function buildPerfilEmbed(perfil, member, { isPublic = false } = {}) {
         inline: false
       }
     )
-    .setFooter({ text: 'Baseado em 75 indicadores avaliados' })
+    .setFooter({ text: 'Baseado em 74 indicadores avaliados' })
     .setColor('#00C2FF');
 
   const nomeHeader = `${nomeExibicao} • ${idade} anos • ${estado} - ${pais}`;
@@ -774,7 +774,7 @@ function buildPerfilEmbed(perfil, member, { isPublic = false } = {}) {
         inline: false
       }
     )
-    .setFooter({ text: 'Baseado em 75 indicadores avaliados' })
+    .setFooter({ text: 'Baseado em 74 indicadores avaliados' })
     .setColor('#00C2FF');
 
   const nomeHeader = `${nomeExibicao} • ${idade} anos • ${estado} - ${pais}`;

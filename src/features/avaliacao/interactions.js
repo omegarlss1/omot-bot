@@ -1,6 +1,6 @@
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, StringSelectMenuBuilder } = require('discord.js');
 const { MAPA_INDICADORES, calcularCategorias } = require('../../data/mapa_indicadores');
-const { CATEGORIAS_INDICADORES } = require('../../data/indicadores');
+const { CATEGORIAS_INDICADORES, INDICADORES_POR_CATEGORIA } = require('../../data/indicadores');
 const AvaliacaoPerfil = require('../../db/models/avaliacaoPerfil');
 const PerfilMembro = require('../../db/models/perfilMembro');
 
@@ -8,7 +8,7 @@ const avaliacoes = new Map();
 const categoriaAtual = new Map();
 const paginaAtual = new Map();
 const progressoSalvo = new Map();
-const INDICADORES_POR_PAGINA = 4;
+const INDICADORES_POR_PAGINA = 5;
 
 const ICONE_CATEGORIAS = {
   inteligencia_leitura: '🧠',
@@ -36,10 +36,15 @@ const CATEGORIAS = Object.entries(MAPA_INDICADORES).map(([key, itens]) => ({
   key,
   nome: NOME_CATEGORIAS[key],
   icone: ICONE_CATEGORIAS[key],
-  itens: itens.map((itemId) => ({
+  itens: itens.map((itemId) => {
+    const indicador = (INDICADORES_POR_CATEGORIA[key] || []).find((item) => item.key === itemId);
+    return {
     id: itemId,
-    label: formatarIndicador(itemId)
-  }))
+    label: indicador?.nome || formatarIndicador(itemId),
+    descricao: indicador?.descricao || '',
+    peso: indicador?.peso || 1
+    };
+  })
 }));
 
 function formatarIndicador(itemId) {
@@ -62,7 +67,6 @@ function getCategoriaAtual(userId) {
   if (!categoriaAtual.has(userId)) {
     categoriaAtual.set(userId, 0);
   }
-  paginaAtual.set(userId, 0);
   return categoriaAtual.get(userId);
 }
 
@@ -81,15 +85,7 @@ function separarIndicadoresPorCategoria(respostas) {
 }
 
 function temTodosItensPreenchidos(categoria, respostas) {
-  return categoria.itens.every((item) => respostas[item.id] !== undefined && respostas[item.id] !== null);
-}
-
-function gerarBotaoNota(categoriaIndex, item, notaAtual, nota) {
-  const selecionado = Number(notaAtual) === Number(nota);
-  return new ButtonBuilder()
-    .setCustomId(`avaliar_${categoriaIndex}_${item.id}_${nota}`)
-    .setLabel(String(nota))
-    .setStyle(selecionado ? ButtonStyle.Primary : ButtonStyle.Secondary);
+  return categoria.itens.every((item) => respostas[item.id] !== undefined);
 }
 
 function buildCategoriaComponents(categoriaIndex, respostas, pagina = 0) {
@@ -97,19 +93,32 @@ function buildCategoriaComponents(categoriaIndex, respostas, pagina = 0) {
   const rows = [];
   const totalPaginas = Math.ceil(categoria.itens.length / INDICADORES_POR_PAGINA);
   const inicio = pagina * INDICADORES_POR_PAGINA;
+  const itensPagina = categoria.itens.slice(inicio, inicio + INDICADORES_POR_PAGINA);
 
-  categoria.itens.slice(inicio, inicio + INDICADORES_POR_PAGINA).forEach((item) => {
-    const row = new ActionRowBuilder();
-    for (let nota = 1; nota <= 5; nota += 1) {
-      row.addComponents(gerarBotaoNota(categoriaIndex, item, respostas[item.id], nota));
-    }
-    rows.push(row);
-  });
+  const menuIndicadores = new StringSelectMenuBuilder()
+    .setCustomId(`avaliar_binario_${categoriaIndex}_${pagina}`)
+    .setPlaceholder('Marque os indicadores aplicáveis')
+    .setMinValues(0)
+    .setMaxValues(itensPagina.length)
+    .addOptions(itensPagina.map((item) => ({
+      label: item.label.slice(0, 100),
+      value: item.id,
+      description: item.descricao.slice(0, 100),
+      default: Boolean(respostas[item.id])
+    })));
+  rows.push(new ActionRowBuilder().addComponents(menuIndicadores));
 
+  // A página seguinte só é liberada após registrar (marcado ou não) os cinco
+  // indicadores atuais. Isso preserva a resposta "não é minha característica".
+  const paginaRespondida = itensPagina.every((item) => respostas[item.id] !== undefined);
   const avancarDisabled = !temTodosItensPreenchidos(categoria, respostas) || pagina < totalPaginas - 1;
   const rowAcao = new ActionRowBuilder().addComponents(
     ...(pagina > 0 ? [new ButtonBuilder().setCustomId('pagina_categoria_anterior').setLabel('← Página anterior').setStyle(ButtonStyle.Secondary)] : []),
-    ...(pagina < totalPaginas - 1 ? [new ButtonBuilder().setCustomId('pagina_categoria_proxima').setLabel('Próxima página →').setStyle(ButtonStyle.Primary)] : []),
+    ...(pagina < totalPaginas - 1 ? [new ButtonBuilder()
+      .setCustomId('pagina_categoria_proxima')
+      .setLabel('Ver mais 5 →')
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(!paginaRespondida)] : []),
     new ButtonBuilder()
       .setCustomId('proxima_categoria')
       .setLabel(categoriaIndex === CATEGORIAS.length - 1 ? '✓ FINALIZAR AVALIAÇÃO' : 'PRÓXIMA CATEGORIA →')
@@ -142,32 +151,6 @@ async function responderMensagem(target, payload) {
   return null;
 }
 
-function buildCategoriaEmbed(categoriaIndex, respostas) {
-  const categoria = CATEGORIAS[categoriaIndex];
-  const totalAvaliados = totalItensAvaliados(categoriaAtual.get('debug') || 0);
-  const avaliadosNaCategoria = categoria.itens.filter((item) => respostas[item.id] !== undefined && respostas[item.id] !== null).length;
-
-  const embed = new EmbedBuilder()
-    .setTitle(`📊 Avaliação - ${categoria.icone} ${categoria.nome} (${categoriaIndex + 1}/${CATEGORIAS.length})`)
-    .setDescription('Avalie cada característica de 1 a 5:')
-    .setColor('#00C2FF');
-
-  categoria.itens.forEach((item) => {
-    const valor = respostas[item.id];
-    embed.addFields({
-      name: `**${item.label}**`,
-      value: valor !== undefined && valor !== null ? `Nota atual: **${valor}/5**` : 'Ainda não avaliado',
-      inline: false
-    });
-  });
-
-  embed.setFooter({
-    text: `Progresso: ${totalItensAvaliados(Object.keys(respostas).length > 0 ? 'temp' : 'temp')}/${75 * CATEGORIAS.length} itens avaliados | Categoria ${categoriaIndex + 1} de ${CATEGORIAS.length}`
-  });
-
-  return embed;
-}
-
 function buildCategoriaEmbedReal(categoriaIndex, userId, pagina = 0) {
   const categoria = CATEGORIAS[categoriaIndex];
   const respostas = getRespostas(userId);
@@ -177,20 +160,20 @@ function buildCategoriaEmbedReal(categoriaIndex, userId, pagina = 0) {
 
   const embed = new EmbedBuilder()
     .setTitle(`📊 Avaliação - ${categoria.icone} ${categoria.nome} (${categoriaIndex + 1}/${CATEGORIAS.length}) | Página ${pagina + 1}/${totalPaginas}`)
-    .setDescription('Avalie cada característica de 1 a 5:')
+    .setDescription('Marque as características que fazem parte do perfil do jogador. A descrição explica cada indicador.')
     .setColor('#00C2FF');
 
   categoria.itens.slice(inicio, inicio + INDICADORES_POR_PAGINA).forEach((item) => {
     const valor = respostas[item.id];
     embed.addFields({
       name: `**${item.label}**`,
-      value: valor !== undefined && valor !== null ? `Nota atual: **${valor}/5**` : 'Ainda não avaliado',
+      value: `${item.descricao || 'Sem descrição.'}\nStatus: **${valor ? 'Marcado' : 'Não marcado'}**`,
       inline: false
     });
   });
 
   embed.setFooter({
-    text: `Progresso: ${totalAvaliados} / 75 itens avaliados | Categoria ${categoriaIndex + 1} de ${CATEGORIAS.length}`
+    text: `Progresso: ${totalAvaliados} / 74 itens avaliados | Categoria ${categoriaIndex + 1} de ${CATEGORIAS.length}`
   });
 
   return embed;
@@ -278,22 +261,25 @@ async function iniciarAvaliacao(interaction) {
   await renderizarCategoria(interaction, categoriaIndex);
 }
 
-async function onNotaSelecionada(interaction) {
-  const match = interaction.customId.match(/^avaliar_(\d+)_(.+)_(\d+)$/);
+async function onIndicadoresBinariosSelecionados(interaction) {
+  const match = interaction.customId.match(/^avaliar_binario_(\d+)_(\d+)$/);
   if (!match) return;
 
-  const [, categoriaIndexTexto, itemId, notaTexto] = match;
-  const categoriaIndex = Number(categoriaIndexTexto);
-  const nota = Number(notaTexto);
-  const userId = interaction.user.id;
-  const guildId = interaction.guildId || interaction.guild?.id;
-  const respostas = getRespostas(userId);
+  const categoriaIndex = Number(match[1]);
+  const pagina = Number(match[2]);
+  const categoria = CATEGORIAS[categoriaIndex];
+  const inicio = pagina * INDICADORES_POR_PAGINA;
+  const itensPagina = categoria.itens.slice(inicio, inicio + INDICADORES_POR_PAGINA);
+  const selecionados = new Set(interaction.values);
+  const respostas = getRespostas(interaction.user.id);
 
-  respostas[itemId] = nota;
-  categoriaAtual.set(userId, categoriaIndex);
+  itensPagina.forEach((item) => {
+    respostas[item.id] = selecionados.has(item.id);
+  });
 
-  await salvarProgresso(userId, guildId);
-  await renderizarCategoria(interaction, categoriaIndex);
+  categoriaAtual.set(interaction.user.id, categoriaIndex);
+  await salvarProgresso(interaction.user.id, interaction.guildId || interaction.guild?.id);
+  return renderizarCategoria(interaction, categoriaIndex);
 }
 
 async function onPaginaCategoria(interaction) {
@@ -348,7 +334,8 @@ async function finalizarAvaliacao(interaction) {
   const top = Object.entries(respostas)
     .sort((a, b) => Number(b[1]) - Number(a[1]))
     .slice(0, 5)
-    .map(([itemId, nota]) => `• ${formatarIndicador(itemId)}: ${nota}/5`)
+    .filter(([, marcado]) => marcado)
+    .map(([itemId]) => `• ${formatarIndicador(itemId)}: Marcado`)
     .join('\n');
 
   embed.addFields({
@@ -436,7 +423,7 @@ async function onAbrirAvaliacao(interaction) {
 }
 
 function register(registry) {
-  registry.button(/^avaliar_\d+_.+_\d+$/, onNotaSelecionada);
+  registry.select(/^avaliar_binario_\d+_\d+$/, onIndicadoresBinariosSelecionados);
   registry.button('proxima_categoria', onProximaCategoria);
   registry.button('pagina_categoria_anterior', onPaginaCategoria);
   registry.button('pagina_categoria_proxima', onPaginaCategoria);
@@ -455,7 +442,7 @@ module.exports = {
   iniciarAvaliacao,
   renderizarCategoria,
   finalizarAvaliacao,
-  onNotaSelecionada,
+  onIndicadoresBinariosSelecionados,
   onProximaCategoria,
   onSalvarProgresso
 };

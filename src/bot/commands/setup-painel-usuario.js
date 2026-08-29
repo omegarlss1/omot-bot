@@ -28,7 +28,7 @@ module.exports = {
 
       const rowPerfilPublico = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('btn_abrir_select_ver_perfil').setLabel('Ver Perfil').setStyle(ButtonStyle.Secondary).setEmoji('🔎'),
-        new ButtonBuilder().setCustomId('btn_abrir_avaliacao').setLabel('Avaliar perfil (75 indicadores)').setStyle(ButtonStyle.Primary).setEmoji('📊')
+        new ButtonBuilder().setCustomId('btn_abrir_avaliacao').setLabel('Avaliar perfil (74 indicadores)').setStyle(ButtonStyle.Primary).setEmoji('📊')
       );
 
       await interaction.channel.send({ embeds: [embed], components: [row, rowPerfilPublico] });
