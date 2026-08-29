@@ -427,6 +427,15 @@ async function onContinuarFicha(interaction) {
   return interaction.showModal(buildFichaModalEtapa(0));
 }
 
+async function onContinuarFichaEtapa(interaction) {
+  const match = interaction.customId.match(/^btn_continuar_ficha_(\d+)$/);
+  if (!match) return;
+
+  const stepIndex = Number(match[1]) - 1;
+  const dados = normalizarDadosFicha(fichaEmAndamento.get(interaction.user.id));
+  return interaction.showModal(buildFichaModalEtapa(stepIndex, dados));
+}
+
 function buildPerfilEmbed(perfil, member, { isPublic = false } = {}) {
   const nomeExibicao = obterNomeExibicao(perfil, member);
   const idade = Number(perfil?.idade) || calcularIdade(perfil?.dataNascimento);
@@ -688,50 +697,38 @@ async function onModalFichaPerfil(interaction) {
 
   if (!validacaoEtapa.ok) {
     const dadosParaReabrir = { ...dadosExistentes };
-    const modalReaberto = buildFichaModalEtapa(etapaAtual, dadosParaReabrir, {
-      erro: validacaoEtapa.erro,
-      campoErroId: validacaoEtapa.campoId
-    });
+    const userId = interaction.user.id;
+    fichaEmAndamento.set(userId, { ...normalizarDadosFicha(fichaEmAndamento.get(userId)), ...dadosParaReabrir, etapa: etapaAtual });
+    const proximaEtapa = etapaAtual + 1;
 
-    console.log('[ficha-modal-reopen-erro]', {
-      customId: interaction.customId,
-      etapaAtual,
-      showModalType: typeof interaction.showModal,
-      valoresPreenchidos: Object.keys(dadosParaReabrir).length
+    return interaction.reply({
+      content: `${validacaoEtapa.erro} Corrija o campo e tente novamente.`,
+      components: [new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`btn_continuar_ficha_${proximaEtapa}`)
+          .setLabel(`Corrigir ficha ${proximaEtapa}/4`)
+          .setStyle(ButtonStyle.Primary)
+      )],
+      ephemeral: true
     });
-
-    setImmediate(() => {
-      const estadoAtual = normalizarDadosFicha(fichaEmAndamento.get(interaction.user.id));
-      fichaEmAndamento.set(interaction.user.id, { ...estadoAtual, ...dadosParaReabrir, etapa: etapaAtual });
-    });
-
-    await interaction.showModal(modalReaberto);
-    return;
   }
 
   if (etapaAtual < FICHA_MODAL_STEPS.length - 1) {
     const dadosAtual = { ...dadosExistentes };
-    const modal = new ModalBuilder()
-      .setCustomId(`modal_ficha_perfil_${etapaAtual + 2}`)
-      .setTitle(`Ficha ${etapaAtual + 2}/4`);
-    const camposEtapa2 = FICHA_MODAL_STEPS[1];
-    const rowsEtapa2 = camposEtapa2.map((campo) => new ActionRowBuilder().addComponents(
-        new TextInputBuilder()
-          .setCustomId(campo.id)
-          .setLabel(campo.label)
-          .setStyle(campo.style)
-          .setRequired(Boolean(campo.required))
-          .setMaxLength(campo.id === 'bio_input' ? 150 : 4000)
-      ));
-    modal.addComponents(...rowsEtapa2);
+    const userId = interaction.user.id;
+    fichaEmAndamento.set(userId, { ...normalizarDadosFicha(fichaEmAndamento.get(userId)), ...dadosAtual, etapa: etapaAtual + 1 });
+    const proximaEtapa = etapaAtual + 2;
 
-    await interaction.showModal(modal);
-
-    setImmediate(() => {
-      const estadoAtual = normalizarDadosFicha(fichaEmAndamento.get(interaction.user.id));
-      fichaEmAndamento.set(interaction.user.id, { ...estadoAtual, ...dadosAtual, etapa: etapaAtual + 1 });
+    return interaction.reply({
+      content: `✅ Etapa ${etapaAtual + 1}/4 salva. Clique para continuar na etapa ${proximaEtapa}/4.`,
+      components: [new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`btn_continuar_ficha_${proximaEtapa}`)
+          .setLabel(`Abrir ficha ${proximaEtapa}/4`)
+          .setStyle(ButtonStyle.Primary)
+      )],
+      ephemeral: true
     });
-    return;
   }
 
   await interaction.deferReply({ flags: 64 });
@@ -928,6 +925,7 @@ async function onSelectCargos(interaction) {
 function register(registry) {
   registry.button('btn_iniciar_ficha', onIniciarFicha);
   registry.button('btn_continuar_ficha', onContinuarFicha);
+  registry.button(/^btn_continuar_ficha_\d+$/, onContinuarFichaEtapa);
   registry.button('btn_ver_perfil', onVerPerfil);
   registry.button('btn_abrir_select_ver_perfil', onAbrirSelecionarPerfil);
   registry.button(/^btn_ver_titulos_\d+$/, onVerTodosTitulos);
