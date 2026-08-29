@@ -25,6 +25,37 @@ const CATEGORIAS_META = {
   regularidade: { emoji: '📈', label: 'Regularidade e desempenho' }
 };
 
+const fichaEmAndamento = new Map();
+
+const FICHA_MODAL_STEPS = [
+  [
+    { id: 'nome_comum_input', label: 'Nome da comunidade / como quer ser conhecido', style: TextInputStyle.Short, required: true },
+    { id: 'data_nascimento_input', label: 'Data de nascimento (YYYY-MM-DD)', style: TextInputStyle.Short, required: false },
+    { id: 'data_entrada_omega_input', label: 'Data de entrada na Ômega (YYYY-MM-DD)', style: TextInputStyle.Short, required: false },
+    { id: 'estado_input', label: 'Estado', style: TextInputStyle.Short, required: false },
+    { id: 'pais_input', label: 'País', style: TextInputStyle.Short, required: false }
+  ],
+  [
+    { id: 'bio_input', label: 'Bio (máx. 150)', style: TextInputStyle.Paragraph, required: false },
+    { id: 'cla_atual_input', label: 'CLA atual', style: TextInputStyle.Short, required: false },
+    { id: 'clas_anteriores_input', label: 'CLAs anteriores (separadas por ,)', style: TextInputStyle.Short, required: false },
+    { id: 'rank_x1_input', label: 'Rank X1', style: TextInputStyle.Short, required: false },
+    { id: 'rank_x2_input', label: 'Rank X2', style: TextInputStyle.Short, required: false }
+  ],
+  [
+    { id: 'pico_rank_input', label: 'Pico Rank', style: TextInputStyle.Short, required: false },
+    { id: 'modo_favorito_input', label: 'Modo favorito', style: TextInputStyle.Short, required: false },
+    { id: 'input_input', label: 'Input (Touch / Controle / Híbrido)', style: TextInputStyle.Short, required: false },
+    { id: 'controle_tipo_input', label: 'Tipo de controle', style: TextInputStyle.Short, required: false },
+    { id: 'plataforma_input', label: 'Plataforma (Android / iOS)', style: TextInputStyle.Short, required: false }
+  ],
+  [
+    { id: 'horario_joga_input', label: 'Horário que joga', style: TextInputStyle.Short, required: false },
+    { id: 'tiktok_input', label: 'TikTok', style: TextInputStyle.Short, required: false },
+    { id: 'instagram_input', label: 'Instagram', style: TextInputStyle.Short, required: false }
+  ]
+];
+
 function formatarBarra(valor) {
   const porcentagem = Math.max(0, Math.min(100, Number(valor) || 0));
   const preenchidos = Math.round(porcentagem / 10);
@@ -79,7 +110,7 @@ function buildAdminButtons(targetId) {
     new ButtonBuilder().setCustomId(`btn_admin_gol_${targetId}`).setLabel('+ Gol').setStyle(ButtonStyle.Success).setEmoji('⚽'),
     new ButtonBuilder().setCustomId(`btn_admin_assist_${targetId}`).setLabel('+ Assist').setStyle(ButtonStyle.Primary).setEmoji('🅰️'),
     new ButtonBuilder().setCustomId(`btn_admin_save_${targetId}`).setLabel('+ Save').setStyle(ButtonStyle.Secondary).setEmoji('🧤'),
-    new ButtonBuilder().setCustomId(`btn_admin_mvp_${targetId}`).setLabel('+ MVP').setStyle(ButtonStyle.Warning).setEmoji('🏅')
+    new ButtonBuilder().setCustomId(`btn_admin_mvp_${targetId}`).setLabel('+ MVP').setStyle(ButtonStyle.Danger).setEmoji('🏅')
   );
 
   return [row];
@@ -143,31 +174,13 @@ async function onPaginarTitulos(interaction) {
   await interaction.update({ embeds: [embed], components: [buildTitulosButtons(targetId, pagina.paginaAtual, pagina.totalPaginas)] });
 }
 
-async function onIniciarFicha(interaction) {
-  const modal = new ModalBuilder().setCustomId('modal_ficha_perfil').setTitle('Ficha de Membro - Perfil');
+function buildFichaModalEtapa(stepIndex) {
+  const campos = FICHA_MODAL_STEPS[stepIndex] || [];
+  const modal = new ModalBuilder()
+    .setCustomId(`modal_ficha_perfil_${stepIndex + 1}`)
+    .setTitle(`Ficha de Membro - Perfil (${stepIndex + 1}/${FICHA_MODAL_STEPS.length})`);
 
-  const inputs = [
-    { id: 'nome_comum_input', label: 'Nome da comunidade / como quer ser conhecido', style: TextInputStyle.Short, required: true },
-    { id: 'data_nascimento_input', label: 'Data de nascimento (YYYY-MM-DD)', style: TextInputStyle.Short, required: false },
-    { id: 'data_entrada_omega_input', label: 'Data de entrada na Ômega (YYYY-MM-DD)', style: TextInputStyle.Short, required: false },
-    { id: 'estado_input', label: 'Estado', style: TextInputStyle.Short, required: false },
-    { id: 'pais_input', label: 'País', style: TextInputStyle.Short, required: false },
-    { id: 'bio_input', label: 'Bio (máx. 150)', style: TextInputStyle.Paragraph, required: false },
-    { id: 'cla_atual_input', label: 'CLA atual', style: TextInputStyle.Short, required: false },
-    { id: 'clas_anteriores_input', label: 'CLAs anteriores (separadas por ,)', style: TextInputStyle.Short, required: false },
-    { id: 'rank_x1_input', label: 'Rank X1', style: TextInputStyle.Short, required: false },
-    { id: 'rank_x2_input', label: 'Rank X2', style: TextInputStyle.Short, required: false },
-    { id: 'pico_rank_input', label: 'Pico Rank', style: TextInputStyle.Short, required: false },
-    { id: 'modo_favorito_input', label: 'Modo favorito', style: TextInputStyle.Short, required: false },
-    { id: 'input_input', label: 'Input (Touch / Controle / Híbrido)', style: TextInputStyle.Short, required: false },
-    { id: 'controle_tipo_input', label: 'Tipo de controle', style: TextInputStyle.Short, required: false },
-    { id: 'plataforma_input', label: 'Plataforma (Android / iOS)', style: TextInputStyle.Short, required: false },
-    { id: 'horario_joga_input', label: 'Horário que joga', style: TextInputStyle.Short, required: false },
-    { id: 'tiktok_input', label: 'TikTok', style: TextInputStyle.Short, required: false },
-    { id: 'instagram_input', label: 'Instagram', style: TextInputStyle.Short, required: false }
-  ];
-
-  inputs.forEach((campo) => {
+  campos.forEach((campo) => {
     const input = new TextInputBuilder()
       .setCustomId(campo.id)
       .setLabel(campo.label)
@@ -181,7 +194,12 @@ async function onIniciarFicha(interaction) {
     modal.addComponents(new ActionRowBuilder().addComponents(input));
   });
 
-  return interaction.showModal(modal);
+  return modal;
+}
+
+async function onIniciarFicha(interaction) {
+  fichaEmAndamento.delete(interaction.user.id);
+  return interaction.showModal(buildFichaModalEtapa(0));
 }
 
 function buildPerfilEmbed(perfil, member, { isPublic = false } = {}) {
@@ -265,6 +283,10 @@ async function onVerPerfil(interaction) {
 
   const embedPerfil = buildPerfilEmbed(perfil, interaction.member, { isPublic: false });
   const adminButtons = interaction.member.permissions?.has(PermissionFlagsBits.Administrator) ? buildAdminButtons(interaction.user.id) : [];
+  const titulosFisicos = getTitulosDoJogador(Array.isArray(perfil.titulosLista) ? perfil.titulosLista : []);
+  const componentsExtras = titulosFisicos.length > 10
+    ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`btn_ver_titulos_${interaction.user.id}`).setLabel(`Ver todos os títulos (${titulosFisicos.length}+)`).setStyle(ButtonStyle.Primary))]
+    : [];
 
   return interaction.editReply({ embeds: [embedPerfil], components: [...adminButtons, ...componentsExtras] });
 }
@@ -317,26 +339,46 @@ async function onSelectVerPerfil(interaction) {
 }
 
 async function onModalFichaPerfil(interaction) {
+  const match = interaction.customId.match(/^modal_ficha_perfil_(\d+)$/);
+  if (!match) return;
+
+  const etapaAtual = Number(match[1]) - 1;
+  const dadosExistentes = fichaEmAndamento.get(interaction.user.id) || {};
+
+  FICHA_MODAL_STEPS[etapaAtual].forEach((campo) => {
+    const valor = interaction.fields.getTextInputValue(campo.id).trim();
+    if (valor !== '') {
+      dadosExistentes[campo.id] = valor;
+    }
+  });
+
+  fichaEmAndamento.set(interaction.user.id, dadosExistentes);
+
+  if (etapaAtual < FICHA_MODAL_STEPS.length - 1) {
+    return interaction.showModal(buildFichaModalEtapa(etapaAtual + 1));
+  }
+
   await interaction.deferReply({ flags: 64 });
 
-  const nomeComum = interaction.fields.getTextInputValue('nome_comum_input').trim() || interaction.user.username;
-  const dataNascimento = interaction.fields.getTextInputValue('data_nascimento_input').trim();
-  const dataEntradaOmega = interaction.fields.getTextInputValue('data_entrada_omega_input').trim();
-  const estado = interaction.fields.getTextInputValue('estado_input').trim();
-  const pais = interaction.fields.getTextInputValue('pais_input').trim();
-  const bio = interaction.fields.getTextInputValue('bio_input').trim();
-  const claAtual = interaction.fields.getTextInputValue('cla_atual_input').trim();
-  const clasAnteriores = interaction.fields.getTextInputValue('clas_anteriores_input').trim();
-  const rankX1 = interaction.fields.getTextInputValue('rank_x1_input').trim();
-  const rankX2 = interaction.fields.getTextInputValue('rank_x2_input').trim();
-  const picoRank = interaction.fields.getTextInputValue('pico_rank_input').trim();
-  const modoFavorito = interaction.fields.getTextInputValue('modo_favorito_input').trim();
-  const input = interaction.fields.getTextInputValue('input_input').trim();
-  const controleTipo = interaction.fields.getTextInputValue('controle_tipo_input').trim();
-  const plataforma = interaction.fields.getTextInputValue('plataforma_input').trim();
-  const horarioJoga = interaction.fields.getTextInputValue('horario_joga_input').trim();
-  const tiktok = interaction.fields.getTextInputValue('tiktok_input').trim();
-  const instagram = interaction.fields.getTextInputValue('instagram_input').trim();
+  const dados = fichaEmAndamento.get(interaction.user.id) || {};
+  const nomeComum = dados.nome_comum_input?.trim() || interaction.user.username;
+  const dataNascimento = dados.data_nascimento_input?.trim();
+  const dataEntradaOmega = dados.data_entrada_omega_input?.trim();
+  const estado = dados.estado_input?.trim();
+  const pais = dados.pais_input?.trim();
+  const bio = dados.bio_input?.trim();
+  const claAtual = dados.cla_atual_input?.trim();
+  const clasAnteriores = dados.clas_anteriores_input?.trim();
+  const rankX1 = dados.rank_x1_input?.trim();
+  const rankX2 = dados.rank_x2_input?.trim();
+  const picoRank = dados.pico_rank_input?.trim();
+  const modoFavorito = dados.modo_favorito_input?.trim();
+  const input = dados.input_input?.trim();
+  const controleTipo = dados.controle_tipo_input?.trim();
+  const plataforma = dados.plataforma_input?.trim();
+  const horarioJoga = dados.horario_joga_input?.trim();
+  const tiktok = dados.tiktok_input?.trim();
+  const instagram = dados.instagram_input?.trim();
 
   const idade = calcularIdade(dataNascimento);
 
@@ -386,6 +428,8 @@ async function onModalFichaPerfil(interaction) {
     { $set: dadosPerfil },
     { upsert: true, new: true }
   );
+
+  fichaEmAndamento.delete(interaction.user.id);
 
   const games = await getGames(interaction.guildId);
   const selectCargos = new ActionRowBuilder().addComponents(
@@ -468,7 +512,7 @@ function register(registry) {
   registry.button(/^btn_ver_titulos_\d+$/, onVerTodosTitulos);
   registry.button(/^btn_titulos_(prev|next)_\d+_\d+$/, onPaginarTitulos);
   registry.button(/^btn_admin_(gol|assist|save|mvp)_[0-9]+$/, onAdminIncrement);
-  registry.modal('modal_ficha_perfil', onModalFichaPerfil);
+  registry.modal(/^modal_ficha_perfil_\d+$/, onModalFichaPerfil);
   registry.select('select_cargos_jogos', onSelectCargos);
   registry.select('select_ver_perfil', onSelectVerPerfil);
 }

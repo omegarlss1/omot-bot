@@ -106,7 +106,8 @@ function calcularCategorias(indicadoresDetalhados = {}) {
     }
 
     const media = notas.reduce((soma, valor) => soma + valor, 0) / notas.length;
-    resultado[categoria] = Math.round((media / 10) * 100);
+    const escalaMaxima = Math.max(...notas, 5) <= 5 ? 5 : 10;
+    resultado[categoria] = Math.round((media / escalaMaxima) * 100);
   }
 
   return resultado;

@@ -1,6 +1,7 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const { MAPA_INDICADORES, calcularCategorias } = require('../../data/mapa_indicadores');
 const AvaliacaoPerfil = require('../../db/models/avaliacaoPerfil');
+const PerfilMembro = require('../../db/models/perfilMembro');
 
 const avaliacoes = new Map();
 const categoriaAtual = new Map();
@@ -107,6 +108,23 @@ function buildCategoriaComponents(categoriaIndex, respostas) {
   return rows;
 }
 
+function buildContinuarButton() {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('btn_continuar_avaliacao')
+      .setLabel('Continuar avaliação')
+      .setStyle(ButtonStyle.Primary)
+  );
+}
+
+async function responderMensagem(target, payload) {
+  if (!target) return null;
+  if (typeof target.update === 'function') return target.update(payload);
+  if (typeof target.reply === 'function') return target.reply(payload);
+  if (target.channel && typeof target.channel.send === 'function') return target.channel.send(payload);
+  return null;
+}
+
 function buildCategoriaEmbed(categoriaIndex, respostas) {
   const categoria = CATEGORIAS[categoriaIndex];
   const totalAvaliados = totalItensAvaliados(categoriaAtual.get('debug') || 0);
@@ -160,23 +178,18 @@ function buildCategoriaEmbedReal(categoriaIndex, userId) {
 }
 
 async function renderizarCategoria(interaction, categoriaIndex) {
-  const userId = interaction.user.id;
+  const userId = interaction.user?.id || interaction.author?.id;
   const respostas = getRespostas(userId);
   const categoria = CATEGORIAS[categoriaIndex];
 
   if (!categoria) {
-    return interaction.reply({ content: '✅ Avaliação concluída!', ephemeral: true });
+    return responderMensagem(interaction, { content: '✅ Avaliação concluída!', ephemeral: true });
   }
 
   const components = buildCategoriaComponents(categoriaIndex, respostas);
   const embed = buildCategoriaEmbedReal(categoriaIndex, userId);
 
-  if (interaction.update) {
-    await interaction.update({ embeds: [embed], components });
-    return;
-  }
-
-  await interaction.reply({ embeds: [embed], components, ephemeral: true });
+  return responderMensagem(interaction, { embeds: [embed], components, ephemeral: true });
 }
 
 async function salvarProgresso(userId, guildId) {
@@ -209,6 +222,8 @@ async function iniciarAvaliacao(interaction) {
   const userId = interaction.user?.id || interaction.author?.id;
   const guildId = interaction.guildId || interaction.guild?.id;
 
+  if (!userId) return;
+
   if (!avaliacoes.has(userId)) {
     avaliacoes.set(userId, {});
   }
@@ -217,7 +232,9 @@ async function iniciarAvaliacao(interaction) {
     categoriaAtual.set(userId, 0);
   }
 
-  const registro = await AvaliacaoPerfil.findOne({ guildId, userId }).lean().catch(() => null);
+  const registro = guildId ? await AvaliacaoPerfil.findOne({ guildId, userId }).lean().catch(() => null) : null;
+  const temProgressoSalvo = !!(registro && registro.status === 'em_andamento' && registro.respostas && Object.keys(registro.respostas).length > 0);
+
   if (registro && Object.keys(getRespostas(userId)).length === 0) {
     Object.assign(getRespostas(userId), registro.respostas || {});
     categoriaAtual.set(userId, Number(registro.categoriaAtual) || 0);
@@ -227,6 +244,14 @@ async function iniciarAvaliacao(interaction) {
     const salvo = progressoSalvo.get(userId);
     Object.assign(getRespostas(userId), salvo.respostas || {});
     categoriaAtual.set(userId, salvo.categoriaAtual ?? 0);
+  }
+
+  if (temProgressoSalvo && Object.keys(getRespostas(userId)).length > 0) {
+    return responderMensagem(interaction, {
+      content: '🔄 Você já tem uma avaliação salva. Deseja continuar de onde parou?',
+      components: [buildContinuarButton()],
+      ephemeral: true
+    });
   }
 
   const categoriaIndex = getCategoriaAtual(userId);
@@ -301,6 +326,27 @@ async function finalizarAvaliacao(interaction) {
     inline: false
   });
 
+  const camposPerfil = {
+    guildId,
+    userId,
+    discordId: userId,
+    indicadoresDetalhados: { ...respostas },
+    inteligenciaLeitura: perfil.inteligencia_leitura ?? 0,
+    conhecimentoEvolucao: perfil.conhecimento_evolucao ?? 0,
+    controleMecanica: perfil.controle_mecanica ?? 0,
+    ataque: perfil.ataque ?? 0,
+    defesa: perfil.defesa ?? 0,
+    equipe: perfil.equipe ?? 0,
+    criatividade: perfil.criatividade ?? 0,
+    regularidade: perfil.regularidade ?? 0
+  };
+
+  await PerfilMembro.findOneAndUpdate(
+    { guildId, userId },
+    { $set: camposPerfil },
+    { upsert: true, new: true }
+  ).catch(() => {});
+
   await AvaliacaoPerfil.findOneAndUpdate(
     { guildId, userId },
     {
@@ -317,25 +363,45 @@ async function finalizarAvaliacao(interaction) {
   avaliacoes.delete(userId);
   categoriaAtual.delete(userId);
 
-  if (interaction.update) {
-    await interaction.update({ embeds: [embed], components: [] });
-    return;
-  }
-
-  await interaction.reply({ embeds: [embed], components: [], ephemeral: true });
+  return responderMensagem(interaction, { embeds: [embed], components: [], ephemeral: true });
 }
 
 async function onSalvarProgresso(interaction) {
   const userId = interaction.user.id;
   const guildId = interaction.guildId || interaction.guild?.id;
   await salvarProgresso(userId, guildId);
-  await interaction.reply({ content: '💾 Progresso salvo no Mongo. Use `!avaliar` novamente para continuar depois.', ephemeral: true });
+
+  return responderMensagem(interaction, {
+    content: '💾 Progresso salvo no Mongo. Pode continuar depois pelo botão abaixo.',
+    components: [buildContinuarButton()],
+    ephemeral: true
+  });
+}
+
+async function onContinuarAvaliacao(interaction) {
+  const userId = interaction.user.id;
+  const guildId = interaction.guildId || interaction.guild?.id;
+
+  const registro = guildId ? await AvaliacaoPerfil.findOne({ guildId, userId }).lean().catch(() => null) : null;
+  if (!registro || !registro.respostas || Object.keys(registro.respostas).length === 0) {
+    return responderMensagem(interaction, {
+      content: '❌ Não existe avaliação salva para continuar.',
+      ephemeral: true
+    });
+  }
+
+  Object.keys(getRespostas(userId)).forEach((chave) => delete getRespostas(userId)[chave]);
+  Object.assign(getRespostas(userId), registro.respostas || {});
+  categoriaAtual.set(userId, Number(registro.categoriaAtual) || 0);
+
+  return renderizarCategoria(interaction, getCategoriaAtual(userId));
 }
 
 function register(registry) {
   registry.button(/^avaliar_\d+_.+_\d+$/, onNotaSelecionada);
   registry.button('proxima_categoria', onProximaCategoria);
   registry.button('salvar_progresso', onSalvarProgresso);
+  registry.button('btn_continuar_avaliacao', onContinuarAvaliacao);
   registry.button('finalizar_avaliacao', finalizarAvaliacao);
 }
 
