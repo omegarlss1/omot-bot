@@ -16,6 +16,12 @@ async function responderErro(interaction) {
 module.exports = {
   name: 'interactionCreate',
   async execute(interaction) {
+    console.log('[INTERACTION_DEBUG]', {
+      timestamp: new Date().toISOString(),
+      type: interaction?.type,
+      customId: interaction?.customId || null
+    });
+
     const client = interaction.client;
 
     try {
