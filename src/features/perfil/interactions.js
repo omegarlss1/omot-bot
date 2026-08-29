@@ -711,7 +711,7 @@ async function onModalFichaPerfil(interaction) {
 
   if (etapaAtual < FICHA_MODAL_STEPS.length - 1) {
     const dadosAtual = { ...dadosExistentes };
-    const modalSeguinte = buildFichaModalEtapa(etapaAtual + 1, dadosAtual);
+    const modal2 = buildFichaModalEtapa(etapaAtual + 1, dadosAtual);
 
     console.log('[ficha-modal-next-step]', {
       customId: interaction.customId,
@@ -725,7 +725,7 @@ async function onModalFichaPerfil(interaction) {
       fichaEmAndamento.set(interaction.user.id, { ...estadoAtual, ...dadosAtual, etapa: etapaAtual + 1 });
     });
 
-    await interaction.showModal(modalSeguinte);
+    await interaction.showModal(modal2);
     return;
   }
 
