@@ -143,17 +143,21 @@ function criarLinhaCategoria(categoria, percentual) {
 function buildAdminButtons(targetId) {
   if (!targetId) return [];
 
-  const row = new ActionRowBuilder();
-  row.addComponents(
+  const row1 = new ActionRowBuilder();
+  row1.addComponents(
     new ButtonBuilder().setCustomId(`btn_admin_gol_${targetId}`).setLabel('+ Gol').setStyle(ButtonStyle.Success).setEmoji('⚽'),
     new ButtonBuilder().setCustomId(`btn_admin_assist_${targetId}`).setLabel('+ Assist').setStyle(ButtonStyle.Primary).setEmoji('🅰️'),
     new ButtonBuilder().setCustomId(`btn_admin_save_${targetId}`).setLabel('+ Save').setStyle(ButtonStyle.Secondary).setEmoji('🧤'),
     new ButtonBuilder().setCustomId(`btn_admin_chutes_${targetId}`).setLabel('+ Chutes').setStyle(ButtonStyle.Secondary).setEmoji('🥅'),
-    new ButtonBuilder().setCustomId(`btn_admin_mvp_${targetId}`).setLabel('+ MVP').setStyle(ButtonStyle.Danger).setEmoji('🏅'),
+    new ButtonBuilder().setCustomId(`btn_admin_mvp_${targetId}`).setLabel('+ MVP').setStyle(ButtonStyle.Danger).setEmoji('🏅')
+  );
+
+  const row2 = new ActionRowBuilder();
+  row2.addComponents(
     new ButtonBuilder().setCustomId(`btn_admin_pontuacao_${targetId}`).setLabel('+ Pontuação').setStyle(ButtonStyle.Primary).setEmoji('🎯')
   );
 
-  return [row];
+  return [row1, row2];
 }
 
 function buildAdminStatModal(field, targetId) {
@@ -308,15 +312,6 @@ function buildFichaSelects() {
     .addOptions(VALORES_RANK_PERMITIDOS.map((valor) => ({ label: valor, value: valor })));
   rows.push(new ActionRowBuilder().addComponents(selectPico));
 
-  rows.push(
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('btn_continuar_ficha')
-        .setLabel('Continuar para a ficha')
-        .setStyle(ButtonStyle.Primary)
-    )
-  );
-
   return rows;
 }
 
@@ -350,7 +345,13 @@ async function onSelectFichaOpcao(interaction) {
   dados[chave] = valor;
   fichaEmAndamento.set(interaction.user.id, dados);
 
-  return interaction.reply({ content: `✅ Opção salva: **${valor}**.`, ephemeral: true });
+  const faltando = ['input', 'plataforma', 'rank_x1', 'rank_x2', 'pico_rank'].filter((campo) => !dados[campo]);
+  if (faltando.length > 0) {
+    return interaction.reply({ content: `✅ Opção salva: **${valor}**. Falta(m) ${faltando.length} campo(s) para continuar.`, ephemeral: true });
+  }
+
+  await interaction.reply({ content: '✅ Todas as opções fixas estão preenchidas. Abrindo a ficha...', ephemeral: true });
+  return interaction.showModal(buildFichaModalEtapa(0));
 }
 
 async function onContinuarFicha(interaction) {
