@@ -13,24 +13,22 @@ function calcularCategorias(indicadoresDetalhados = {}) {
   for (const categoria of Object.keys(MAPA_INDICADORES)) {
     const grupo = CATEGORIAS_INDICADORES[categoria];
     const itens = INDICADORES[grupo] || [];
-    const notas = itens.map((item) => ({
-      marcado: Boolean(indicadoresDetalhados[item.key]),
-      peso: Number(item.peso) || 0
-    }));
-
-    if (!notas.length) {
-      resultado[categoria] = 0;
-      continue;
-    }
-
-    const totalPossivel = notas.reduce((soma, item) => soma + item.peso, 0);
-    const somaPesosMarcados = notas
-      .filter((item) => item.marcado)
+    const totalPossivel = itens.reduce((soma, item) => soma + item.peso, 0);
+    const pesosMarcados = itens
+      .filter((item) => indicadoresDetalhados[item.key] === true)
       .reduce((soma, item) => soma + item.peso, 0);
-    resultado[categoria] = totalPossivel ? Math.round((somaPesosMarcados / totalPossivel) * 100) : 0;
+
+    resultado[categoria] = calcularNotaCategoria(pesosMarcados, totalPossivel);
   }
 
   return resultado;
 }
 
-module.exports = { MAPA_INDICADORES, calcularCategorias }; 
+// CÁLCULO ÚNICO VÁLIDO AGORA
+function calcularNotaCategoria(pesosMarcados, totalPossivel) {
+  return Math.round((pesosMarcados / totalPossivel) * 100);
+}
+// pesosMarcados = soma dos pesos onde valor === true
+// totalPossivel = soma de todos os pesos da categoria
+
+module.exports = { MAPA_INDICADORES, calcularCategorias, calcularNotaCategoria };
