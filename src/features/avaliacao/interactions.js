@@ -8,7 +8,6 @@ const avaliacoes = new Map();
 const categoriaAtual = new Map();
 const paginaAtual = new Map();
 const progressoSalvo = new Map();
-const INDICADORES_POR_PAGINA = 5;
 
 const ICONE_CATEGORIAS = {
   inteligencia_leitura: '🧠',
@@ -88,6 +87,10 @@ function temTodosItensPreenchidos(categoria, respostas) {
   return categoria.itens.every((item) => typeof respostas[item.id] === 'boolean');
 }
 
+function getItensPorPagina(categoria) {
+  return categoria.itens.length;
+}
+
 function registrarItensNaoAvaliados(itens, respostas) {
   itens.forEach((item) => {
     if (typeof respostas[item.id] !== 'boolean') respostas[item.id] = false;
@@ -97,9 +100,10 @@ function registrarItensNaoAvaliados(itens, respostas) {
 function buildCategoriaComponents(categoriaIndex, respostas, pagina = 0) {
   const categoria = CATEGORIAS[categoriaIndex];
   const rows = [];
-  const totalPaginas = Math.ceil(categoria.itens.length / INDICADORES_POR_PAGINA);
-  const inicio = pagina * INDICADORES_POR_PAGINA;
-  const itensPagina = categoria.itens.slice(inicio, inicio + INDICADORES_POR_PAGINA);
+  const itensPorPagina = getItensPorPagina(categoria);
+  const totalPaginas = Math.ceil(categoria.itens.length / itensPorPagina);
+  const inicio = pagina * itensPorPagina;
+  const itensPagina = categoria.itens.slice(inicio, inicio + itensPorPagina);
 
   const menuIndicadores = new StringSelectMenuBuilder()
     .setCustomId(`avaliar_binario_${categoriaIndex}_${pagina}`)
@@ -158,15 +162,16 @@ function buildCategoriaEmbedReal(categoriaIndex, userId, pagina = 0) {
   const categoria = CATEGORIAS[categoriaIndex];
   const respostas = getRespostas(userId);
   const totalAvaliados = totalItensAvaliados(userId);
-  const totalPaginas = Math.ceil(categoria.itens.length / INDICADORES_POR_PAGINA);
-  const inicio = pagina * INDICADORES_POR_PAGINA;
+  const itensPorPagina = getItensPorPagina(categoria);
+  const totalPaginas = Math.ceil(categoria.itens.length / itensPorPagina);
+  const inicio = pagina * itensPorPagina;
 
   const embed = new EmbedBuilder()
-    .setTitle(`📊 Avaliação - ${categoria.icone} ${categoria.nome} (${categoriaIndex + 1}/${CATEGORIAS.length}) | Página ${pagina + 1}/${totalPaginas}`)
+    .setTitle(`📊 Avaliação - ${categoria.icone} ${categoria.nome} (${categoriaIndex + 1}/${CATEGORIAS.length})`)
     .setDescription('Marque as características que fazem parte do perfil do jogador. A descrição explica cada indicador.')
     .setColor('#00C2FF');
 
-  categoria.itens.slice(inicio, inicio + INDICADORES_POR_PAGINA).forEach((item) => {
+  categoria.itens.slice(inicio, inicio + itensPorPagina).forEach((item) => {
     const valor = respostas[item.id];
     embed.addFields({
       name: `**${item.label}**`,
@@ -271,8 +276,9 @@ async function onIndicadoresBinariosSelecionados(interaction) {
   const categoriaIndex = Number(match[1]);
   const pagina = Number(match[2]);
   const categoria = CATEGORIAS[categoriaIndex];
-  const inicio = pagina * INDICADORES_POR_PAGINA;
-  const itensPagina = categoria.itens.slice(inicio, inicio + INDICADORES_POR_PAGINA);
+  const itensPorPagina = getItensPorPagina(categoria);
+  const inicio = pagina * itensPorPagina;
+  const itensPagina = categoria.itens.slice(inicio, inicio + itensPorPagina);
   const selecionados = new Set(interaction.values);
   const respostas = getRespostas(interaction.user.id);
 
@@ -289,12 +295,13 @@ async function onPaginaCategoria(interaction) {
   const userId = interaction.user.id;
   const categoria = CATEGORIAS[getCategoriaAtual(userId)];
   const pagina = paginaAtual.get(userId) || 0;
-  const totalPaginas = Math.ceil(categoria.itens.length / INDICADORES_POR_PAGINA);
+  const itensPorPagina = getItensPorPagina(categoria);
+  const totalPaginas = Math.ceil(categoria.itens.length / itensPorPagina);
   const delta = interaction.customId === 'pagina_categoria_proxima' ? 1 : -1;
 
   if (delta > 0) {
-    const inicio = pagina * INDICADORES_POR_PAGINA;
-    registrarItensNaoAvaliados(categoria.itens.slice(inicio, inicio + INDICADORES_POR_PAGINA), getRespostas(userId));
+    const inicio = pagina * itensPorPagina;
+    registrarItensNaoAvaliados(categoria.itens.slice(inicio, inicio + itensPorPagina), getRespostas(userId));
     await salvarProgresso(userId, interaction.guildId || interaction.guild?.id);
   }
 
@@ -309,7 +316,7 @@ async function onProximaCategoria(interaction) {
   const categoria = CATEGORIAS[atual];
   const respostas = getRespostas(userId);
   const pagina = paginaAtual.get(userId) || 0;
-  const totalPaginas = categoria ? Math.ceil(categoria.itens.length / INDICADORES_POR_PAGINA) : 0;
+  const totalPaginas = categoria ? Math.ceil(categoria.itens.length / getItensPorPagina(categoria)) : 0;
 
   if (!categoria || pagina !== totalPaginas - 1) {
     return interaction.reply({ content: '⚠️ Use “Ver mais 5” para chegar à última página da categoria.', ephemeral: true });

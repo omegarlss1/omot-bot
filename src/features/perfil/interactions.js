@@ -788,11 +788,19 @@ function buildPerfilEmbed(perfil, member, { isPublic = false } = {}) {
 }
 
 async function onVerPerfil(interaction) {
-  await interaction.deferReply({ flags: 64 });
+  const editarMensagemDoHub = interaction.customId === 'hub_principal';
+  if (editarMensagemDoHub) await interaction.deferUpdate();
+  else await interaction.deferReply({ flags: 64 });
   const perfil = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: interaction.user.id });
 
   if (!perfil) {
-    return interaction.editReply({ content: '❌ Vc ainda não preencheu sua ficha! Clica em **Editar Ficha** pra cadastrar.' });
+    const voltarAoHub = editarMensagemDoHub
+      ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('← Voltar ao painel').setStyle(ButtonStyle.Secondary))]
+      : [];
+    return interaction.editReply({
+      content: '❌ Vc ainda não preencheu sua ficha! Clica em **Editar Ficha** pra cadastrar.',
+      components: voltarAoHub
+    });
   }
 
   const embedPerfil = buildPerfilEmbed(perfil, interaction.member, { isPublic: false });
@@ -801,8 +809,11 @@ async function onVerPerfil(interaction) {
   const componentsExtras = titulosFisicos.length > 10
     ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`btn_ver_titulos_${interaction.user.id}`).setLabel(`Ver todos os títulos (${titulosFisicos.length}+)`).setStyle(ButtonStyle.Primary))]
     : [];
+  const voltarAoHub = editarMensagemDoHub
+    ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('← Voltar ao painel').setStyle(ButtonStyle.Secondary))]
+    : [];
 
-  return interaction.editReply({ embeds: [embedPerfil], components: compactarLinhasComponentes([...adminButtons, ...componentsExtras]) });
+  return interaction.editReply({ embeds: [embedPerfil], components: compactarLinhasComponentes([...adminButtons, ...componentsExtras, ...voltarAoHub]) });
 }
 
 async function onAbrirSelecionarPerfil(interaction) {
@@ -1221,4 +1232,4 @@ function register(registry) {
   registry.select('select_remove_nick_sec', onSelecionarNickParaRemover);
 }
 
-module.exports = { register, buildPerfilEmbed, calcularIdade, calcularCategorias, MAPA_INDICADORES };
+module.exports = { register, buildPerfilEmbed, calcularIdade, calcularCategorias, MAPA_INDICADORES, onVerPerfil };
