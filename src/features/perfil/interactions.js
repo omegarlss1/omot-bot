@@ -258,11 +258,11 @@ async function onPaginarTitulos(interaction) {
   await interaction.update({ embeds: [embed], components: [buildTitulosButtons(targetId, pagina.paginaAtual, pagina.totalPaginas)] });
 }
 
-function buildFichaModalEtapa(stepIndex) {
+function buildFichaModalEtapa(stepIndex, valoresPreenchidos = {}, { erro = null } = {}) {
   const campos = FICHA_MODAL_STEPS[stepIndex] || [];
   const modal = new ModalBuilder()
     .setCustomId(`modal_ficha_perfil_${stepIndex + 1}`)
-    .setTitle(`Ficha de Membro - Perfil (${stepIndex + 1}/${FICHA_MODAL_STEPS.length})`);
+    .setTitle(erro ? `Ficha de Membro - Perfil (${stepIndex + 1}/${FICHA_MODAL_STEPS.length}) • Corrija o campo` : `Ficha de Membro - Perfil (${stepIndex + 1}/${FICHA_MODAL_STEPS.length})`);
 
   campos.forEach((campo) => {
     const input = new TextInputBuilder()
@@ -279,20 +279,15 @@ function buildFichaModalEtapa(stepIndex) {
       input.setMaxLength(150);
     }
 
+    const valorAtual = valoresPreenchidos?.[campo.id];
+    if (valorAtual !== undefined && valorAtual !== null && valorAtual !== '') {
+      input.setValue(String(valorAtual));
+    }
+
     modal.addComponents(new ActionRowBuilder().addComponents(input));
   });
 
   return modal;
-}
-
-function buildProximoEtapaButton(stepAtual) {
-  const proximoStep = stepAtual + 2;
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`btn_proxima_ficha_etapa_${proximoStep}`)
-      .setLabel('Próxima etapa')
-      .setStyle(ButtonStyle.Primary)
-  );
 }
 
 function buildFichaSelects() {
@@ -382,22 +377,6 @@ async function onContinuarFicha(interaction) {
   }
 
   return interaction.showModal(buildFichaModalEtapa(0));
-}
-
-async function onProximaEtapaFicha(interaction) {
-  const match = interaction.customId.match(/^btn_proxima_ficha_etapa_(\d+)$/);
-  if (!match) return;
-
-  const stepIndex = Number(match[1]) - 1;
-  if (stepIndex < 0 || stepIndex >= FICHA_MODAL_STEPS.length) {
-    return interaction.reply({ content: '❌ Etapa inválida.', ephemeral: true });
-  }
-
-  if (!interaction || typeof interaction.showModal !== 'function') {
-    return;
-  }
-
-  return interaction.showModal(buildFichaModalEtapa(stepIndex));
 }
 
 function buildPerfilEmbed(perfil, member, { isPublic = false } = {}) {
@@ -606,6 +585,21 @@ async function onSelectVerPerfil(interaction) {
   return interaction.reply({ embeds: [embedPerfil], components: compactarLinhasComponentes([...adminButtons, ...componentsExtras]) });
 }
 
+function validarCamposEtapa(stepIndex, dadosEtapa) {
+  const campos = FICHA_MODAL_STEPS[stepIndex] || [];
+
+  for (const campo of campos) {
+    if (campo.id !== 'data_nascimento_input') continue;
+
+    const resultado = validarDataNascimento(dadosEtapa[campo.id]);
+    if (!resultado.ok) {
+      return { ok: false, campoId: campo.id, erro: resultado.error };
+    }
+  }
+
+  return { ok: true };
+}
+
 async function onModalFichaPerfil(interaction) {
   if (!interaction || !interaction.isModalSubmit) {
     return;
@@ -624,14 +618,16 @@ async function onModalFichaPerfil(interaction) {
     }
   });
 
+  const validacaoEtapa = validarCamposEtapa(etapaAtual, dadosExistentes);
+  if (!validacaoEtapa.ok) {
+    fichaEmAndamento.set(interaction.user.id, dadosExistentes);
+    return interaction.showModal(buildFichaModalEtapa(etapaAtual, dadosExistentes, { erro: validacaoEtapa.erro }));
+  }
+
   fichaEmAndamento.set(interaction.user.id, dadosExistentes);
 
   if (etapaAtual < FICHA_MODAL_STEPS.length - 1) {
-    return interaction.reply({
-      content: `✅ Etapa ${etapaAtual + 1} salva. Clique abaixo para continuar.`,
-      components: [buildProximoEtapaButton(etapaAtual)],
-      ephemeral: true
-    });
+    return interaction.showModal(buildFichaModalEtapa(etapaAtual + 1, dadosExistentes));
   }
 
   await interaction.deferReply({ flags: 64 });
@@ -832,7 +828,6 @@ function register(registry) {
   registry.button('btn_abrir_select_ver_perfil', onAbrirSelecionarPerfil);
   registry.button(/^btn_ver_titulos_\d+$/, onVerTodosTitulos);
   registry.button(/^btn_titulos_(prev|next)_\d+_\d+$/, onPaginarTitulos);
-  registry.button(/^btn_proxima_ficha_etapa_\d+$/, onProximaEtapaFicha);
   registry.button(/^btn_admin_(gol|assist|save|chutes|mvp|pontuacao)_[0-9]+$/, onAbrirModalAdminEstatistica);
   registry.modal(/^modal_admin_stat_(gol|assist|save|chutes|mvp|pontuacao)_[0-9]+$/, onAdminIncrement);
   registry.modal(/^modal_ficha_perfil_\d+$/, onModalFichaPerfil);
