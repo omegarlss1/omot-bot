@@ -33,6 +33,7 @@ const perfilMembroSchema = new mongoose.Schema({
   assist: { type: Number, default: 0 },
   saves: { type: Number, default: 0 },
   mvps: { type: Number, default: 0 },
+  pontuacao: { type: Number, default: 0 },
   titulos: { type: Number, default: 0 },
   edicoes: { type: Number, default: 0 },
 

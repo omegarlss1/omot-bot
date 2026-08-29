@@ -31,7 +31,6 @@ const FICHA_MODAL_STEPS = [
   [
     { id: 'nome_comum_input', label: 'Nome da comunidade / como quer ser conhecido', style: TextInputStyle.Short, required: true },
     { id: 'data_nascimento_input', label: 'Data de nascimento (YYYY-MM-DD)', style: TextInputStyle.Short, required: false },
-    { id: 'data_entrada_omega_input', label: 'Data de entrada na Ômega (YYYY-MM-DD)', style: TextInputStyle.Short, required: false },
     { id: 'estado_input', label: 'Estado', style: TextInputStyle.Short, required: false },
     { id: 'pais_input', label: 'País', style: TextInputStyle.Short, required: false }
   ],
@@ -110,7 +109,8 @@ function buildAdminButtons(targetId) {
     new ButtonBuilder().setCustomId(`btn_admin_gol_${targetId}`).setLabel('+ Gol').setStyle(ButtonStyle.Success).setEmoji('⚽'),
     new ButtonBuilder().setCustomId(`btn_admin_assist_${targetId}`).setLabel('+ Assist').setStyle(ButtonStyle.Primary).setEmoji('🅰️'),
     new ButtonBuilder().setCustomId(`btn_admin_save_${targetId}`).setLabel('+ Save').setStyle(ButtonStyle.Secondary).setEmoji('🧤'),
-    new ButtonBuilder().setCustomId(`btn_admin_mvp_${targetId}`).setLabel('+ MVP').setStyle(ButtonStyle.Danger).setEmoji('🏅')
+    new ButtonBuilder().setCustomId(`btn_admin_mvp_${targetId}`).setLabel('+ MVP').setStyle(ButtonStyle.Danger).setEmoji('🏅'),
+    new ButtonBuilder().setCustomId(`btn_admin_pontuacao_${targetId}`).setLabel('+ Pontuação').setStyle(ButtonStyle.Primary).setEmoji('🎯')
   );
 
   return [row];
@@ -198,6 +198,10 @@ function buildFichaModalEtapa(stepIndex) {
 }
 
 async function onIniciarFicha(interaction) {
+  if (!interaction || typeof interaction.showModal !== 'function') {
+    return;
+  }
+
   fichaEmAndamento.delete(interaction.user.id);
   return interaction.showModal(buildFichaModalEtapa(0));
 }
@@ -339,6 +343,10 @@ async function onSelectVerPerfil(interaction) {
 }
 
 async function onModalFichaPerfil(interaction) {
+  if (!interaction || !interaction.isModalSubmit || typeof interaction.showModal !== 'function') {
+    return;
+  }
+
   const match = interaction.customId.match(/^modal_ficha_perfil_(\d+)$/);
   if (!match) return;
 
@@ -363,7 +371,6 @@ async function onModalFichaPerfil(interaction) {
   const dados = fichaEmAndamento.get(interaction.user.id) || {};
   const nomeComum = dados.nome_comum_input?.trim() || interaction.user.username;
   const dataNascimento = dados.data_nascimento_input?.trim();
-  const dataEntradaOmega = dados.data_entrada_omega_input?.trim();
   const estado = dados.estado_input?.trim();
   const pais = dados.pais_input?.trim();
   const bio = dados.bio_input?.trim();
@@ -393,7 +400,7 @@ async function onModalFichaPerfil(interaction) {
     discordId: interaction.user.id,
     nomeComum,
     dataNascimento: dataNascimento || perfilAtual?.dataNascimento || null,
-    dataEntradaOmega: dataEntradaOmega || perfilAtual?.dataEntradaOmega || null,
+    dataEntradaOmega: perfilAtual?.dataEntradaOmega || null,
     idade: idade || perfilAtual?.idade || 0,
     estado: estado || perfilAtual?.estado || null,
     pais: pais || perfilAtual?.pais || null,
@@ -458,7 +465,7 @@ async function onAdminIncrement(interaction) {
     return interaction.reply({ content: '❌ Apenas administradores podem alterar essas estatísticas.', flags: 64 });
   }
 
-  const [, campo, targetId] = interaction.customId.match(/^btn_admin_(gol|assist|save|mvp)_(.+)$/) || [];
+  const [, campo, targetId] = interaction.customId.match(/^btn_admin_(gol|assist|save|mvp|pontuacao)_(.+)$/) || [];
   if (!campo || !targetId) {
     return interaction.reply({ content: '❌ Comando de administração inválido.', flags: 64 });
   }
@@ -467,7 +474,8 @@ async function onAdminIncrement(interaction) {
     gol: 'gols',
     assist: 'assist',
     save: 'saves',
-    mvp: 'mvps'
+    mvp: 'mvps',
+    pontuacao: 'pontuacao'
   };
 
   const fieldName = camposMap[campo];
@@ -511,7 +519,7 @@ function register(registry) {
   registry.button('btn_abrir_select_ver_perfil', onAbrirSelecionarPerfil);
   registry.button(/^btn_ver_titulos_\d+$/, onVerTodosTitulos);
   registry.button(/^btn_titulos_(prev|next)_\d+_\d+$/, onPaginarTitulos);
-  registry.button(/^btn_admin_(gol|assist|save|mvp)_[0-9]+$/, onAdminIncrement);
+  registry.button(/^btn_admin_(gol|assist|save|mvp|pontuacao)_[0-9]+$/, onAdminIncrement);
   registry.modal(/^modal_ficha_perfil_\d+$/, onModalFichaPerfil);
   registry.select('select_cargos_jogos', onSelectCargos);
   registry.select('select_ver_perfil', onSelectVerPerfil);
