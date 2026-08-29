@@ -1,5 +1,5 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, StringSelectMenuBuilder } = require('discord.js');
-const { MAPA_INDICADORES, calcularCategorias } = require('../../data/mapa_indicadores');
+const { MAPA_INDICADORES, calcularCategorias, calcularNotaCategoria } = require('../../data/mapa_indicadores');
 const { CATEGORIAS_INDICADORES, INDICADORES_POR_CATEGORIA } = require('../../data/indicadores');
 const AvaliacaoPerfil = require('../../db/models/avaliacaoPerfil');
 const PerfilMembro = require('../../db/models/perfilMembro');
@@ -333,10 +333,16 @@ async function finalizarAvaliacao(interaction) {
   const guildId = interaction.guildId || interaction.guild?.id;
   const respostas = getRespostas(userId);
   const perfil = calcularCategorias(respostas);
+  const todosIndicadores = Object.values(INDICADORES_POR_CATEGORIA).flat();
+  const totalPossivel = todosIndicadores.reduce((soma, indicador) => soma + indicador.peso, 0);
+  const pesosMarcados = todosIndicadores
+    .filter((indicador) => respostas[indicador.key] === true)
+    .reduce((soma, indicador) => soma + indicador.peso, 0);
+  const notaTotal = calcularNotaCategoria(pesosMarcados, totalPossivel);
 
   const embed = new EmbedBuilder()
     .setTitle('🎮 Perfil do Jogador - Rocket League')
-    .setDescription('Seu perfil foi gerado com sucesso!')
+    .setDescription(`Seu perfil foi gerado com sucesso!\n\n🏆 **Nota total: ${notaTotal}%**`)
     .setColor('#FFD700');
 
   Object.entries(perfil).forEach(([categoriaKey, valor]) => {
