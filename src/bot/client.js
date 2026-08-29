@@ -9,25 +9,6 @@ function createBot() {
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates]
   });
 
-  client.on('error', (error) => {
-    console.error('[CLIENT_ERROR]', {
-      timestamp: new Date().toISOString(),
-      message: error?.message,
-      stack: error?.stack,
-      code: error?.code
-    });
-  });
-
-  client.on('shardError', (error, shardId) => {
-    console.error('[SHARD_ERROR]', {
-      timestamp: new Date().toISOString(),
-      shardId,
-      message: error?.message,
-      stack: error?.stack,
-      code: error?.code
-    });
-  });
-
   client.rest.on('rateLimited', (dadosRateLimit) => {
     console.log('REST rate limited:', dadosRateLimit);
   });

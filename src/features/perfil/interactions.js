@@ -197,21 +197,39 @@ function buildFichaModalEtapa(stepIndex) {
   return modal;
 }
 
-async function onIniciarFicha(interaction) {
-  console.log('[FICHA_DEBUG] onIniciarFicha', {
-    timestamp: new Date().toISOString(),
-    customId: interaction?.customId || null,
-    hasShowModal: typeof interaction?.showModal === 'function',
-    userId: interaction?.user?.id || null,
-    type: interaction?.type || null
-  });
+function buildProximoEtapaButton(stepAtual) {
+  const proximoStep = stepAtual + 2;
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`btn_proxima_ficha_etapa_${proximoStep}`)
+      .setLabel('Próxima etapa')
+      .setStyle(ButtonStyle.Primary)
+  );
+}
 
+async function onIniciarFicha(interaction) {
   if (!interaction || typeof interaction.showModal !== 'function') {
     return;
   }
 
   fichaEmAndamento.delete(interaction.user.id);
   return interaction.showModal(buildFichaModalEtapa(0));
+}
+
+async function onProximaEtapaFicha(interaction) {
+  const match = interaction.customId.match(/^btn_proxima_ficha_etapa_(\d+)$/);
+  if (!match) return;
+
+  const stepIndex = Number(match[1]) - 1;
+  if (stepIndex < 0 || stepIndex >= FICHA_MODAL_STEPS.length) {
+    return interaction.reply({ content: '❌ Etapa inválida.', ephemeral: true });
+  }
+
+  if (!interaction || typeof interaction.showModal !== 'function') {
+    return;
+  }
+
+  return interaction.showModal(buildFichaModalEtapa(stepIndex));
 }
 
 function buildPerfilEmbed(perfil, member, { isPublic = false } = {}) {
@@ -351,20 +369,7 @@ async function onSelectVerPerfil(interaction) {
 }
 
 async function onModalFichaPerfil(interaction) {
-  console.log('[FICHA_DEBUG] onModalFichaPerfil start', {
-    timestamp: new Date().toISOString(),
-    customId: interaction?.customId || null,
-    isModalSubmit: interaction?.isModalSubmit?.() || false,
-    hasShowModal: typeof interaction?.showModal === 'function',
-    userId: interaction?.user?.id || null,
-    type: interaction?.type || null
-  });
-
-  if (!interaction || !interaction.isModalSubmit || typeof interaction.showModal !== 'function') {
-    console.log('[FICHA_DEBUG] onModalFichaPerfil block', {
-      reason: !interaction ? 'missing interaction' : !interaction.isModalSubmit ? 'not modal submit' : 'no showModal',
-      customId: interaction?.customId || null
-    });
+  if (!interaction || !interaction.isModalSubmit) {
     return;
   }
 
@@ -384,14 +389,11 @@ async function onModalFichaPerfil(interaction) {
   fichaEmAndamento.set(interaction.user.id, dadosExistentes);
 
   if (etapaAtual < FICHA_MODAL_STEPS.length - 1) {
-    const proximoModal = buildFichaModalEtapa(etapaAtual + 1);
-    console.log('[FICHA_DEBUG] opening next modal', {
-      timestamp: new Date().toISOString(),
-      current: interaction.customId,
-      next: proximoModal?.data?.custom_id || null,
-      userId: interaction.user.id
+    return interaction.reply({
+      content: `✅ Etapa ${etapaAtual + 1} salva. Clique abaixo para continuar.`,
+      components: [buildProximoEtapaButton(etapaAtual)],
+      ephemeral: true
     });
-    return interaction.showModal(proximoModal);
   }
 
   await interaction.deferReply({ flags: 64 });
@@ -547,6 +549,7 @@ function register(registry) {
   registry.button('btn_abrir_select_ver_perfil', onAbrirSelecionarPerfil);
   registry.button(/^btn_ver_titulos_\d+$/, onVerTodosTitulos);
   registry.button(/^btn_titulos_(prev|next)_\d+_\d+$/, onPaginarTitulos);
+  registry.button(/^btn_proxima_ficha_etapa_\d+$/, onProximaEtapaFicha);
   registry.button(/^btn_admin_(gol|assist|save|mvp|pontuacao)_[0-9]+$/, onAdminIncrement);
   registry.modal(/^modal_ficha_perfil_\d+$/, onModalFichaPerfil);
   registry.select('select_cargos_jogos', onSelectCargos);
