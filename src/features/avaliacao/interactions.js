@@ -6,7 +6,9 @@ const PerfilMembro = require('../../db/models/perfilMembro');
 
 const avaliacoes = new Map();
 const categoriaAtual = new Map();
+const paginaAtual = new Map();
 const progressoSalvo = new Map();
+const INDICADORES_POR_PAGINA = 4;
 
 const ICONE_CATEGORIAS = {
   inteligencia_leitura: '🧠',
@@ -60,6 +62,7 @@ function getCategoriaAtual(userId) {
   if (!categoriaAtual.has(userId)) {
     categoriaAtual.set(userId, 0);
   }
+  paginaAtual.set(userId, 0);
   return categoriaAtual.get(userId);
 }
 
@@ -89,11 +92,13 @@ function gerarBotaoNota(categoriaIndex, item, notaAtual, nota) {
     .setStyle(selecionado ? ButtonStyle.Primary : ButtonStyle.Secondary);
 }
 
-function buildCategoriaComponents(categoriaIndex, respostas) {
+function buildCategoriaComponents(categoriaIndex, respostas, pagina = 0) {
   const categoria = CATEGORIAS[categoriaIndex];
   const rows = [];
+  const totalPaginas = Math.ceil(categoria.itens.length / INDICADORES_POR_PAGINA);
+  const inicio = pagina * INDICADORES_POR_PAGINA;
 
-  categoria.itens.forEach((item) => {
+  categoria.itens.slice(inicio, inicio + INDICADORES_POR_PAGINA).forEach((item) => {
     const row = new ActionRowBuilder();
     for (let nota = 1; nota <= 5; nota += 1) {
       row.addComponents(gerarBotaoNota(categoriaIndex, item, respostas[item.id], nota));
@@ -101,8 +106,10 @@ function buildCategoriaComponents(categoriaIndex, respostas) {
     rows.push(row);
   });
 
-  const avancarDisabled = !temTodosItensPreenchidos(categoria, respostas);
+  const avancarDisabled = !temTodosItensPreenchidos(categoria, respostas) || pagina < totalPaginas - 1;
   const rowAcao = new ActionRowBuilder().addComponents(
+    ...(pagina > 0 ? [new ButtonBuilder().setCustomId('pagina_categoria_anterior').setLabel('← Página anterior').setStyle(ButtonStyle.Secondary)] : []),
+    ...(pagina < totalPaginas - 1 ? [new ButtonBuilder().setCustomId('pagina_categoria_proxima').setLabel('Próxima página →').setStyle(ButtonStyle.Primary)] : []),
     new ButtonBuilder()
       .setCustomId('proxima_categoria')
       .setLabel(categoriaIndex === CATEGORIAS.length - 1 ? '✓ FINALIZAR AVALIAÇÃO' : 'PRÓXIMA CATEGORIA →')
@@ -161,17 +168,19 @@ function buildCategoriaEmbed(categoriaIndex, respostas) {
   return embed;
 }
 
-function buildCategoriaEmbedReal(categoriaIndex, userId) {
+function buildCategoriaEmbedReal(categoriaIndex, userId, pagina = 0) {
   const categoria = CATEGORIAS[categoriaIndex];
   const respostas = getRespostas(userId);
   const totalAvaliados = totalItensAvaliados(userId);
+  const totalPaginas = Math.ceil(categoria.itens.length / INDICADORES_POR_PAGINA);
+  const inicio = pagina * INDICADORES_POR_PAGINA;
 
   const embed = new EmbedBuilder()
-    .setTitle(`📊 Avaliação - ${categoria.icone} ${categoria.nome} (${categoriaIndex + 1}/${CATEGORIAS.length})`)
+    .setTitle(`📊 Avaliação - ${categoria.icone} ${categoria.nome} (${categoriaIndex + 1}/${CATEGORIAS.length}) | Página ${pagina + 1}/${totalPaginas}`)
     .setDescription('Avalie cada característica de 1 a 5:')
     .setColor('#00C2FF');
 
-  categoria.itens.forEach((item) => {
+  categoria.itens.slice(inicio, inicio + INDICADORES_POR_PAGINA).forEach((item) => {
     const valor = respostas[item.id];
     embed.addFields({
       name: `**${item.label}**`,
@@ -191,13 +200,14 @@ async function renderizarCategoria(interaction, categoriaIndex) {
   const userId = interaction.user?.id || interaction.author?.id;
   const respostas = getRespostas(userId);
   const categoria = CATEGORIAS[categoriaIndex];
+  const pagina = paginaAtual.get(userId) || 0;
 
   if (!categoria) {
     return responderMensagem(interaction, { content: '✅ Avaliação concluída!', ephemeral: true });
   }
 
-  const components = buildCategoriaComponents(categoriaIndex, respostas);
-  const embed = buildCategoriaEmbedReal(categoriaIndex, userId);
+  const components = buildCategoriaComponents(categoriaIndex, respostas, pagina);
+  const embed = buildCategoriaEmbedReal(categoriaIndex, userId, pagina);
 
   return responderMensagem(interaction, { embeds: [embed], components, ephemeral: true });
 }
@@ -286,6 +296,16 @@ async function onNotaSelecionada(interaction) {
   await renderizarCategoria(interaction, categoriaIndex);
 }
 
+async function onPaginaCategoria(interaction) {
+  const userId = interaction.user.id;
+  const categoria = CATEGORIAS[getCategoriaAtual(userId)];
+  const pagina = paginaAtual.get(userId) || 0;
+  const totalPaginas = Math.ceil(categoria.itens.length / INDICADORES_POR_PAGINA);
+  const delta = interaction.customId === 'pagina_categoria_proxima' ? 1 : -1;
+  paginaAtual.set(userId, Math.max(0, Math.min(totalPaginas - 1, pagina + delta)));
+  return renderizarCategoria(interaction, getCategoriaAtual(userId));
+}
+
 async function onProximaCategoria(interaction) {
   const userId = interaction.user.id;
   const guildId = interaction.guildId || interaction.guild?.id;
@@ -300,6 +320,7 @@ async function onProximaCategoria(interaction) {
   if (atual < CATEGORIAS.length - 1) {
     const proximo = atual + 1;
     categoriaAtual.set(userId, proximo);
+    paginaAtual.set(userId, 0);
     await salvarProgresso(userId, guildId);
     await renderizarCategoria(interaction, proximo);
     return;
@@ -373,6 +394,7 @@ async function finalizarAvaliacao(interaction) {
 
   avaliacoes.delete(userId);
   categoriaAtual.delete(userId);
+  paginaAtual.delete(userId);
 
   return responderMensagem(interaction, { embeds: [embed], components: [], ephemeral: true });
 }
@@ -404,6 +426,7 @@ async function onContinuarAvaliacao(interaction) {
   Object.keys(getRespostas(userId)).forEach((chave) => delete getRespostas(userId)[chave]);
   Object.assign(getRespostas(userId), registro.respostas || {});
   categoriaAtual.set(userId, Number(registro.categoriaAtual) || 0);
+  paginaAtual.set(userId, 0);
 
   return renderizarCategoria(interaction, getCategoriaAtual(userId));
 }
@@ -415,6 +438,8 @@ async function onAbrirAvaliacao(interaction) {
 function register(registry) {
   registry.button(/^avaliar_\d+_.+_\d+$/, onNotaSelecionada);
   registry.button('proxima_categoria', onProximaCategoria);
+  registry.button('pagina_categoria_anterior', onPaginaCategoria);
+  registry.button('pagina_categoria_proxima', onPaginaCategoria);
   registry.button('salvar_progresso', onSalvarProgresso);
   registry.button('btn_continuar_avaliacao', onContinuarAvaliacao);
   registry.button('btn_abrir_avaliacao', onAbrirAvaliacao);
