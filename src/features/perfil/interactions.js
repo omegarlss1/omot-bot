@@ -644,7 +644,19 @@ function validarCamposEtapa(stepIndex, dadosEtapa) {
 }
 
 async function onModalFichaPerfil(interaction) {
+  console.log('[ficha-modal-submit]', {
+    customId: interaction?.customId,
+    interactionType: interaction?.type,
+    timestamp: Date.now()
+  });
+
   if (!interaction || !interaction.isModalSubmit) {
+    console.log('[ficha-modal-submit-ignored]', {
+      hasInteraction: !!interaction,
+      isModalSubmit: interaction?.isModalSubmit,
+      customId: interaction?.customId,
+      type: interaction?.type
+    });
     return;
   }
 
@@ -662,11 +674,23 @@ async function onModalFichaPerfil(interaction) {
   });
 
   const validacaoEtapa = validarCamposEtapa(etapaAtual, dadosExistentes);
+  console.log('[ficha-modal-validacao]', {
+    etapaAtual,
+    customId: interaction.customId,
+    validacaoEtapa
+  });
+
   if (!validacaoEtapa.ok) {
     fichaEmAndamento.set(interaction.user.id, dadosExistentes);
     if (!interaction || typeof interaction.showModal !== 'function') {
+      console.log('[ficha-modal-showModal-missing-on-error]', { customId: interaction?.customId, hasShowModal: typeof interaction?.showModal === 'function' });
       return;
     }
+    console.log('[ficha-modal-reopen-erro]', {
+      customId: interaction.customId,
+      etapaAtual,
+      showModalType: typeof interaction.showModal
+    });
     return interaction.showModal(buildFichaModalEtapa(etapaAtual, dadosExistentes, {
       erro: validacaoEtapa.erro,
       campoErroId: validacaoEtapa.campoId
@@ -677,8 +701,14 @@ async function onModalFichaPerfil(interaction) {
 
   if (etapaAtual < FICHA_MODAL_STEPS.length - 1) {
     if (!interaction || typeof interaction.showModal !== 'function') {
+      console.log('[ficha-modal-showModal-missing-on-next]', { customId: interaction?.customId, hasShowModal: typeof interaction?.showModal === 'function' });
       return;
     }
+    console.log('[ficha-modal-next-step]', {
+      customId: interaction.customId,
+      proximaEtapa: etapaAtual + 1,
+      showModalType: typeof interaction.showModal
+    });
     return interaction.showModal(buildFichaModalEtapa(etapaAtual + 1, dadosExistentes));
   }
 
