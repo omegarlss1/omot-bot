@@ -72,7 +72,7 @@ function getCategoriaAtual(userId) {
 
 function totalItensAvaliados(userId) {
   const respostas = getRespostas(userId);
-  return Object.keys(respostas).length;
+  return Object.keys(respostas).filter((chave) => typeof respostas[chave] === 'boolean').length;
 }
 
 function separarIndicadoresPorCategoria(respostas) {
@@ -85,7 +85,13 @@ function separarIndicadoresPorCategoria(respostas) {
 }
 
 function temTodosItensPreenchidos(categoria, respostas) {
-  return categoria.itens.every((item) => respostas[item.id] !== undefined);
+  return categoria.itens.every((item) => typeof respostas[item.id] === 'boolean');
+}
+
+function registrarItensNaoAvaliados(itens, respostas) {
+  itens.forEach((item) => {
+    if (typeof respostas[item.id] !== 'boolean') respostas[item.id] = false;
+  });
 }
 
 function buildCategoriaComponents(categoriaIndex, respostas, pagina = 0) {
@@ -108,22 +114,19 @@ function buildCategoriaComponents(categoriaIndex, respostas, pagina = 0) {
     })));
   rows.push(new ActionRowBuilder().addComponents(menuIndicadores));
 
-  // A página seguinte só é liberada após registrar (marcado ou não) os cinco
-  // indicadores atuais. Isso preserva a resposta "não é minha característica".
-  const paginaRespondida = itensPagina.every((item) => respostas[item.id] !== undefined);
-  const avancarDisabled = !temTodosItensPreenchidos(categoria, respostas) || pagina < totalPaginas - 1;
+  const estaNaUltimaPagina = pagina === totalPaginas - 1;
   const rowAcao = new ActionRowBuilder().addComponents(
     ...(pagina > 0 ? [new ButtonBuilder().setCustomId('pagina_categoria_anterior').setLabel('← Página anterior').setStyle(ButtonStyle.Secondary)] : []),
     ...(pagina < totalPaginas - 1 ? [new ButtonBuilder()
       .setCustomId('pagina_categoria_proxima')
       .setLabel('Ver mais 5 →')
       .setStyle(ButtonStyle.Primary)
-      .setDisabled(!paginaRespondida)] : []),
+      .setDisabled(false)] : []),
     new ButtonBuilder()
       .setCustomId('proxima_categoria')
       .setLabel(categoriaIndex === CATEGORIAS.length - 1 ? '✓ FINALIZAR AVALIAÇÃO' : 'PRÓXIMA CATEGORIA →')
       .setStyle(ButtonStyle.Success)
-      .setDisabled(avancarDisabled),
+      .setDisabled(!estaNaUltimaPagina),
     new ButtonBuilder()
       .setCustomId('salvar_progresso')
       .setLabel('Salvar progresso')
@@ -173,7 +176,7 @@ function buildCategoriaEmbedReal(categoriaIndex, userId, pagina = 0) {
   });
 
   embed.setFooter({
-    text: `Progresso: ${totalAvaliados} / 74 itens avaliados | Categoria ${categoriaIndex + 1} de ${CATEGORIAS.length}`
+    text: `Progresso: ${totalAvaliados} / 75 itens avaliados | Categoria ${categoriaIndex + 1} de ${CATEGORIAS.length}`
   });
 
   return embed;
@@ -288,6 +291,13 @@ async function onPaginaCategoria(interaction) {
   const pagina = paginaAtual.get(userId) || 0;
   const totalPaginas = Math.ceil(categoria.itens.length / INDICADORES_POR_PAGINA);
   const delta = interaction.customId === 'pagina_categoria_proxima' ? 1 : -1;
+
+  if (delta > 0) {
+    const inicio = pagina * INDICADORES_POR_PAGINA;
+    registrarItensNaoAvaliados(categoria.itens.slice(inicio, inicio + INDICADORES_POR_PAGINA), getRespostas(userId));
+    await salvarProgresso(userId, interaction.guildId || interaction.guild?.id);
+  }
+
   paginaAtual.set(userId, Math.max(0, Math.min(totalPaginas - 1, pagina + delta)));
   return renderizarCategoria(interaction, getCategoriaAtual(userId));
 }
@@ -298,11 +308,14 @@ async function onProximaCategoria(interaction) {
   const atual = getCategoriaAtual(userId);
   const categoria = CATEGORIAS[atual];
   const respostas = getRespostas(userId);
+  const pagina = paginaAtual.get(userId) || 0;
+  const totalPaginas = categoria ? Math.ceil(categoria.itens.length / INDICADORES_POR_PAGINA) : 0;
 
-  if (!categoria || !temTodosItensPreenchidos(categoria, respostas)) {
-    return interaction.reply({ content: '⚠️ Avalie todos os itens antes de avançar', ephemeral: true });
+  if (!categoria || pagina !== totalPaginas - 1) {
+    return interaction.reply({ content: '⚠️ Use “Ver mais 5” para chegar à última página da categoria.', ephemeral: true });
   }
 
+  registrarItensNaoAvaliados(categoria.itens, respostas);
   if (atual < CATEGORIAS.length - 1) {
     const proximo = atual + 1;
     categoriaAtual.set(userId, proximo);
@@ -443,6 +456,7 @@ module.exports = {
   renderizarCategoria,
   finalizarAvaliacao,
   onIndicadoresBinariosSelecionados,
+  onPaginaCategoria,
   onProximaCategoria,
   onSalvarProgresso
 };

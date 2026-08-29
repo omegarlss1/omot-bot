@@ -52,7 +52,8 @@ const D = {
     ['block', 'Block', 'Bloqueia chutes e interrompe jogadas.', 2],
     ['corte_de_jogada', 'Corte de jogada', 'Interrompe ataques antes da finalização.', 3],
     ['cobertura_defensiva', 'Cobertura defensiva', 'Protege o campo defensivo e evita deixar o gol vulnerável.', 3],
-    ['paciencia_defensiva', 'Paciência defensiva', 'Espera o momento correto para realizar uma ação defensiva.', 3]
+    ['paciencia_defensiva', 'Paciência defensiva', 'Espera o momento correto para realizar uma ação defensiva.', 3],
+    ['rebote_defensivo', 'Rebote defensivo', 'Antecipa e controla rebotes na parede e no backboard (parede) defensivo, evitando segundo chute do adversário.', 2]
   ],
   equipe: [
     ['adaptacao', 'Adaptação', 'Muda o estilo de jogo conforme o adversário ou time.', 3],
