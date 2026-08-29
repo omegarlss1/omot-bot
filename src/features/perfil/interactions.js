@@ -33,6 +33,10 @@ function normalizarDadosFicha(dados = {}) {
   for (const [chave, valor] of Object.entries(dados || {})) {
     if (valor === undefined || valor === null) continue;
     if (typeof valor === 'function') continue;
+    if (Array.isArray(valor)) {
+      objetoNormalizado[chave] = valor.filter((item) => typeof item === 'string');
+      continue;
+    }
     if (typeof valor === 'object') continue;
     objetoNormalizado[chave] = valor;
   }
@@ -65,7 +69,8 @@ const FICHA_MODAL_STEPS = [
   [
     { id: 'pais_input', label: 'País', style: TextInputStyle.Short, required: false },
     { id: 'bio_input', label: 'Bio (máx. 150)', style: TextInputStyle.Paragraph, required: false },
-    { id: 'cla_atual_input', label: 'CLA atual', style: TextInputStyle.Short, required: false }
+    { id: 'cla_atual_input', label: 'CLA atual', style: TextInputStyle.Short, required: false },
+    { id: 'nick_principal_input', label: 'Nick principal', style: TextInputStyle.Short, required: true, placeholder: 'Ex: Omotzin' }
   ],
   [
     { id: 'clas_anteriores_input', label: 'CLAs anteriores (separadas por ,)', style: TextInputStyle.Short, required: false },
@@ -357,6 +362,38 @@ function buildFichaSelects(dados = {}) {
   return rows;
 }
 
+function buildNicksSecundariosView(dados = {}) {
+  const principal = dados.nick_principal_input || dados.nick_principal || 'Não informado';
+  const secundarios = Array.isArray(dados.nicks_secundarios) ? dados.nicks_secundarios : [];
+  const resumo = secundarios.length
+    ? secundarios.join(', ')
+    : 'Nenhum nick secundário cadastrado.';
+  const botoes = [
+    new ButtonBuilder()
+      .setCustomId('btn_add_nick_sec')
+      .setLabel('+ Adicionar nick secundário')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId('btn_continuar_ficha')
+      .setLabel('Continuar para etapa 3/4')
+      .setStyle(ButtonStyle.Success)
+  ];
+
+  if (secundarios.length > 0) {
+    botoes.splice(1, 0, new ButtonBuilder()
+      .setCustomId('btn_remove_nick_sec')
+      .setLabel('Remover')
+      .setStyle(ButtonStyle.Danger));
+  }
+
+  return {
+    embeds: [new EmbedBuilder()
+      .setTitle('Nicks da ficha')
+      .setDescription(`Nick principal: **${principal}**\nSecundários (${secundarios.length}): ${resumo}`)],
+    components: [new ActionRowBuilder().addComponents(botoes)]
+  };
+}
+
 async function onIniciarFicha(interaction) {
   if (!interaction || typeof interaction.reply !== 'function') {
     return;
@@ -417,6 +454,9 @@ async function onSelectFichaOpcao(interaction) {
 
 async function onContinuarFicha(interaction) {
   const dados = normalizarDadosFicha(fichaEmAndamento.get(interaction.user.id));
+  if (Number(dados.etapa) === 2) {
+    return interaction.showModal(buildFichaModalEtapa(2, dados));
+  }
   const faltando = OBRIGATORIOS.filter((campo) => !dados[campo]);
   const nomesCampos = { input: 'Input', rank_x1: 'Rank X1', rank_x2: 'Rank X2', pico_rank: 'Pico Rank' };
 
@@ -434,6 +474,65 @@ async function onContinuarFichaEtapa(interaction) {
   const stepIndex = Number(match[1]) - 1;
   const dados = normalizarDadosFicha(fichaEmAndamento.get(interaction.user.id));
   return interaction.showModal(buildFichaModalEtapa(stepIndex, dados));
+}
+
+async function onAdicionarNickSec(interaction) {
+  const input = new TextInputBuilder()
+    .setCustomId('novo_nick_sec')
+    .setLabel('Novo nick secundário')
+    .setPlaceholder('Ex: Omotzin_alt')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(20);
+  const modal = new ModalBuilder()
+    .setCustomId('modal_add_nick_sec')
+    .setTitle('Adicionar nick secundário')
+    .addComponents(new ActionRowBuilder().addComponents(input));
+  return interaction.showModal(modal);
+}
+
+async function onModalAdicionarNickSec(interaction) {
+  const userId = interaction.user.id;
+  const prev = normalizarDadosFicha(fichaEmAndamento.get(userId));
+  const novoNick = interaction.fields.getTextInputValue('novo_nick_sec').trim().toLowerCase();
+  const secundarios = Array.isArray(prev.nicks_secundarios) ? [...prev.nicks_secundarios] : [];
+  const principal = String(prev.nick_principal_input || prev.nick_principal || '').trim().toLowerCase();
+
+  if (!/^[a-z0-9_]{3,20}$/.test(novoNick)) {
+    return interaction.reply({ content: 'Nick inválido. Use 3-20 caracteres: letras, números e _.', ephemeral: true });
+  }
+  if (novoNick === principal || secundarios.includes(novoNick)) {
+    return interaction.reply({ content: 'Esse nick já está em uso na sua ficha.', ephemeral: true });
+  }
+
+  secundarios.push(novoNick);
+  const novo = { ...prev, nicks_secundarios: secundarios };
+  fichaEmAndamento.set(userId, novo);
+  return interaction.reply({ ...buildNicksSecundariosView(novo), ephemeral: true });
+}
+
+async function onRemoverNickSec(interaction) {
+  const dados = normalizarDadosFicha(fichaEmAndamento.get(interaction.user.id));
+  const secundarios = Array.isArray(dados.nicks_secundarios) ? dados.nicks_secundarios : [];
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId('select_remove_nick_sec')
+    .setPlaceholder('Selecione o nick para remover')
+    .addOptions(secundarios.slice(0, 25).map((nick) => ({ label: nick, value: nick })));
+  return interaction.reply({
+    content: secundarios.length > 25 ? 'Selecione um dos 25 primeiros nicks para remover.' : 'Escolha o nick secundário para remover:',
+    components: [new ActionRowBuilder().addComponents(menu)],
+    ephemeral: true
+  });
+}
+
+async function onSelecionarNickParaRemover(interaction) {
+  const userId = interaction.user.id;
+  const prev = normalizarDadosFicha(fichaEmAndamento.get(userId));
+  const removido = interaction.values[0];
+  const secundarios = (Array.isArray(prev.nicks_secundarios) ? prev.nicks_secundarios : []).filter((nick) => nick !== removido);
+  const novo = { ...prev, nicks_secundarios: secundarios };
+  fichaEmAndamento.set(userId, novo);
+  return interaction.update(buildNicksSecundariosView(novo));
 }
 
 async function onCorrigirFichaCampo(interaction) {
@@ -460,7 +559,7 @@ async function onModalCorrecaoFicha(interaction) {
   console.log('[ficha-correcao]', { campo: campoId, valorAntigo, novoValor });
 
   const etapaAtual = Number(novo.etapa) || 0;
-  const validacaoEtapa = validarCamposEtapa(etapaAtual, novo);
+  const validacaoEtapa = await validarCamposEtapa(etapaAtual, novo, userId);
   console.log('[ficha-modal-validacao]', {
     etapaAtual,
     customId: interaction.customId,
@@ -476,9 +575,14 @@ async function onModalCorrecaoFicha(interaction) {
     });
   }
 
+  if (etapaAtual === 1) {
+    fichaEmAndamento.set(userId, { ...novo, etapa: 2 });
+    return interaction.reply({ ...buildNicksSecundariosView(novo), ephemeral: true });
+  }
+
   const proximaEtapa = etapaAtual + 1;
   if (proximaEtapa < FICHA_MODAL_STEPS.length) {
-    const validacaoProximaEtapa = validarCamposEtapa(proximaEtapa, novo);
+    const validacaoProximaEtapa = await validarCamposEtapa(proximaEtapa, novo, userId);
     if (!validacaoProximaEtapa.ok) {
       fichaEmAndamento.set(userId, { ...novo, etapa: proximaEtapa });
       return interaction.reply({
@@ -703,10 +807,24 @@ async function onSelectVerPerfil(interaction) {
   return interaction.reply({ embeds: [embedPerfil], components: compactarLinhasComponentes([...adminButtons, ...componentsExtras]) });
 }
 
-function validarCamposEtapa(stepIndex, dadosEtapa) {
+async function validarCamposEtapa(stepIndex, dadosEtapa, userId = null) {
   const campos = FICHA_MODAL_STEPS[stepIndex] || [];
 
   for (const campo of campos) {
+    if (campo.id === 'nick_principal_input') {
+      const nick = String(dadosEtapa[campo.id] || '').trim().toLowerCase();
+      if (!nick || nick.length < 3 || nick.length > 20 || !/^[a-z0-9_]+$/.test(nick)) {
+        return { ok: false, campo: campo.id, mensagem: 'Nick inválido. Use 3-20 caracteres: letras, números e _.' };
+      }
+      if (userId) {
+        const existente = await PerfilMembro.findOne({ nick_principal: nick, userId: { $ne: userId } }).select('_id').lean();
+        if (existente) {
+          return { ok: false, campo: campo.id, mensagem: 'Esse nick principal já está em uso.' };
+        }
+      }
+      continue;
+    }
+
     if (campo.id !== 'data_nascimento_input') continue;
 
     const resultado = validarDataNascimento(dadosEtapa[campo.id]);
@@ -799,7 +917,7 @@ async function onModalFichaPerfil(interaction) {
     }
   });
 
-  const validacaoEtapa = validarCamposEtapa(etapaAtual, dadosExistentes);
+  const validacaoEtapa = await validarCamposEtapa(etapaAtual, dadosExistentes, interaction.user.id);
   console.log('[ficha-modal-validacao]', {
     etapaAtual,
     customId: interaction.customId,
@@ -822,7 +940,11 @@ async function onModalFichaPerfil(interaction) {
   if (etapaAtual < FICHA_MODAL_STEPS.length - 1) {
     const dadosAtual = { ...dadosExistentes };
     const userId = interaction.user.id;
-    fichaEmAndamento.set(userId, { ...normalizarDadosFicha(fichaEmAndamento.get(userId)), ...dadosAtual, etapa: etapaAtual + 1 });
+    const etapaSeguinte = etapaAtual + 1;
+    fichaEmAndamento.set(userId, { ...normalizarDadosFicha(fichaEmAndamento.get(userId)), ...dadosAtual, etapa: etapaSeguinte });
+    if (etapaAtual === 1) {
+      return interaction.reply({ ...buildNicksSecundariosView(fichaEmAndamento.get(userId)), ephemeral: true });
+    }
     const proximaEtapa = etapaAtual + 2;
 
     return interaction.reply({
@@ -851,6 +973,10 @@ async function onModalFichaPerfil(interaction) {
   const controleTipo = sanitizeTextoLivre(dados.controle_tipo_input, { maxLength: 100 });
   const tiktok = sanitizeTextoLivre(dados.tiktok_input, { maxLength: 60 });
   const instagram = sanitizeTextoLivre(dados.instagram_input, { maxLength: 60 });
+  const nickPrincipal = String(dados.nick_principal_input || dados.nick_principal || '').trim().toLowerCase();
+  const nicksSecundarios = [...new Set((Array.isArray(dados.nicks_secundarios) ? dados.nicks_secundarios : [])
+    .map((nick) => String(nick).trim().toLowerCase())
+    .filter((nick) => nick && nick !== nickPrincipal))];
 
   const rankX1 = normalizarOpcaoPermitida(dados.rank_x1 || dados['select_ficha_rank_x1'], VALORES_RANK_PERMITIDOS) || null;
   const rankX2 = normalizarOpcaoPermitida(dados.rank_x2 || dados['select_ficha_rank_x2'], VALORES_RANK_PERMITIDOS) || null;
@@ -882,6 +1008,8 @@ async function onModalFichaPerfil(interaction) {
     bio: bio || perfilAtual?.bio || null,
     claAtual: claAtual || perfilAtual?.claAtual || null,
     clasAnteriores: clasAnterioresArray,
+    nick_principal: nickPrincipal,
+    nicks_secundarios: nicksSecundarios,
     rankX1: rankX1 || perfilAtual?.rankX1 || null,
     rankX2: rankX2 || perfilAtual?.rankX2 || null,
     picoRank: picoRank || perfilAtual?.picoRank || null,
@@ -1027,6 +1155,8 @@ function register(registry) {
   registry.button('btn_iniciar_ficha', onIniciarFicha);
   registry.button('btn_continuar_ficha', onContinuarFicha);
   registry.button(/^btn_continuar_ficha_\d+$/, onContinuarFichaEtapa);
+  registry.button('btn_add_nick_sec', onAdicionarNickSec);
+  registry.button('btn_remove_nick_sec', onRemoverNickSec);
   registry.button(/^btn_corrigir_/, onCorrigirFichaCampo);
   registry.button('btn_ver_perfil', onVerPerfil);
   registry.button('btn_abrir_select_ver_perfil', onAbrirSelecionarPerfil);
@@ -1035,6 +1165,7 @@ function register(registry) {
   registry.button(/^btn_admin_(gol|assist|save|chutes|mvp|pontuacao)_[0-9]+$/, onAbrirModalAdminEstatistica);
   registry.modal(/^modal_admin_stat_(gol|assist|save|chutes|mvp|pontuacao)_[0-9]+$/, onAdminIncrement);
   registry.modal(/^modal_ficha_correcao_/, onModalCorrecaoFicha);
+  registry.modal('modal_add_nick_sec', onModalAdicionarNickSec);
   registry.modal(/^modal_ficha_perfil_\d+$/, onModalFichaPerfil);
   registry.select('select_cargos_jogos', onSelectCargos);
   registry.select('select_ver_perfil', onSelectVerPerfil);
@@ -1042,6 +1173,7 @@ function register(registry) {
   registry.select('select_ficha_rank_x1', onSelectFichaOpcao);
   registry.select('select_ficha_rank_x2', onSelectFichaOpcao);
   registry.select('select_ficha_pico_rank', onSelectFichaOpcao);
+  registry.select('select_remove_nick_sec', onSelecionarNickParaRemover);
 }
 
 module.exports = { register, buildPerfilEmbed, calcularIdade, calcularCategorias, MAPA_INDICADORES };
