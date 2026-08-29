@@ -408,11 +408,16 @@ async function onContinuarAvaliacao(interaction) {
   return renderizarCategoria(interaction, getCategoriaAtual(userId));
 }
 
+async function onAbrirAvaliacao(interaction) {
+  return iniciarAvaliacao(interaction);
+}
+
 function register(registry) {
   registry.button(/^avaliar_\d+_.+_\d+$/, onNotaSelecionada);
   registry.button('proxima_categoria', onProximaCategoria);
   registry.button('salvar_progresso', onSalvarProgresso);
   registry.button('btn_continuar_avaliacao', onContinuarAvaliacao);
+  registry.button('btn_abrir_avaliacao', onAbrirAvaliacao);
   registry.button('finalizar_avaliacao', finalizarAvaliacao);
 }
 
