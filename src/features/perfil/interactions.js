@@ -436,6 +436,67 @@ async function onContinuarFichaEtapa(interaction) {
   return interaction.showModal(buildFichaModalEtapa(stepIndex, dados));
 }
 
+async function onCorrigirFichaCampo(interaction) {
+  const campoId = interaction.customId.replace(/^btn_corrigir_/, '');
+  const dados = normalizarDadosFicha(fichaEmAndamento.get(interaction.user.id));
+  const modal = criarModalCorrecao(campoId, dados);
+  if (!modal) return;
+
+  return interaction.showModal(modal);
+}
+
+async function onModalCorrecaoFicha(interaction) {
+  const campoId = interaction.customId.replace(/^modal_ficha_correcao_/, '');
+  const campo = obterCampoFicha(campoId);
+  if (!campo) return;
+
+  const userId = interaction.user.id;
+  const prev = normalizarDadosFicha(fichaEmAndamento.get(userId));
+  const valorAntigo = prev[campoId];
+  const novoValor = interaction.fields.getTextInputValue(campoId).trim();
+  const novo = { ...prev, [campoId]: novoValor };
+  fichaEmAndamento.set(userId, novo);
+
+  console.log('[ficha-correcao]', { campo: campoId, valorAntigo, novoValor });
+
+  const etapaAtual = Number(novo.etapa) || 0;
+  const validacaoEtapa = validarCamposEtapa(etapaAtual, novo);
+  console.log('[ficha-modal-validacao]', {
+    etapaAtual,
+    customId: interaction.customId,
+    validacaoEtapa,
+    dadosAtual: { ...novo }
+  });
+
+  if (!validacaoEtapa.ok) {
+    return interaction.reply({
+      content: validacaoEtapa.mensagem,
+      components: [criarBotaoCorrecao(obterCampoComErro(validacaoEtapa))],
+      ephemeral: true
+    });
+  }
+
+  const proximaEtapa = etapaAtual + 1;
+  if (proximaEtapa < FICHA_MODAL_STEPS.length) {
+    const validacaoProximaEtapa = validarCamposEtapa(proximaEtapa, novo);
+    if (!validacaoProximaEtapa.ok) {
+      fichaEmAndamento.set(userId, { ...novo, etapa: proximaEtapa });
+      return interaction.reply({
+        content: validacaoProximaEtapa.mensagem,
+        components: [criarBotaoCorrecao(obterCampoComErro(validacaoProximaEtapa))],
+        ephemeral: true
+      });
+    }
+  }
+
+  fichaEmAndamento.set(userId, { ...novo, etapa: Math.min(proximaEtapa, FICHA_MODAL_STEPS.length - 1) });
+  return interaction.reply({
+    content: `✅ Campo corrigido. Clique para continuar na etapa ${Math.min(proximaEtapa + 1, FICHA_MODAL_STEPS.length)}/4.`,
+    components: [criarBotaoContinuarFicha(etapaAtual)],
+    ephemeral: true
+  });
+}
+
 function buildPerfilEmbed(perfil, member, { isPublic = false } = {}) {
   const nomeExibicao = obterNomeExibicao(perfil, member);
   const idade = Number(perfil?.idade) || calcularIdade(perfil?.dataNascimento);
@@ -650,11 +711,62 @@ function validarCamposEtapa(stepIndex, dadosEtapa) {
 
     const resultado = validarDataNascimento(dadosEtapa[campo.id]);
     if (!resultado.ok) {
-      return { ok: false, campoId: campo.id, erro: resultado.error };
+      return { ok: false, campo: campo.id, mensagem: resultado.error };
     }
   }
 
   return { ok: true };
+}
+
+function obterCampoFicha(campoId) {
+  return FICHA_MODAL_STEPS.flat().find((campo) => campo.id === campoId) || null;
+}
+
+function criarBotaoCorrecao(campoId, labelPrefixo = 'Corrigir') {
+  const campo = obterCampoFicha(campoId);
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`btn_corrigir_${campoId}`)
+      .setLabel(`${labelPrefixo} ${campo?.label || campoId}`.slice(0, 80))
+      .setStyle(ButtonStyle.Primary)
+  );
+}
+
+function obterCampoComErro(validacao) {
+  return validacao.campo || validacao.campoId;
+}
+
+function criarModalCorrecao(campoId, dados) {
+  const campo = obterCampoFicha(campoId);
+  if (!campo) return null;
+
+  const input = new TextInputBuilder()
+    .setCustomId(campo.id)
+    .setLabel(campo.label)
+    .setStyle(campo.style)
+    .setRequired(Boolean(campo.required));
+
+  if (campo.placeholder) input.setPlaceholder(campo.placeholder);
+  const valorAtual = dados?.[campo.id];
+  if (valorAtual !== undefined && valorAtual !== null && valorAtual !== '') {
+    input.setValue(String(valorAtual));
+  }
+
+  return new ModalBuilder()
+    .setCustomId(`modal_ficha_correcao_${campo.id}`)
+    .setTitle(`Corrigir ${campo.label}`.slice(0, 45))
+    .addComponents(new ActionRowBuilder().addComponents(input));
+}
+
+function criarBotaoContinuarFicha(etapa) {
+  const proximaEtapa = etapa + 1;
+  const numeroProximaEtapa = proximaEtapa + 1;
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`btn_continuar_ficha_${numeroProximaEtapa}`)
+      .setLabel(`Abrir ficha ${numeroProximaEtapa}/4`)
+      .setStyle(ButtonStyle.Primary)
+  );
 }
 
 async function onModalFichaPerfil(interaction) {
@@ -696,19 +808,13 @@ async function onModalFichaPerfil(interaction) {
   });
 
   if (!validacaoEtapa.ok) {
-    const dadosParaReabrir = { ...dadosExistentes };
+    const campoComErro = obterCampoComErro(validacaoEtapa);
     const userId = interaction.user.id;
-    fichaEmAndamento.set(userId, { ...normalizarDadosFicha(fichaEmAndamento.get(userId)), ...dadosParaReabrir, etapa: etapaAtual });
-    const proximaEtapa = etapaAtual + 1;
+    fichaEmAndamento.set(userId, { ...normalizarDadosFicha(fichaEmAndamento.get(userId)), ...dadosExistentes, etapa: etapaAtual });
 
     return interaction.reply({
-      content: `${validacaoEtapa.erro} Corrija o campo e tente novamente.`,
-      components: [new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`btn_continuar_ficha_${proximaEtapa}`)
-          .setLabel(`Corrigir ficha ${proximaEtapa}/4`)
-          .setStyle(ButtonStyle.Primary)
-      )],
+      content: validacaoEtapa.mensagem,
+      components: [criarBotaoCorrecao(campoComErro)],
       ephemeral: true
     });
   }
@@ -721,12 +827,7 @@ async function onModalFichaPerfil(interaction) {
 
     return interaction.reply({
       content: `✅ Etapa ${etapaAtual + 1}/4 salva. Clique para continuar na etapa ${proximaEtapa}/4.`,
-      components: [new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`btn_continuar_ficha_${proximaEtapa}`)
-          .setLabel(`Abrir ficha ${proximaEtapa}/4`)
-          .setStyle(ButtonStyle.Primary)
-      )],
+      components: [criarBotaoContinuarFicha(etapaAtual)],
       ephemeral: true
     });
   }
@@ -926,12 +1027,14 @@ function register(registry) {
   registry.button('btn_iniciar_ficha', onIniciarFicha);
   registry.button('btn_continuar_ficha', onContinuarFicha);
   registry.button(/^btn_continuar_ficha_\d+$/, onContinuarFichaEtapa);
+  registry.button(/^btn_corrigir_/, onCorrigirFichaCampo);
   registry.button('btn_ver_perfil', onVerPerfil);
   registry.button('btn_abrir_select_ver_perfil', onAbrirSelecionarPerfil);
   registry.button(/^btn_ver_titulos_\d+$/, onVerTodosTitulos);
   registry.button(/^btn_titulos_(prev|next)_\d+_\d+$/, onPaginarTitulos);
   registry.button(/^btn_admin_(gol|assist|save|chutes|mvp|pontuacao)_[0-9]+$/, onAbrirModalAdminEstatistica);
   registry.modal(/^modal_admin_stat_(gol|assist|save|chutes|mvp|pontuacao)_[0-9]+$/, onAdminIncrement);
+  registry.modal(/^modal_ficha_correcao_/, onModalCorrecaoFicha);
   registry.modal(/^modal_ficha_perfil_\d+$/, onModalFichaPerfil);
   registry.select('select_cargos_jogos', onSelectCargos);
   registry.select('select_ver_perfil', onSelectVerPerfil);
