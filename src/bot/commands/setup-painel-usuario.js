@@ -23,7 +23,11 @@ module.exports = {
       new ButtonBuilder().setCustomId('btn_ver_perfil').setLabel('Meu Perfil').setStyle(ButtonStyle.Secondary).setEmoji('👤')
     );
 
-    await interaction.channel.send({ embeds: [embed], components: [row] });
+    const rowPerfilPublico = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('btn_abrir_select_ver_perfil').setLabel('Ver Perfil').setStyle(ButtonStyle.Secondary).setEmoji('🔎')
+    );
+
+    await interaction.channel.send({ embeds: [embed], components: [row, rowPerfilPublico] });
     return interaction.reply({ content: 'Central do Jogador enviada!', flags: 64 });
   }
 };

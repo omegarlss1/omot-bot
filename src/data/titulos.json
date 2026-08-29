@@ -1,0 +1,252 @@
+[
+  {
+    "id": "campeao_omega_s3",
+    "nome": "Campeão ÔMEGA S3",
+    "icone": "🏆",
+    "categoria": "Competitivo",
+    "raridade": "Lendário",
+    "temporada": "S3",
+    "descricao": "Campeão da edição 3",
+    "cor": "#FFD700"
+  },
+  {
+    "id": "artilheiro_s2",
+    "nome": "Artilheiro S2",
+    "icone": "🎯",
+    "categoria": "Competitivo",
+    "raridade": "Épico",
+    "temporada": "S2",
+    "descricao": "Maior goleador da temporada 2",
+    "cor": "#7B68EE"
+  },
+  {
+    "id": "muralha",
+    "nome": "Muralha",
+    "icone": "🧱",
+    "categoria": "Defesa",
+    "raridade": "Raro",
+    "temporada": "S1",
+    "descricao": "Excelente atuação defensiva",
+    "cor": "#4CAF50"
+  },
+  {
+    "id": "mvp_final",
+    "nome": "MVP Final",
+    "icone": "🏅",
+    "categoria": "Competitivo",
+    "raridade": "Lendário",
+    "temporada": "S4",
+    "descricao": "Melhor jogador da grande final",
+    "cor": "#FFB000"
+  },
+  {
+    "id": "top_1_rank",
+    "nome": "Top 1 Rank",
+    "icone": "🚀",
+    "categoria": "Rank",
+    "raridade": "Épico",
+    "temporada": "S5",
+    "descricao": "Concluiu no topo do rank nacional",
+    "cor": "#00C2FF"
+  },
+  {
+    "id": "craque_omega",
+    "nome": "Craque ÔMEGA",
+    "icone": "✨",
+    "categoria": "Criatividade",
+    "raridade": "Épico",
+    "temporada": "S3",
+    "descricao": "Jogador mais criativo da edição",
+    "cor": "#FF6EC7"
+  },
+  {
+    "id": "coroa_goleador",
+    "nome": "Coroa do Goleador",
+    "icone": "👑",
+    "categoria": "Ataque",
+    "raridade": "Raro",
+    "temporada": "S4",
+    "descricao": "Conquistou a coroa de artilheiro",
+    "cor": "#E1A100"
+  },
+  {
+    "id": "passador_brasil",
+    "nome": "Passador do Brasil",
+    "icone": "🧠",
+    "categoria": "Equipe",
+    "raridade": "Raro",
+    "temporada": "S2",
+    "descricao": "Maior número de assistências da liga",
+    "cor": "#3A86FF"
+  },
+  {
+    "id": "higienista",
+    "nome": "Higienista",
+    "icone": "🛡️",
+    "categoria": "Defesa",
+    "raridade": "Comum",
+    "temporada": "S1",
+    "descricao": "Manteve a defesa mais sólida da temporada",
+    "cor": "#66BB6A"
+  },
+  {
+    "id": "comandante_omega",
+    "nome": "Comandante ÔMEGA",
+    "icone": "🧭",
+    "categoria": "Equipe",
+    "raridade": "Épico",
+    "temporada": "S6",
+    "descricao": "Liderou a equipe com organização e consistência",
+    "cor": "#00BCD4"
+  },
+  {
+    "id": "veterano_5_edicoes",
+    "nome": "Veterano 5 Edições",
+    "icone": "🧓",
+    "categoria": "Regularidade",
+    "raridade": "Comum",
+    "temporada": "S6",
+    "descricao": "Jogou em 5 edições seguidas",
+    "cor": "#9E9E9E"
+  },
+  {
+    "id": "mestre_analise",
+    "nome": "Mestre da Análise",
+    "icone": "📚",
+    "categoria": "Conhecimento",
+    "raridade": "Raro",
+    "temporada": "S5",
+    "descricao": "Excelente leitura do jogo e adaptação tática",
+    "cor": "#9C27B0"
+  },
+  {
+    "id": "ponta_rapida",
+    "nome": "Ponta Rápida",
+    "icone": "⚡",
+    "categoria": "Ataque",
+    "raridade": "Comum",
+    "temporada": "S3",
+    "descricao": "Transições rápidas e ofensivas constantes",
+    "cor": "#F06292"
+  },
+  {
+    "id": "carrasco_1x1",
+    "nome": "Carrasco 1x1",
+    "icone": "🥷",
+    "categoria": "Ataque",
+    "raridade": "Épico",
+    "temporada": "S4",
+    "descricao": "Domínio de duelos isolados",
+    "cor": "#8E24AA"
+  },
+  {
+    "id": "guardiao_do_clutch",
+    "nome": "Guardião do Clutch",
+    "icone": "🛡",
+    "categoria": "Defesa",
+    "raridade": "Lendário",
+    "temporada": "S7",
+    "descricao": "Decisivo em momentos finais de partida",
+    "cor": "#1E88E5"
+  },
+  {
+    "id": "mestre_do_fim_de_jogo",
+    "nome": "Mestre do Fim de Jogo",
+    "icone": "⏱️",
+    "categoria": "Regularidade",
+    "raridade": "Raro",
+    "temporada": "S3",
+    "descricao": "Performance consistente em partidas decisivas",
+    "cor": "#26A69A"
+  },
+  {
+    "id": "multi_trofeu",
+    "nome": "Multi-Troféu",
+    "icone": "🏆",
+    "categoria": "Competitivo",
+    "raridade": "Épico",
+    "temporada": "S6",
+    "descricao": "Conquistou títulos em duas temporadas seguidas",
+    "cor": "#D4AF37"
+  },
+  {
+    "id": "melhor_organizacao",
+    "nome": "Melhor Organização",
+    "icone": "🧩",
+    "categoria": "Equipe",
+    "raridade": "Raro",
+    "temporada": "S2",
+    "descricao": "Grande impacto na estrutura da equipe",
+    "cor": "#B0BEC5"
+  },
+  {
+    "id": "espetaculo",
+    "nome": "Espetáculo",
+    "icone": "🎭",
+    "categoria": "Criatividade",
+    "raridade": "Épico",
+    "temporada": "S4",
+    "descricao": "Jogadas memoráveis e personalidade marcante",
+    "cor": "#EC407A"
+  },
+  {
+    "id": "consistencia_omega",
+    "nome": "Consistência ÔMEGA",
+    "icone": "📈",
+    "categoria": "Regularidade",
+    "raridade": "Raro",
+    "temporada": "S5",
+    "descricao": "Média estável em todas as partidas da temporada",
+    "cor": "#43A047"
+  },
+  {
+    "id": "dono_do_campo",
+    "nome": "Dono do Campo",
+    "icone": "🌍",
+    "categoria": "Competitivo",
+    "raridade": "Comum",
+    "temporada": "S1",
+    "descricao": "Domínio do jogo em alto nível por toda temporada",
+    "cor": "#607D8B"
+  },
+  {
+    "id": "mestre_do_impacto",
+    "nome": "Mestre do Impacto",
+    "icone": "💥",
+    "categoria": "Ataque",
+    "raridade": "Raro",
+    "temporada": "S7",
+    "descricao": "Grande impacto ofensivo em momentos decisivos",
+    "cor": "#FF7043"
+  },
+  {
+    "id": "lenda_local",
+    "nome": "Lenda Local",
+    "icone": "🏁",
+    "categoria": "Competitivo",
+    "raridade": "Lendário",
+    "temporada": "S8",
+    "descricao": "Ícone da comunidade com legado reconhecido",
+    "cor": "#FFB300"
+  },
+  {
+    "id": "safra_de_gols",
+    "nome": "Safra de Gols",
+    "icone": "⚽",
+    "categoria": "Ataque",
+    "raridade": "Comum",
+    "temporada": "S2",
+    "descricao": "Sequência de bons momentos ofensivos",
+    "cor": "#4FC3F7"
+  },
+  {
+    "id": "calma_na_pressao",
+    "nome": "Calma na Pressão",
+    "icone": "🧘",
+    "categoria": "Regularidade",
+    "raridade": "Raro",
+    "temporada": "S6",
+    "descricao": "Mantém nível mesmo em partidas difíceis",
+    "cor": "#7E57C2"
+  }
+]
