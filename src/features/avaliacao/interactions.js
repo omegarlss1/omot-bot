@@ -1,5 +1,6 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const { MAPA_INDICADORES, calcularCategorias } = require('../../data/mapa_indicadores');
+const { CATEGORIAS_INDICADORES } = require('../../data/indicadores');
 const AvaliacaoPerfil = require('../../db/models/avaliacaoPerfil');
 const PerfilMembro = require('../../db/models/perfilMembro');
 
@@ -65,6 +66,15 @@ function getCategoriaAtual(userId) {
 function totalItensAvaliados(userId) {
   const respostas = getRespostas(userId);
   return Object.keys(respostas).length;
+}
+
+function separarIndicadoresPorCategoria(respostas) {
+  return Object.fromEntries(Object.entries(CATEGORIAS_INDICADORES).map(([categoria, grupo]) => [
+    grupo,
+    Object.fromEntries((MAPA_INDICADORES[categoria] || [])
+      .filter((indicador) => respostas[indicador] !== undefined)
+      .map((indicador) => [indicador, Number(respostas[indicador])]))
+  ]));
 }
 
 function temTodosItensPreenchidos(categoria, respostas) {
@@ -331,6 +341,7 @@ async function finalizarAvaliacao(interaction) {
     userId,
     discordId: userId,
     indicadoresDetalhados: { ...respostas },
+    indicadores: separarIndicadoresPorCategoria(respostas),
     inteligenciaLeitura: perfil.inteligencia_leitura ?? 0,
     conhecimentoEvolucao: perfil.conhecimento_evolucao ?? 0,
     controleMecanica: perfil.controle_mecanica ?? 0,

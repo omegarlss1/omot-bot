@@ -67,6 +67,16 @@ const perfilMembroSchema = new mongoose.Schema({
   edicoes: { type: Number, default: 0 },
 
   indicadoresDetalhados: { type: mongoose.Schema.Types.Mixed, default: {} },
+  indicadores: {
+    inteligencia: { type: Map, of: { type: Number, min: 0, max: 10 }, default: {} },
+    conhecimento: { type: Map, of: { type: Number, min: 0, max: 10 }, default: {} },
+    controle: { type: Map, of: { type: Number, min: 0, max: 10 }, default: {} },
+    ataque: { type: Map, of: { type: Number, min: 0, max: 10 }, default: {} },
+    defesa: { type: Map, of: { type: Number, min: 0, max: 10 }, default: {} },
+    equipe: { type: Map, of: { type: Number, min: 0, max: 10 }, default: {} },
+    criatividade: { type: Map, of: { type: Number, min: 0, max: 10 }, default: {} },
+    desempenho: { type: Map, of: { type: Number, min: 0, max: 10 }, default: {} }
+  },
   inteligenciaLeitura: { type: Number, default: 0 },
   conhecimentoEvolucao: { type: Number, default: 0 },
   controleMecanica: { type: Number, default: 0 },
