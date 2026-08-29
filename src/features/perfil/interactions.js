@@ -35,17 +35,19 @@ const FICHA_MODAL_STEPS = [
   [
     { id: 'nome_comum_input', label: 'Nome da comunidade / como quer ser conhecido', style: TextInputStyle.Short, required: true },
     { id: 'data_nascimento_input', label: 'Data de nascimento', style: TextInputStyle.Short, required: false, placeholder: 'DD/MM/AAAA' },
-    { id: 'estado_input', label: 'Estado', style: TextInputStyle.Short, required: false },
-    { id: 'pais_input', label: 'País', style: TextInputStyle.Short, required: false }
+    { id: 'estado_input', label: 'Estado', style: TextInputStyle.Short, required: false }
   ],
   [
+    { id: 'pais_input', label: 'País', style: TextInputStyle.Short, required: false },
     { id: 'bio_input', label: 'Bio (máx. 150)', style: TextInputStyle.Paragraph, required: false },
-    { id: 'cla_atual_input', label: 'CLA atual', style: TextInputStyle.Short, required: false },
-    { id: 'clas_anteriores_input', label: 'CLAs anteriores (separadas por ,)', style: TextInputStyle.Short, required: false }
+    { id: 'cla_atual_input', label: 'CLA atual', style: TextInputStyle.Short, required: false }
   ],
   [
+    { id: 'clas_anteriores_input', label: 'CLAs anteriores (separadas por ,)', style: TextInputStyle.Short, required: false },
     { id: 'modo_favorito_input', label: 'Modo favorito', style: TextInputStyle.Short, required: false },
-    { id: 'controle_tipo_input', label: 'Tipo de controle', style: TextInputStyle.Short, required: false, placeholder: 'Ex: Joystick, Gamepad Bluetooth, controle PS4/Xbox...' },
+    { id: 'controle_tipo_input', label: 'Tipo de controle', style: TextInputStyle.Short, required: false, placeholder: 'Ex: Joystick, Gamepad Bluetooth, controle PS4/Xbox...' }
+  ],
+  [
     { id: 'tiktok_input', label: 'TikTok', style: TextInputStyle.Short, required: false },
     { id: 'instagram_input', label: 'Instagram', style: TextInputStyle.Short, required: false }
   ]
@@ -92,6 +94,19 @@ function hasPermissaoAdmin(member) {
   if (member.permissions?.has(PermissionFlagsBits.Administrator)) return true;
   const nomes = (member.roles?.cache?.map((role) => role.name || '') || []).map((nome) => nome.toLowerCase());
   return nomes.some((nome) => /staff|admin|moderador|coordena(ca|ção)|diretoria/.test(nome));
+}
+
+function compactarLinhasComponentes(rows) {
+  return (rows || [])
+    .map((row) => {
+      if (!row) return null;
+      const componentes = Array.isArray(row.components) ? row.components : [];
+      if (!componentes.length) return null;
+      const linha = new ActionRowBuilder();
+      componentes.forEach((componente) => linha.addComponents(componente));
+      return linha;
+    })
+    .filter((row) => row && row.components && row.components.length > 0 && row.components.length <= 5);
 }
 
 function formatarBarra(valor) {
@@ -543,7 +558,7 @@ async function onVerPerfil(interaction) {
     ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`btn_ver_titulos_${interaction.user.id}`).setLabel(`Ver todos os títulos (${titulosFisicos.length}+)`).setStyle(ButtonStyle.Primary))]
     : [];
 
-  return interaction.editReply({ embeds: [embedPerfil], components: [...adminButtons, ...componentsExtras] });
+  return interaction.editReply({ embeds: [embedPerfil], components: compactarLinhasComponentes([...adminButtons, ...componentsExtras]) });
 }
 
 async function onAbrirSelecionarPerfil(interaction) {
@@ -567,7 +582,7 @@ async function onAbrirSelecionarPerfil(interaction) {
     );
 
   const row = new ActionRowBuilder().addComponents(select);
-  return interaction.reply({ content: '🔎 Selecione o membro no menu abaixo:', components: [row], flags: 64 });
+  return interaction.reply({ content: '🔎 Selecione o membro no menu abaixo:', components: compactarLinhasComponentes([row]), flags: 64 });
 }
 
 async function onSelectVerPerfil(interaction) {
@@ -590,7 +605,7 @@ async function onSelectVerPerfil(interaction) {
     ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`btn_ver_titulos_${targetId}`).setLabel(`Ver todos os títulos (${titulosFisicos.length}+)`).setStyle(ButtonStyle.Primary))]
     : [];
 
-  return interaction.reply({ embeds: [embedPerfil], components: [...adminButtons, ...componentsExtras] });
+  return interaction.reply({ embeds: [embedPerfil], components: compactarLinhasComponentes([...adminButtons, ...componentsExtras]) });
 }
 
 async function onModalFichaPerfil(interaction) {
