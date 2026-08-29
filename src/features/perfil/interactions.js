@@ -711,21 +711,26 @@ async function onModalFichaPerfil(interaction) {
 
   if (etapaAtual < FICHA_MODAL_STEPS.length - 1) {
     const dadosAtual = { ...dadosExistentes };
-    const modal2 = buildFichaModalEtapa(etapaAtual + 1, dadosAtual);
+    const modal = new ModalBuilder()
+      .setCustomId(`modal_ficha_perfil_${etapaAtual + 2}`)
+      .setTitle(`Ficha ${etapaAtual + 2}/4`);
+    const camposEtapa2 = FICHA_MODAL_STEPS[1];
+    const rowsEtapa2 = camposEtapa2.map((campo) => new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId(campo.id)
+          .setLabel(campo.label)
+          .setStyle(campo.style)
+          .setRequired(Boolean(campo.required))
+          .setMaxLength(campo.id === 'bio_input' ? 150 : 4000)
+      ));
+    modal.addComponents(...rowsEtapa2);
 
-    console.log('[ficha-modal-next-step]', {
-      customId: interaction.customId,
-      proximaEtapa: etapaAtual + 1,
-      showModalType: typeof interaction.showModal,
-      valoresPreenchidos: Object.keys(dadosAtual).length
-    });
+    await interaction.showModal(modal);
 
     setImmediate(() => {
       const estadoAtual = normalizarDadosFicha(fichaEmAndamento.get(interaction.user.id));
       fichaEmAndamento.set(interaction.user.id, { ...estadoAtual, ...dadosAtual, etapa: etapaAtual + 1 });
     });
-
-    await interaction.showModal(modal2);
     return;
   }
 
