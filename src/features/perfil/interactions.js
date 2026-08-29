@@ -360,12 +360,18 @@ async function onSelectFichaOpcao(interaction) {
   dados[chave] = valor;
   fichaEmAndamento.set(interaction.user.id, dados);
 
-  const faltando = ['input', 'plataforma', 'rank_x1', 'rank_x2', 'pico_rank'].filter((campo) => !dados[campo]);
-  if (faltando.length > 0) {
-    return interaction.reply({ content: `✅ Opção salva: **${valor}**. Falta(m) ${faltando.length} campo(s) para continuar.`, ephemeral: true });
+  const ehUltimaEscolha = interaction.customId === 'select_ficha_pico_rank';
+  if (!ehUltimaEscolha) {
+    const faltando = ['input', 'plataforma', 'rank_x1', 'rank_x2', 'pico_rank'].filter((campo) => !dados[campo]);
+    return interaction.update({
+      content: faltando.length > 0
+        ? `✅ Opção salva: **${valor}**. Falta(m) ${faltando.length} campo(s) para continuar.`
+        : `✅ Opção salva: **${valor}**. Pronto para continuar.`,
+      components: buildFichaSelects(),
+      ephemeral: true
+    });
   }
 
-  await interaction.reply({ content: '✅ Todas as opções fixas estão preenchidas. Abrindo a ficha...', ephemeral: true });
   return interaction.showModal(buildFichaModalEtapa(0));
 }
 
