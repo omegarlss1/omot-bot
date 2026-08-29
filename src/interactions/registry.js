@@ -31,11 +31,11 @@ class InteractionRegistry {
     else if (interaction.isModalSubmit()) list = this.modals;
     else return false;
 
-    const found = list.find((entry) => matches(entry.pattern, interaction.customId));
-    if (!found) return false;
+    const handler = list.find((entry) => matches(entry.pattern, interaction.customId));
+    if (!handler) return false;
 
     try {
-      await found.execute(interaction);
+      await handler.execute(interaction);
       return true;
     } catch (err) {
       const nome = interaction.customId || interaction.type || 'interação';
