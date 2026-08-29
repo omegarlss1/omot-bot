@@ -27,6 +27,10 @@ const CATEGORIAS_META = {
 
 const fichaEmAndamento = new Map();
 
+function resetarFichaEmAndamento(userId) {
+  fichaEmAndamento.set(userId, {});
+}
+
 const VALORES_INPUT_PERMITIDOS = ['Touch', 'Controle', 'Híbrido'];
 const VALORES_PLATAFORMA_PERMITIDAS = ['Android', 'iOS'];
 const VALORES_RANK_PERMITIDOS = ['Bronze', 'Prata', 'Ouro', 'Platina', 'Diamante', 'Champion', 'Grand Champion'];
@@ -258,11 +262,19 @@ async function onPaginarTitulos(interaction) {
   await interaction.update({ embeds: [embed], components: [buildTitulosButtons(targetId, pagina.paginaAtual, pagina.totalPaginas)] });
 }
 
-function buildFichaModalEtapa(stepIndex, valoresPreenchidos = {}, { erro = null } = {}) {
+function buildFichaModalEtapa(stepIndex, valoresPreenchidos = {}, { erro = null, campoErroId = null } = {}) {
   const campos = FICHA_MODAL_STEPS[stepIndex] || [];
+  const tituloBase = `Ficha ${stepIndex + 1}/${FICHA_MODAL_STEPS.length}`;
+  console.log('[ficha-modal-title]', {
+    stepIndex,
+    titleLength: tituloBase.length,
+    tituloBase,
+    valoresPreenchidos: Object.keys(valoresPreenchidos || {}).length
+  });
+
   const modal = new ModalBuilder()
     .setCustomId(`modal_ficha_perfil_${stepIndex + 1}`)
-    .setTitle(erro ? `Ficha de Membro - Perfil (${stepIndex + 1}/${FICHA_MODAL_STEPS.length}) • Corrija o campo` : `Ficha de Membro - Perfil (${stepIndex + 1}/${FICHA_MODAL_STEPS.length})`);
+    .setTitle(tituloBase);
 
   campos.forEach((campo) => {
     const input = new TextInputBuilder()
@@ -271,17 +283,22 @@ function buildFichaModalEtapa(stepIndex, valoresPreenchidos = {}, { erro = null 
       .setStyle(campo.style)
       .setRequired(Boolean(campo.required));
 
+    const valorAtual = valoresPreenchidos?.[campo.id];
+    const ehCampoErro = Boolean(campoErroId && campo.id === campoErroId);
+
     if (campo.placeholder) {
       input.setPlaceholder(campo.placeholder);
     }
 
-    if (campo.id === 'bio_input') {
-      input.setMaxLength(150);
+    if (ehCampoErro && erro) {
+      input.setPlaceholder('Formato inválido. Use DD/MM/AAAA.');
+      input.setValue('');
+    } else if (valorAtual !== undefined && valorAtual !== null && valorAtual !== '') {
+      input.setValue(String(valorAtual));
     }
 
-    const valorAtual = valoresPreenchidos?.[campo.id];
-    if (valorAtual !== undefined && valorAtual !== null && valorAtual !== '') {
-      input.setValue(String(valorAtual));
+    if (campo.id === 'bio_input') {
+      input.setMaxLength(150);
     }
 
     modal.addComponents(new ActionRowBuilder().addComponents(input));
@@ -324,7 +341,7 @@ async function onIniciarFicha(interaction) {
     return;
   }
 
-  fichaEmAndamento.delete(interaction.user.id);
+  resetarFichaEmAndamento(interaction.user.id);
   return interaction.reply({
     content: 'Antes de abrir a ficha, escolha as opções fixas abaixo para ficar tudo consistente:',
     components: buildFichaSelects(),
@@ -344,9 +361,18 @@ async function onSelectFichaOpcao(interaction) {
   if (!chave) return;
 
   const valor = interaction.values[0];
-  const dados = fichaEmAndamento.get(interaction.user.id) || {};
+  const dados = { ...(fichaEmAndamento.get(interaction.user.id) || {}) };
   dados[chave] = valor;
   fichaEmAndamento.set(interaction.user.id, dados);
+
+  console.log('[ficha-select]', {
+    userId: interaction.user.id,
+    customId: interaction.customId,
+    chave,
+    valor,
+    dadosAtual: { ...dados },
+    faltando: ['input', 'rank_x1', 'rank_x2', 'pico_rank'].filter((campo) => !dados[campo]).length
+  });
 
   const ehUltimaEscolha = interaction.customId === 'select_ficha_pico_rank';
   if (!ehUltimaEscolha) {
@@ -609,7 +635,7 @@ async function onModalFichaPerfil(interaction) {
   if (!match) return;
 
   const etapaAtual = Number(match[1]) - 1;
-  const dadosExistentes = fichaEmAndamento.get(interaction.user.id) || {};
+  const dadosExistentes = { ...(fichaEmAndamento.get(interaction.user.id) || {}) };
 
   FICHA_MODAL_STEPS[etapaAtual].forEach((campo) => {
     const valor = interaction.fields.getTextInputValue(campo.id).trim();
@@ -621,7 +647,10 @@ async function onModalFichaPerfil(interaction) {
   const validacaoEtapa = validarCamposEtapa(etapaAtual, dadosExistentes);
   if (!validacaoEtapa.ok) {
     fichaEmAndamento.set(interaction.user.id, dadosExistentes);
-    return interaction.showModal(buildFichaModalEtapa(etapaAtual, dadosExistentes, { erro: validacaoEtapa.erro }));
+    return interaction.showModal(buildFichaModalEtapa(etapaAtual, dadosExistentes, {
+      erro: validacaoEtapa.erro,
+      campoErroId: validacaoEtapa.campoId
+    }));
   }
 
   fichaEmAndamento.set(interaction.user.id, dadosExistentes);
