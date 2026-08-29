@@ -344,19 +344,6 @@ async function finalizarAvaliacao(interaction) {
     embed.addFields({ name: `${ICONE_CATEGORIAS[categoriaKey] || '📊'} ${nomeCategoria}`, value: `${valor}%`, inline: true });
   });
 
-  const top = Object.entries(respostas)
-    .sort((a, b) => Number(b[1]) - Number(a[1]))
-    .slice(0, 5)
-    .filter(([, marcado]) => marcado)
-    .map(([itemId]) => `• ${formatarIndicador(itemId)}: Marcado`)
-    .join('\n');
-
-  embed.addFields({
-    name: '🌟 Top 5 características',
-    value: top || 'Sem respostas registradas.',
-    inline: false
-  });
-
   const camposPerfil = {
     guildId,
     userId,
