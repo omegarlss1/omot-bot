@@ -54,6 +54,7 @@ function resetarFichaEmAndamento(userId) {
 const VALORES_INPUT_PERMITIDOS = ['Touch', 'Controle', 'Híbrido'];
 const VALORES_PLATAFORMA_PERMITIDAS = ['Android', 'iOS'];
 const VALORES_RANK_PERMITIDOS = ['Bronze', 'Prata', 'Ouro', 'Platina', 'Diamante', 'Champion', 'Grand Champion'];
+const OBRIGATORIOS = ['input', 'rank_x1', 'rank_x2', 'pico_rank'];
 
 const FICHA_MODAL_STEPS = [
   [
@@ -289,7 +290,7 @@ function buildFichaModalEtapa(stepIndex, valoresPreenchidos = {}, { erro = null,
     stepIndex,
     titleLength: tituloBase.length,
     tituloBase,
-    valoresPreenchidos: Object.keys(valoresPreenchidos || {}).length
+    valoresPreenchidos: OBRIGATORIOS.filter((campo) => valoresPreenchidos?.[campo]).length
   });
 
   const modal = new ModalBuilder()
@@ -327,29 +328,29 @@ function buildFichaModalEtapa(stepIndex, valoresPreenchidos = {}, { erro = null,
   return modal;
 }
 
-function buildFichaSelects() {
+function buildFichaSelects(dados = {}) {
   const rows = [];
   const selectInput = new StringSelectMenuBuilder()
     .setCustomId('select_ficha_input')
-    .setPlaceholder('Selecione o Input')
+    .setPlaceholder(dados.input || 'Selecione o Input')
     .addOptions(VALORES_INPUT_PERMITIDOS.map((valor) => ({ label: valor, value: valor })));
   rows.push(new ActionRowBuilder().addComponents(selectInput));
 
   const selectRanks = new StringSelectMenuBuilder()
     .setCustomId('select_ficha_rank_x1')
-    .setPlaceholder('Selecione o Rank X1')
+    .setPlaceholder(dados.rank_x1 || 'Selecione o Rank X1')
     .addOptions(VALORES_RANK_PERMITIDOS.map((valor) => ({ label: valor, value: valor })));
   rows.push(new ActionRowBuilder().addComponents(selectRanks));
 
   const selectRanksX2 = new StringSelectMenuBuilder()
     .setCustomId('select_ficha_rank_x2')
-    .setPlaceholder('Selecione o Rank X2')
+    .setPlaceholder(dados.rank_x2 || 'Selecione o Rank X2')
     .addOptions(VALORES_RANK_PERMITIDOS.map((valor) => ({ label: valor, value: valor })));
   rows.push(new ActionRowBuilder().addComponents(selectRanksX2));
 
   const selectPico = new StringSelectMenuBuilder()
     .setCustomId('select_ficha_pico_rank')
-    .setPlaceholder('Selecione o Pico Rank')
+    .setPlaceholder(dados.pico_rank || 'Selecione o Pico Rank')
     .addOptions(VALORES_RANK_PERMITIDOS.map((valor) => ({ label: valor, value: valor })));
   rows.push(new ActionRowBuilder().addComponents(selectPico));
 
@@ -381,25 +382,28 @@ async function onSelectFichaOpcao(interaction) {
   if (!chave) return;
 
   const valor = interaction.values[0];
-  const dados = salvarDadosFichaUsuario(interaction.user.id, { [chave]: valor });
+  const userId = interaction.user.id;
+  const prev = fichaEmAndamento.get(userId) || {};
+  const novo = { ...prev, [chave]: valor };
+  fichaEmAndamento.set(userId, novo);
+  const faltando = OBRIGATORIOS.filter((campo) => !novo[campo]).length;
 
   console.log('[ficha-select]', {
-    userId: interaction.user.id,
+    userId,
     customId: interaction.customId,
     chave,
     valor,
-    dadosAtual: { ...dados },
-    faltando: ['input', 'rank_x1', 'rank_x2', 'pico_rank'].filter((campo) => !dados[campo]).length
+    dadosAtual: { ...novo },
+    faltando
   });
 
   const ehUltimaEscolha = interaction.customId === 'select_ficha_pico_rank';
   if (!ehUltimaEscolha) {
-    const faltando = ['input', 'rank_x1', 'rank_x2', 'pico_rank'].filter((campo) => !dados[campo]);
     return interaction.update({
       content: faltando.length > 0
         ? `✅ Opção salva: **${valor}**. Falta(m) ${faltando.length} campo(s) para continuar.`
         : `✅ Opção salva: **${valor}**. Pronto para continuar.`,
-      components: buildFichaSelects(),
+      components: buildFichaSelects(novo),
       ephemeral: true
     });
   }
@@ -408,20 +412,16 @@ async function onSelectFichaOpcao(interaction) {
     return;
   }
 
-  return interaction.showModal(buildFichaModalEtapa(0));
+  return interaction.showModal(buildFichaModalEtapa(0, novo));
 }
 
 async function onContinuarFicha(interaction) {
   const dados = normalizarDadosFicha(fichaEmAndamento.get(interaction.user.id));
-  const faltando = [];
-
-  if (!dados.input) faltando.push('Input');
-  if (!dados.rank_x1) faltando.push('Rank X1');
-  if (!dados.rank_x2) faltando.push('Rank X2');
-  if (!dados.pico_rank) faltando.push('Pico Rank');
+  const faltando = OBRIGATORIOS.filter((campo) => !dados[campo]);
+  const nomesCampos = { input: 'Input', rank_x1: 'Rank X1', rank_x2: 'Rank X2', pico_rank: 'Pico Rank' };
 
   if (faltando.length) {
-    return interaction.reply({ content: `❌ Faltam opções obrigatórias: ${faltando.join(', ')}.`, ephemeral: true });
+    return interaction.reply({ content: `❌ Faltam opções obrigatórias: ${faltando.map((campo) => nomesCampos[campo]).join(', ')}.`, ephemeral: true });
   }
 
   return interaction.showModal(buildFichaModalEtapa(0));
