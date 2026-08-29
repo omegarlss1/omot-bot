@@ -28,6 +28,7 @@ const CATEGORIAS_META = {
 const fichaEmAndamento = new Map();
 
 const VALORES_INPUT_PERMITIDOS = ['Touch', 'Controle', 'Híbrido'];
+const VALORES_PLATAFORMA_PERMITIDAS = ['Android', 'iOS'];
 const VALORES_RANK_PERMITIDOS = ['Bronze', 'Prata', 'Ouro', 'Platina', 'Diamante', 'Champion', 'Grand Champion'];
 
 const FICHA_MODAL_STEPS = [
