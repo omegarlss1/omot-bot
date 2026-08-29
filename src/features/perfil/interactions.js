@@ -28,7 +28,6 @@ const CATEGORIAS_META = {
 const fichaEmAndamento = new Map();
 
 const VALORES_INPUT_PERMITIDOS = ['Touch', 'Controle', 'Híbrido'];
-const VALORES_PLATAFORMA_PERMITIDAS = ['Android', 'iOS'];
 const VALORES_RANK_PERMITIDOS = ['Bronze', 'Prata', 'Ouro', 'Platina', 'Diamante', 'Champion', 'Grand Champion'];
 
 const FICHA_MODAL_STEPS = [
@@ -45,7 +44,7 @@ const FICHA_MODAL_STEPS = [
   [
     { id: 'clas_anteriores_input', label: 'CLAs anteriores (separadas por ,)', style: TextInputStyle.Short, required: false },
     { id: 'modo_favorito_input', label: 'Modo favorito', style: TextInputStyle.Short, required: false },
-    { id: 'controle_tipo_input', label: 'Tipo de controle', style: TextInputStyle.Short, required: false, placeholder: 'Ex: Joystick, Gamepad Bluetooth, controle PS4/Xbox...' }
+    { id: 'controle_tipo_input', label: 'Tipo de controle', style: TextInputStyle.Short, required: false, placeholder: 'Ex: Três dedos, Joystick, Gamepad Bluetooth, controle PS4/Xbox...' }
   ],
   [
     { id: 'tiktok_input', label: 'TikTok', style: TextInputStyle.Short, required: false },
@@ -303,12 +302,6 @@ function buildFichaSelects() {
     .addOptions(VALORES_INPUT_PERMITIDOS.map((valor) => ({ label: valor, value: valor })));
   rows.push(new ActionRowBuilder().addComponents(selectInput));
 
-  const selectPlataforma = new StringSelectMenuBuilder()
-    .setCustomId('select_ficha_plataforma')
-    .setPlaceholder('Selecione a plataforma')
-    .addOptions(VALORES_PLATAFORMA_PERMITIDAS.map((valor) => ({ label: valor, value: valor })));
-  rows.push(new ActionRowBuilder().addComponents(selectPlataforma));
-
   const selectRanks = new StringSelectMenuBuilder()
     .setCustomId('select_ficha_rank_x1')
     .setPlaceholder('Selecione o Rank X1')
@@ -346,7 +339,6 @@ async function onIniciarFicha(interaction) {
 async function onSelectFichaOpcao(interaction) {
   const mapa = {
     select_ficha_input: 'input',
-    select_ficha_plataforma: 'plataforma',
     select_ficha_rank_x1: 'rank_x1',
     select_ficha_rank_x2: 'rank_x2',
     select_ficha_pico_rank: 'pico_rank'
@@ -362,7 +354,7 @@ async function onSelectFichaOpcao(interaction) {
 
   const ehUltimaEscolha = interaction.customId === 'select_ficha_pico_rank';
   if (!ehUltimaEscolha) {
-    const faltando = ['input', 'plataforma', 'rank_x1', 'rank_x2', 'pico_rank'].filter((campo) => !dados[campo]);
+    const faltando = ['input', 'rank_x1', 'rank_x2', 'pico_rank'].filter((campo) => !dados[campo]);
     return interaction.update({
       content: faltando.length > 0
         ? `✅ Opção salva: **${valor}**. Falta(m) ${faltando.length} campo(s) para continuar.`
@@ -380,7 +372,6 @@ async function onContinuarFicha(interaction) {
   const faltando = [];
 
   if (!dados.input) faltando.push('Input');
-  if (!dados.plataforma) faltando.push('Plataforma');
   if (!dados.rank_x1) faltando.push('Rank X1');
   if (!dados.rank_x2) faltando.push('Rank X2');
   if (!dados.pico_rank) faltando.push('Pico Rank');
@@ -847,7 +838,6 @@ function register(registry) {
   registry.select('select_cargos_jogos', onSelectCargos);
   registry.select('select_ver_perfil', onSelectVerPerfil);
   registry.select('select_ficha_input', onSelectFichaOpcao);
-  registry.select('select_ficha_plataforma', onSelectFichaOpcao);
   registry.select('select_ficha_rank_x1', onSelectFichaOpcao);
   registry.select('select_ficha_rank_x2', onSelectFichaOpcao);
   registry.select('select_ficha_pico_rank', onSelectFichaOpcao);
