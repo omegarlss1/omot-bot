@@ -705,7 +705,8 @@ async function onModalFichaPerfil(interaction) {
       fichaEmAndamento.set(interaction.user.id, { ...estadoAtual, ...dadosParaReabrir, etapa: etapaAtual });
     });
 
-    return interaction.showModal(modalReaberto);
+    await interaction.showModal(modalReaberto);
+    return;
   }
 
   if (etapaAtual < FICHA_MODAL_STEPS.length - 1) {
@@ -724,7 +725,8 @@ async function onModalFichaPerfil(interaction) {
       fichaEmAndamento.set(interaction.user.id, { ...estadoAtual, ...dadosAtual, etapa: etapaAtual + 1 });
     });
 
-    return interaction.showModal(modalSeguinte);
+    await interaction.showModal(modalSeguinte);
+    return;
   }
 
   await interaction.deferReply({ flags: 64 });
