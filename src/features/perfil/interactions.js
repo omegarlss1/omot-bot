@@ -40,6 +40,13 @@ function normalizarDadosFicha(dados = {}) {
   return objetoNormalizado;
 }
 
+function salvarDadosFichaUsuario(userId, novosDados = {}) {
+  const dadosAtuais = normalizarDadosFicha(fichaEmAndamento.get(userId));
+  const dadosAtualizados = { ...dadosAtuais, ...normalizarDadosFicha(novosDados) };
+  fichaEmAndamento.set(userId, dadosAtualizados);
+  return dadosAtualizados;
+}
+
 function resetarFichaEmAndamento(userId) {
   fichaEmAndamento.set(userId, {});
 }
@@ -374,9 +381,7 @@ async function onSelectFichaOpcao(interaction) {
   if (!chave) return;
 
   const valor = interaction.values[0];
-  const dados = normalizarDadosFicha(fichaEmAndamento.get(interaction.user.id));
-  dados[chave] = valor;
-  fichaEmAndamento.set(interaction.user.id, dados);
+  const dados = salvarDadosFichaUsuario(interaction.user.id, { [chave]: valor });
 
   console.log('[ficha-select]', {
     userId: interaction.user.id,
@@ -677,11 +682,13 @@ async function onModalFichaPerfil(interaction) {
   console.log('[ficha-modal-validacao]', {
     etapaAtual,
     customId: interaction.customId,
-    validacaoEtapa
+    validacaoEtapa,
+    dadosAtual: { ...dadosExistentes }
   });
 
   if (!validacaoEtapa.ok) {
-    fichaEmAndamento.set(interaction.user.id, dadosExistentes);
+    const dadosParaReabrir = { ...dadosExistentes };
+    fichaEmAndamento.set(interaction.user.id, dadosParaReabrir);
     if (!interaction || typeof interaction.showModal !== 'function') {
       console.log('[ficha-modal-showModal-missing-on-error]', { customId: interaction?.customId, hasShowModal: typeof interaction?.showModal === 'function' });
       return;
@@ -689,15 +696,16 @@ async function onModalFichaPerfil(interaction) {
     console.log('[ficha-modal-reopen-erro]', {
       customId: interaction.customId,
       etapaAtual,
-      showModalType: typeof interaction.showModal
+      showModalType: typeof interaction.showModal,
+      valoresPreenchidos: Object.keys(dadosParaReabrir).length
     });
-    return interaction.showModal(buildFichaModalEtapa(etapaAtual, dadosExistentes, {
+    return interaction.showModal(buildFichaModalEtapa(etapaAtual, dadosParaReabrir, {
       erro: validacaoEtapa.erro,
       campoErroId: validacaoEtapa.campoId
     }));
   }
 
-  fichaEmAndamento.set(interaction.user.id, dadosExistentes);
+  const dadosPersistidos = salvarDadosFichaUsuario(interaction.user.id, dadosExistentes);
 
   if (etapaAtual < FICHA_MODAL_STEPS.length - 1) {
     if (!interaction || typeof interaction.showModal !== 'function') {
@@ -707,9 +715,10 @@ async function onModalFichaPerfil(interaction) {
     console.log('[ficha-modal-next-step]', {
       customId: interaction.customId,
       proximaEtapa: etapaAtual + 1,
-      showModalType: typeof interaction.showModal
+      showModalType: typeof interaction.showModal,
+      valoresPreenchidos: Object.keys(dadosPersistidos).length
     });
-    return interaction.showModal(buildFichaModalEtapa(etapaAtual + 1, dadosExistentes));
+    return interaction.showModal(buildFichaModalEtapa(etapaAtual + 1, dadosPersistidos));
   }
 
   await interaction.deferReply({ flags: 64 });
