@@ -32,6 +32,7 @@ const perfilMembroSchema = new mongoose.Schema({
   gols: { type: Number, default: 0 },
   assist: { type: Number, default: 0 },
   saves: { type: Number, default: 0 },
+  chutes: { type: Number, default: 0 },
   mvps: { type: Number, default: 0 },
   pontuacao: { type: Number, default: 0 },
   titulos: { type: Number, default: 0 },
