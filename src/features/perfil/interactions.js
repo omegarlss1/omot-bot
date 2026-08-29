@@ -59,6 +59,7 @@ const VALORES_INPUT_PERMITIDOS = ['Touch', 'Controle', 'Híbrido'];
 const VALORES_PLATAFORMA_PERMITIDAS = ['Android', 'iOS'];
 const VALORES_RANK_PERMITIDOS = ['Bronze', 'Prata', 'Ouro', 'Platina', 'Diamante', 'Champion', 'Grand Champion'];
 const OBRIGATORIOS = ['input', 'rank_x1', 'rank_x2', 'pico_rank'];
+const NICK_PATTERN = /^[^\p{C}\r\n]+$/u;
 
 const FICHA_MODAL_STEPS = [
   [
@@ -498,8 +499,8 @@ async function onModalAdicionarNickSec(interaction) {
   const secundarios = Array.isArray(prev.nicks_secundarios) ? [...prev.nicks_secundarios] : [];
   const principal = String(prev.nick_principal_input || prev.nick_principal || '').trim().toLowerCase();
 
-  if (!/^[a-z0-9_]{3,20}$/.test(novoNick)) {
-    return interaction.reply({ content: 'Nick inválido. Use 3-20 caracteres: letras, números e _.', ephemeral: true });
+  if (!novoNick || novoNick.length < 3 || novoNick.length > 20 || !NICK_PATTERN.test(novoNick)) {
+    return interaction.reply({ content: 'Nick inválido. Use 3-20 caracteres sem quebras de linha ou caracteres de controle.', ephemeral: true });
   }
   if (novoNick === principal || secundarios.includes(novoNick)) {
     return interaction.reply({ content: 'Esse nick já está em uso na sua ficha.', ephemeral: true });
@@ -813,8 +814,8 @@ async function validarCamposEtapa(stepIndex, dadosEtapa, userId = null) {
   for (const campo of campos) {
     if (campo.id === 'nick_principal_input') {
       const nick = String(dadosEtapa[campo.id] || '').trim().toLowerCase();
-      if (!nick || nick.length < 3 || nick.length > 20 || !/^[a-z0-9_]+$/.test(nick)) {
-        return { ok: false, campo: campo.id, mensagem: 'Nick inválido. Use 3-20 caracteres: letras, números e _.' };
+      if (!nick || nick.length < 3 || nick.length > 20 || !NICK_PATTERN.test(nick)) {
+        return { ok: false, campo: campo.id, mensagem: 'Nick inválido. Use 3-20 caracteres sem quebras de linha ou caracteres de controle.' };
       }
       if (userId) {
         const existente = await PerfilMembro.findOne({ nick_principal: nick, userId: { $ne: userId } }).select('_id').lean();

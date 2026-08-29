@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-const NICK_PATTERN = /^[a-zA-Z0-9_]+$/;
+const NICK_PATTERN = /^[^\p{C}\r\n]+$/u;
 
 const perfilMembroSchema = new mongoose.Schema({
   guildId: { type: String, required: true },
@@ -37,11 +37,11 @@ const perfilMembroSchema = new mongoose.Schema({
       validator: function validarNicks(nicks) {
         const principal = String(this.nick_principal || '').toLowerCase();
         const normalizados = (Array.isArray(nicks) ? nicks : []).map((nick) => String(nick).trim().toLowerCase());
-        return normalizados.every((nick) => NICK_PATTERN.test(nick) && nick.length <= 20)
+        return normalizados.every((nick) => NICK_PATTERN.test(nick) && nick.length >= 3 && nick.length <= 20)
           && new Set(normalizados).size === normalizados.length
           && !normalizados.includes(principal);
       },
-      message: 'Nicks secundários devem ser válidos, únicos e diferentes do nick principal.'
+      message: 'Nicks secundários devem ter de 3 a 20 caracteres, ser únicos e diferentes do nick principal.'
     }
   },
 
