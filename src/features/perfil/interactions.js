@@ -27,6 +27,19 @@ const CATEGORIAS_META = {
 
 const fichaEmAndamento = new Map();
 
+function normalizarDadosFicha(dados = {}) {
+  const objetoNormalizado = {};
+
+  for (const [chave, valor] of Object.entries(dados || {})) {
+    if (valor === undefined || valor === null) continue;
+    if (typeof valor === 'function') continue;
+    if (typeof valor === 'object') continue;
+    objetoNormalizado[chave] = valor;
+  }
+
+  return objetoNormalizado;
+}
+
 function resetarFichaEmAndamento(userId) {
   fichaEmAndamento.set(userId, {});
 }
@@ -361,7 +374,7 @@ async function onSelectFichaOpcao(interaction) {
   if (!chave) return;
 
   const valor = interaction.values[0];
-  const dados = { ...(fichaEmAndamento.get(interaction.user.id) || {}) };
+  const dados = normalizarDadosFicha(fichaEmAndamento.get(interaction.user.id));
   dados[chave] = valor;
   fichaEmAndamento.set(interaction.user.id, dados);
 
@@ -386,11 +399,15 @@ async function onSelectFichaOpcao(interaction) {
     });
   }
 
+  if (!interaction || typeof interaction.showModal !== 'function') {
+    return;
+  }
+
   return interaction.showModal(buildFichaModalEtapa(0));
 }
 
 async function onContinuarFicha(interaction) {
-  const dados = fichaEmAndamento.get(interaction.user.id) || {};
+  const dados = normalizarDadosFicha(fichaEmAndamento.get(interaction.user.id));
   const faltando = [];
 
   if (!dados.input) faltando.push('Input');
@@ -635,7 +652,7 @@ async function onModalFichaPerfil(interaction) {
   if (!match) return;
 
   const etapaAtual = Number(match[1]) - 1;
-  const dadosExistentes = { ...(fichaEmAndamento.get(interaction.user.id) || {}) };
+  const dadosExistentes = normalizarDadosFicha(fichaEmAndamento.get(interaction.user.id));
 
   FICHA_MODAL_STEPS[etapaAtual].forEach((campo) => {
     const valor = interaction.fields.getTextInputValue(campo.id).trim();
@@ -647,6 +664,9 @@ async function onModalFichaPerfil(interaction) {
   const validacaoEtapa = validarCamposEtapa(etapaAtual, dadosExistentes);
   if (!validacaoEtapa.ok) {
     fichaEmAndamento.set(interaction.user.id, dadosExistentes);
+    if (!interaction || typeof interaction.showModal !== 'function') {
+      return;
+    }
     return interaction.showModal(buildFichaModalEtapa(etapaAtual, dadosExistentes, {
       erro: validacaoEtapa.erro,
       campoErroId: validacaoEtapa.campoId
@@ -656,6 +676,9 @@ async function onModalFichaPerfil(interaction) {
   fichaEmAndamento.set(interaction.user.id, dadosExistentes);
 
   if (etapaAtual < FICHA_MODAL_STEPS.length - 1) {
+    if (!interaction || typeof interaction.showModal !== 'function') {
+      return;
+    }
     return interaction.showModal(buildFichaModalEtapa(etapaAtual + 1, dadosExistentes));
   }
 
