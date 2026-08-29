@@ -198,6 +198,14 @@ function buildFichaModalEtapa(stepIndex) {
 }
 
 async function onIniciarFicha(interaction) {
+  console.log('[FICHA_DEBUG] onIniciarFicha', {
+    timestamp: new Date().toISOString(),
+    customId: interaction?.customId || null,
+    hasShowModal: typeof interaction?.showModal === 'function',
+    userId: interaction?.user?.id || null,
+    type: interaction?.type || null
+  });
+
   if (!interaction || typeof interaction.showModal !== 'function') {
     return;
   }
@@ -343,7 +351,20 @@ async function onSelectVerPerfil(interaction) {
 }
 
 async function onModalFichaPerfil(interaction) {
+  console.log('[FICHA_DEBUG] onModalFichaPerfil start', {
+    timestamp: new Date().toISOString(),
+    customId: interaction?.customId || null,
+    isModalSubmit: interaction?.isModalSubmit?.() || false,
+    hasShowModal: typeof interaction?.showModal === 'function',
+    userId: interaction?.user?.id || null,
+    type: interaction?.type || null
+  });
+
   if (!interaction || !interaction.isModalSubmit || typeof interaction.showModal !== 'function') {
+    console.log('[FICHA_DEBUG] onModalFichaPerfil block', {
+      reason: !interaction ? 'missing interaction' : !interaction.isModalSubmit ? 'not modal submit' : 'no showModal',
+      customId: interaction?.customId || null
+    });
     return;
   }
 
@@ -363,7 +384,14 @@ async function onModalFichaPerfil(interaction) {
   fichaEmAndamento.set(interaction.user.id, dadosExistentes);
 
   if (etapaAtual < FICHA_MODAL_STEPS.length - 1) {
-    return interaction.showModal(buildFichaModalEtapa(etapaAtual + 1));
+    const proximoModal = buildFichaModalEtapa(etapaAtual + 1);
+    console.log('[FICHA_DEBUG] opening next modal', {
+      timestamp: new Date().toISOString(),
+      current: interaction.customId,
+      next: proximoModal?.data?.custom_id || null,
+      userId: interaction.user.id
+    });
+    return interaction.showModal(proximoModal);
   }
 
   await interaction.deferReply({ flags: 64 });
