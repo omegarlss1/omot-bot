@@ -1,6 +1,6 @@
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, StringSelectMenuBuilder } = require('discord.js');
+const { ActionRowBuilder, EmbedBuilder, StringSelectMenuBuilder } = require('discord.js');
 const { iniciarAvaliacao } = require('../avaliacao/interactions');
-const { onVerPerfil } = require('../perfil/interactions');
+const { onVerPerfil, onAbrirSelecionarPerfil } = require('../perfil/interactions');
 const PainelPrincipal = require('../../db/models/painelPrincipal');
 
 function buildPainelPrincipal() {
@@ -10,29 +10,15 @@ function buildPainelPrincipal() {
     .setColor('#7289DA');
 
   const menu = new StringSelectMenuBuilder()
-    .setCustomId('hub_principal')
+    .setCustomId('hub_principal_select')
     .setPlaceholder('Escolha uma funcionalidade')
-    .addOptions(
-      { label: 'Avaliar 75 categorias', value: 'avaliar_perfil', description: 'Monte seu perfil com os 75 indicadores', emoji: '📊' },
-      { label: 'Ver meu perfil', value: 'ver_perfil', description: 'Veja seu perfil e as 8 notas', emoji: '👤' },
-      { label: 'Ranking do servidor', value: 'ranking', description: 'Consulte os melhores jogadores', emoji: '🏆' },
-      { label: 'Treinos recomendados', value: 'treinos', description: 'Veja sugestões para evoluir', emoji: '🎯' }
-    );
+    .addOptions([
+      { label: 'Avaliar as 75 categorias', value: 'avaliar_75', description: 'Preencha seu perfil de jogador', emoji: '📝' },
+      { label: 'Ver meu perfil', value: 'ver_meu_perfil', description: 'Veja seu perfil geral e % por categoria', emoji: '👤' },
+      { label: 'Ver outros perfis / Editar ficha', value: 'ver_outros_perfis', description: 'Consultar ou editar fichas de jogadores', emoji: '🔍' }
+    ]);
 
   return { embeds: [embed], components: [new ActionRowBuilder().addComponents(menu)] };
-}
-
-function buildFuncionalidadeEmBreve(nome) {
-  return {
-    content: '',
-    embeds: [new EmbedBuilder()
-      .setTitle(`🎮 Ômega - ${nome}`)
-      .setDescription('Esta funcionalidade será disponibilizada em breve.')
-      .setColor('#7289DA')],
-    components: [new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('← Voltar ao painel').setStyle(ButtonStyle.Secondary)
-    )]
-  };
 }
 
 function buildPlaceholderFuncionalidade() {
@@ -78,10 +64,9 @@ async function onHubPrincipal(interaction) {
   await interaction.deferUpdate();
   const mensagemFuncionalidade = await obterMensagemFuncionalidade(interaction);
 
-  if (escolha === 'avaliar_perfil') return iniciarAvaliacao(interaction, mensagemFuncionalidade);
-  if (escolha === 'ver_perfil') return onVerPerfil(interaction, mensagemFuncionalidade);
-  if (escolha === 'ranking') return mensagemFuncionalidade.edit(buildFuncionalidadeEmBreve('Ranking do servidor'));
-  if (escolha === 'treinos') return mensagemFuncionalidade.edit(buildFuncionalidadeEmBreve('Treinos recomendados'));
+  if (escolha === 'avaliar_75') return iniciarAvaliacao(interaction, mensagemFuncionalidade);
+  if (escolha === 'ver_meu_perfil') return onVerPerfil(interaction, mensagemFuncionalidade);
+  if (escolha === 'ver_outros_perfis') return onAbrirSelecionarPerfil(interaction, mensagemFuncionalidade);
 }
 
 async function onVoltarPainelPrincipal(interaction) {
@@ -89,7 +74,7 @@ async function onVoltarPainelPrincipal(interaction) {
 }
 
 function register(registry) {
-  registry.select('hub_principal', onHubPrincipal);
+  registry.select('hub_principal_select', onHubPrincipal);
   registry.button('hub_voltar_principal', onVoltarPainelPrincipal);
 }
 
