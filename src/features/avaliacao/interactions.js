@@ -1,9 +1,9 @@
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, StringSelectMenuBuilder } = require('discord.js');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const { MAPA_INDICADORES, calcularCategorias, calcularNotaCategoria } = require('../../data/mapa_indicadores');
 const { CATEGORIAS_INDICADORES, INDICADORES_POR_CATEGORIA } = require('../../data/indicadores');
 const AvaliacaoPerfil = require('../../db/models/avaliacaoPerfil');
 const PerfilMembro = require('../../db/models/perfilMembro');
-const { obterMensagemFuncionalidade } = require('../hub/interactions');
+const { obterMensagemFuncionalidade } = require('../hub/mensagem');
 
 const avaliacoes = new Map();
 const categoriaAtual = new Map();
@@ -114,8 +114,8 @@ function temTodosItensPreenchidos(categoria, respostas) {
   return categoria.itens.every((item) => typeof respostas[item.id] === 'boolean');
 }
 
-function getItensPorPagina(categoria) {
-  return categoria.itens.length;
+function getItensPorPagina() {
+  return 5;
 }
 
 function registrarItensNaoAvaliados(itens, respostas) {
@@ -127,23 +127,23 @@ function registrarItensNaoAvaliados(itens, respostas) {
 function buildCategoriaComponents(categoriaIndex, respostas, pagina = 0) {
   const categoria = CATEGORIAS[categoriaIndex];
   const rows = [];
-  const itensPorPagina = getItensPorPagina(categoria);
+  const itensPorPagina = getItensPorPagina();
   const totalPaginas = Math.ceil(categoria.itens.length / itensPorPagina);
   const inicio = pagina * itensPorPagina;
   const itensPagina = categoria.itens.slice(inicio, inicio + itensPorPagina);
 
-  const menuIndicadores = new StringSelectMenuBuilder()
-    .setCustomId(`avaliar_binario_${categoriaIndex}_${pagina}`)
-    .setPlaceholder('Marque os indicadores aplicáveis')
-    .setMinValues(0)
-    .setMaxValues(itensPagina.length)
-    .addOptions(itensPagina.map((item) => ({
-      label: item.label.slice(0, 100),
-      value: item.id,
-      description: item.descricao.slice(0, 100),
-      default: Boolean(respostas[item.id])
-    })));
-  rows.push(new ActionRowBuilder().addComponents(menuIndicadores));
+  const rowBotoes = new ActionRowBuilder();
+  itensPagina.forEach((item) => {
+    const marcado = Boolean(respostas[item.id]);
+    rowBotoes.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`toggle_avaliacao_${item.id}`)
+        .setLabel(item.label.slice(0, 30))
+        .setStyle(marcado ? ButtonStyle.Success : ButtonStyle.Secondary)
+        .setEmoji(marcado ? '✅' : '⬜')
+    );
+  });
+  rows.push(rowBotoes);
 
   const estaNaUltimaPagina = pagina === totalPaginas - 1;
   const rowAcao = new ActionRowBuilder().addComponents(
@@ -217,7 +217,7 @@ function buildCategoriaEmbedReal(categoriaIndex, userId, pagina = 0) {
   const categoria = CATEGORIAS[categoriaIndex];
   const respostas = getRespostas(userId);
   const totalAvaliados = totalItensAvaliados(userId);
-  const itensPorPagina = getItensPorPagina(categoria);
+  const itensPorPagina = getItensPorPagina();
   const totalPaginas = Math.ceil(categoria.itens.length / itensPorPagina);
   const inicio = pagina * itensPorPagina;
 
@@ -347,6 +347,16 @@ async function iniciarAvaliacao(interaction, mensagemFuncionalidade = null) {
   await renderizarCategoria(interaction, categoriaIndex, userId);
 }
 
+async function onToggleIndicador(interaction) {
+  const itemId = interaction.customId.replace(/^toggle_avaliacao_/, '');
+  const userId = interaction.user.id;
+  const respostas = getRespostas(userId);
+  const atual = Boolean(respostas[itemId]);
+  respostas[itemId] = !atual;
+  await salvarProgresso(userId, interaction.guildId || interaction.guild?.id);
+  return renderizarCategoria(interaction, getCategoriaAtual(userId));
+}
+
 async function onIndicadoresBinariosSelecionados(interaction) {
   const match = interaction.customId.match(/^avaliar_binario_(\d+)_(\d+)$/);
   if (!match) return;
@@ -354,7 +364,7 @@ async function onIndicadoresBinariosSelecionados(interaction) {
   const categoriaIndex = Number(match[1]);
   const pagina = Number(match[2]);
   const categoria = CATEGORIAS[categoriaIndex];
-  const itensPorPagina = getItensPorPagina(categoria);
+  const itensPorPagina = getItensPorPagina();
   const inicio = pagina * itensPorPagina;
   const itensPagina = categoria.itens.slice(inicio, inicio + itensPorPagina);
   const selecionados = new Set(interaction.values);
@@ -373,7 +383,7 @@ async function onPaginaCategoria(interaction) {
   const userId = interaction.user.id;
   const categoria = CATEGORIAS[getCategoriaAtual(userId)];
   const pagina = paginaAtual.get(userId) || 0;
-  const itensPorPagina = getItensPorPagina(categoria);
+  const itensPorPagina = getItensPorPagina();
   const totalPaginas = Math.ceil(categoria.itens.length / itensPorPagina);
   const delta = interaction.customId === 'pagina_categoria_proxima' ? 1 : -1;
 
@@ -394,7 +404,7 @@ async function onProximaCategoria(interaction) {
   const categoria = CATEGORIAS[atual];
   const respostas = getRespostas(userId);
   const pagina = paginaAtual.get(userId) || 0;
-  const totalPaginas = categoria ? Math.ceil(categoria.itens.length / getItensPorPagina(categoria)) : 0;
+  const totalPaginas = categoria ? Math.ceil(categoria.itens.length / getItensPorPagina()) : 0;
 
   if (!categoria || pagina !== totalPaginas - 1) {
     return responderAvaliacao(interaction, { content: '⚠️ Use “Ver mais 5” para chegar à última página da categoria.', embeds: [], components: [] });
@@ -494,7 +504,7 @@ async function onContinuarAvaliacao(interaction) {
 
   const registro = guildId ? await AvaliacaoPerfil.findOne({ guildId, userId }).lean().catch(() => null) : null;
   if (!registro || !registro.respostas || Object.keys(registro.respostas).length === 0) {
-    return responderMensagem(interaction, {
+    return responderAvaliacao(interaction, {
       content: '❌ Não existe avaliação salva para continuar.',
       ephemeral: true
     });
@@ -513,7 +523,7 @@ async function onAbrirAvaliacao(interaction) {
 }
 
 function register(registry) {
-  registry.select(/^avaliar_binario_\d+_\d+$/, onIndicadoresBinariosSelecionados);
+  registry.button(/^toggle_avaliacao_/, onToggleIndicador);
   registry.button('proxima_categoria', onProximaCategoria);
   registry.button('pagina_categoria_anterior', onPaginaCategoria);
   registry.button('pagina_categoria_proxima', onPaginaCategoria);
@@ -533,6 +543,7 @@ module.exports = {
   renderizarCategoria,
   finalizarAvaliacao,
   onIndicadoresBinariosSelecionados,
+  onToggleIndicador,
   onPaginaCategoria,
   onProximaCategoria,
   onSalvarProgresso

@@ -1,7 +1,18 @@
 const { ActionRowBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { iniciarAvaliacao } = require('../avaliacao/interactions');
-const { onVerPerfil, onAbrirSelecionarPerfil } = require('../perfil/interactions');
+const { obterMensagemFuncionalidade } = require('./mensagem');
 const PainelPrincipal = require('../../db/models/painelPrincipal');
+
+let avaliacaoModule = null;
+function getAvaliacaoModule() {
+  if (!avaliacaoModule) avaliacaoModule = require('../avaliacao/interactions');
+  return avaliacaoModule;
+}
+
+let perfilModule = null;
+function getPerfilModule() {
+  if (!perfilModule) perfilModule = require('../perfil/interactions');
+  return perfilModule;
+}
 
 function buildPainelPrincipal() {
   const embed = new EmbedBuilder()
@@ -41,45 +52,15 @@ function buildPlaceholderFuncionalidade() {
   };
 }
 
-async function obterMensagemFuncionalidade(interaction) {
-  const guildId = interaction.guildId || interaction.guild?.id;
-  const canal = interaction.channel;
-  let dados = guildId ? await PainelPrincipal.findOne({ guildId }).catch(() => null) : null;
-  let mensagem = null;
-
-  if (dados?.funcMessageId) {
-    mensagem = await canal.messages.fetch(dados.funcMessageId).catch(() => null);
-  }
-
-  if (!mensagem) {
-    mensagem = await canal.send(buildPlaceholderFuncionalidade());
-    if (guildId) {
-      dados = await PainelPrincipal.findOneAndUpdate(
-        { guildId },
-        {
-          guildId,
-          canalId: canal.id,
-          hubMessageId: interaction.message.id,
-          hubChannelId: canal.id,
-          funcMessageId: mensagem.id
-        },
-        { upsert: true, new: true }
-      );
-    }
-  }
-
-  return mensagem;
-}
-
 async function processarBotaoHub(interaction, rota) {
   if (!interaction.deferred && !interaction.replied) {
     try { await interaction.deferUpdate(); } catch (_) {}
   }
   const mensagemFuncionalidade = await obterMensagemFuncionalidade(interaction);
 
-  if (rota === 'avaliar_75') return iniciarAvaliacao(interaction, mensagemFuncionalidade);
-  if (rota === 'ver_meu_perfil') return onVerPerfil(interaction, mensagemFuncionalidade);
-  if (rota === 'ver_outros_perfis') return onAbrirSelecionarPerfil(interaction, mensagemFuncionalidade);
+  if (rota === 'avaliar_75') return getAvaliacaoModule().iniciarAvaliacao(interaction, mensagemFuncionalidade);
+  if (rota === 'ver_meu_perfil') return getPerfilModule().onVerPerfil(interaction, mensagemFuncionalidade);
+  if (rota === 'ver_outros_perfis') return getPerfilModule().onAbrirSelecionarPerfil(interaction, mensagemFuncionalidade);
 }
 
 function onBtnAvaliar75(interaction) { return processarBotaoHub(interaction, 'avaliar_75'); }
