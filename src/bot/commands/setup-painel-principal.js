@@ -33,10 +33,10 @@ module.exports = {
         },
         { upsert: true, new: true }
       );
-      return interaction.editReply({ content: 'Painel Principal enviado!' });
+      return interaction.editReply({ content: 'Painel Principal enviado!', ephemeral: true });
     } catch (err) {
       console.error('ERRO /setup-painel-principal:', err);
-      return interaction.editReply({ content: `❌ Erro: ${err.message}` });
+      return interaction.editReply({ content: `❌ Erro: ${err.message}`, ephemeral: true });
     }
   }
 };
