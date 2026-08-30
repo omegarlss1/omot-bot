@@ -820,9 +820,14 @@ async function onVerPerfil(interaction, mensagemFuncionalidade = null) {
   return responder({ content: '', embeds: [embedPerfil], components: compactarLinhasComponentes([...adminButtons, ...componentsExtras, ...voltarAoHub]) });
 }
 
-async function onAbrirSelecionarPerfil(interaction) {
+async function onAbrirSelecionarPerfil(interaction, mensagemFuncionalidade = null) {
+  const responder = (payload) => {
+    if (!mensagemFuncionalidade) return interaction.reply(payload);
+    const { flags, ...editPayload } = payload;
+    return mensagemFuncionalidade.edit(editPayload);
+  };
   if (!interaction.guild) {
-    return interaction.reply({ content: '❌ Essa ação só funciona em servidor.', flags: 64 });
+    return responder({ content: '❌ Essa ação só funciona em servidor.', flags: 64 });
   }
 
   const membros = [...interaction.guild.members.cache.values()]
@@ -841,7 +846,16 @@ async function onAbrirSelecionarPerfil(interaction) {
     );
 
   const row = new ActionRowBuilder().addComponents(select);
-  return interaction.reply({ content: '🔎 Selecione o membro no menu abaixo:', components: compactarLinhasComponentes([row]), flags: 64 });
+  const editarFicha = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('btn_iniciar_ficha').setLabel('Editar minha ficha').setStyle(ButtonStyle.Primary).setEmoji('✏️'),
+    new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('← Voltar ao painel').setStyle(ButtonStyle.Secondary)
+  );
+  return responder({
+    content: '🔎 Selecione um membro para consultar o perfil ou edite sua própria ficha:',
+    embeds: [],
+    components: compactarLinhasComponentes([row, editarFicha]),
+    flags: 64
+  });
 }
 
 async function onSelectVerPerfil(interaction) {
@@ -1236,4 +1250,4 @@ function register(registry) {
   registry.select('select_remove_nick_sec', onSelecionarNickParaRemover);
 }
 
-module.exports = { register, buildPerfilEmbed, calcularIdade, calcularCategorias, MAPA_INDICADORES, onVerPerfil };
+module.exports = { register, buildPerfilEmbed, calcularIdade, calcularCategorias, MAPA_INDICADORES, onVerPerfil, onAbrirSelecionarPerfil };
