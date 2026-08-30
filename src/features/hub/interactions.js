@@ -1,6 +1,7 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, StringSelectMenuBuilder } = require('discord.js');
 const { iniciarAvaliacao } = require('../avaliacao/interactions');
 const { onVerPerfil } = require('../perfil/interactions');
+const PainelPrincipal = require('../../db/models/painelPrincipal');
 
 function buildPainelPrincipal() {
   const embed = new EmbedBuilder()
@@ -23,6 +24,7 @@ function buildPainelPrincipal() {
 
 function buildFuncionalidadeEmBreve(nome) {
   return {
+    content: '',
     embeds: [new EmbedBuilder()
       .setTitle(`🎮 Ômega - ${nome}`)
       .setDescription('Esta funcionalidade será disponibilizada em breve.')
@@ -33,16 +35,57 @@ function buildFuncionalidadeEmBreve(nome) {
   };
 }
 
+function buildPlaceholderFuncionalidade() {
+  return {
+    content: '👇 Selecione uma opção no painel acima',
+    embeds: [],
+    components: []
+  };
+}
+
+async function obterMensagemFuncionalidade(interaction) {
+  const guildId = interaction.guildId || interaction.guild?.id;
+  const canal = interaction.channel;
+  let dados = guildId ? await PainelPrincipal.findOne({ guildId }).catch(() => null) : null;
+  let mensagem = null;
+
+  if (dados?.funcMessageId) {
+    mensagem = await canal.messages.fetch(dados.funcMessageId).catch(() => null);
+  }
+
+  if (!mensagem) {
+    mensagem = await canal.send(buildPlaceholderFuncionalidade());
+    if (guildId) {
+      dados = await PainelPrincipal.findOneAndUpdate(
+        { guildId },
+        {
+          guildId,
+          canalId: canal.id,
+          hubMessageId: interaction.message.id,
+          hubChannelId: canal.id,
+          funcMessageId: mensagem.id
+        },
+        { upsert: true, new: true }
+      );
+    }
+  }
+
+  return mensagem;
+}
+
 async function onHubPrincipal(interaction) {
   const escolha = interaction.values[0];
-  if (escolha === 'avaliar_perfil') return iniciarAvaliacao(interaction);
-  if (escolha === 'ver_perfil') return onVerPerfil(interaction);
-  if (escolha === 'ranking') return interaction.update(buildFuncionalidadeEmBreve('Ranking do servidor'));
-  if (escolha === 'treinos') return interaction.update(buildFuncionalidadeEmBreve('Treinos recomendados'));
+  await interaction.deferUpdate();
+  const mensagemFuncionalidade = await obterMensagemFuncionalidade(interaction);
+
+  if (escolha === 'avaliar_perfil') return iniciarAvaliacao(interaction, mensagemFuncionalidade);
+  if (escolha === 'ver_perfil') return onVerPerfil(interaction, mensagemFuncionalidade);
+  if (escolha === 'ranking') return mensagemFuncionalidade.edit(buildFuncionalidadeEmBreve('Ranking do servidor'));
+  if (escolha === 'treinos') return mensagemFuncionalidade.edit(buildFuncionalidadeEmBreve('Treinos recomendados'));
 }
 
 async function onVoltarPainelPrincipal(interaction) {
-  return interaction.update(buildPainelPrincipal());
+  return interaction.update(buildPlaceholderFuncionalidade());
 }
 
 function register(registry) {
@@ -50,4 +93,4 @@ function register(registry) {
   registry.button('hub_voltar_principal', onVoltarPainelPrincipal);
 }
 
-module.exports = { register, buildPainelPrincipal };
+module.exports = { register, buildPainelPrincipal, buildPlaceholderFuncionalidade };

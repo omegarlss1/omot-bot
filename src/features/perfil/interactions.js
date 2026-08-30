@@ -787,18 +787,22 @@ function buildPerfilEmbed(perfil, member, { isPublic = false } = {}) {
   return embed;
 }
 
-async function onVerPerfil(interaction) {
-  const editarMensagemDoHub = interaction.customId === 'hub_principal';
-  if (editarMensagemDoHub) await interaction.deferUpdate();
-  else await interaction.deferReply({ flags: 64 });
+async function onVerPerfil(interaction, mensagemFuncionalidade = null) {
+  const editarMensagemDoHub = interaction.customId === 'hub_principal' || Boolean(mensagemFuncionalidade);
+  if (!mensagemFuncionalidade) {
+    if (editarMensagemDoHub) await interaction.deferUpdate();
+    else await interaction.deferReply({ flags: 64 });
+  }
+  const responder = (payload) => mensagemFuncionalidade ? mensagemFuncionalidade.edit(payload) : interaction.editReply(payload);
   const perfil = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: interaction.user.id });
 
   if (!perfil) {
     const voltarAoHub = editarMensagemDoHub
       ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('← Voltar ao painel').setStyle(ButtonStyle.Secondary))]
       : [];
-    return interaction.editReply({
+    return responder({
       content: '❌ Vc ainda não preencheu sua ficha! Clica em **Editar Ficha** pra cadastrar.',
+      embeds: [],
       components: voltarAoHub
     });
   }
@@ -813,7 +817,7 @@ async function onVerPerfil(interaction) {
     ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('← Voltar ao painel').setStyle(ButtonStyle.Secondary))]
     : [];
 
-  return interaction.editReply({ embeds: [embedPerfil], components: compactarLinhasComponentes([...adminButtons, ...componentsExtras, ...voltarAoHub]) });
+  return responder({ content: '', embeds: [embedPerfil], components: compactarLinhasComponentes([...adminButtons, ...componentsExtras, ...voltarAoHub]) });
 }
 
 async function onAbrirSelecionarPerfil(interaction) {

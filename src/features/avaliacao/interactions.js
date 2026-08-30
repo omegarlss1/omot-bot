@@ -153,6 +153,10 @@ function buildContinuarButton() {
 async function responderMensagem(target, payload) {
   if (!target) return null;
   if (typeof target.update === 'function') return target.update(payload);
+  if (typeof target.edit === 'function') {
+    const { ephemeral, ...editPayload } = payload;
+    return target.edit(editPayload);
+  }
   if (typeof target.reply === 'function') return target.reply(payload);
   if (target.channel && typeof target.channel.send === 'function') return target.channel.send(payload);
   return null;
@@ -187,20 +191,20 @@ function buildCategoriaEmbedReal(categoriaIndex, userId, pagina = 0) {
   return embed;
 }
 
-async function renderizarCategoria(interaction, categoriaIndex) {
-  const userId = interaction.user?.id || interaction.author?.id;
+async function renderizarCategoria(interaction, categoriaIndex, userIdInformado = null) {
+  const userId = userIdInformado || interaction.user?.id || interaction.author?.id;
   const respostas = getRespostas(userId);
   const categoria = CATEGORIAS[categoriaIndex];
   const pagina = paginaAtual.get(userId) || 0;
 
   if (!categoria) {
-    return responderMensagem(interaction, { content: '✅ Avaliação concluída!', ephemeral: true });
+    return responderMensagem(interaction, { content: '✅ Avaliação concluída!', embeds: [], components: [], ephemeral: true });
   }
 
   const components = buildCategoriaComponents(categoriaIndex, respostas, pagina);
   const embed = buildCategoriaEmbedReal(categoriaIndex, userId, pagina);
 
-  return responderMensagem(interaction, { embeds: [embed], components, ephemeral: true });
+  return responderMensagem(interaction, { content: '', embeds: [embed], components, ephemeral: true });
 }
 
 async function salvarProgresso(userId, guildId) {
@@ -229,7 +233,7 @@ async function salvarProgresso(userId, guildId) {
   );
 }
 
-async function iniciarAvaliacao(interaction) {
+async function iniciarAvaliacao(interaction, mensagemFuncionalidade = null) {
   const userId = interaction.user?.id || interaction.author?.id;
   const guildId = interaction.guildId || interaction.guild?.id;
 
@@ -258,15 +262,16 @@ async function iniciarAvaliacao(interaction) {
   }
 
   if (temProgressoSalvo && Object.keys(getRespostas(userId)).length > 0) {
-    return responderMensagem(interaction, {
+    return responderMensagem(mensagemFuncionalidade || interaction, {
       content: '🔄 Você já tem uma avaliação salva. Deseja continuar de onde parou?',
+      embeds: [],
       components: [buildContinuarButton()],
       ephemeral: true
     });
   }
 
   const categoriaIndex = getCategoriaAtual(userId);
-  await renderizarCategoria(interaction, categoriaIndex);
+  await renderizarCategoria(mensagemFuncionalidade || interaction, categoriaIndex, userId);
 }
 
 async function onIndicadoresBinariosSelecionados(interaction) {
