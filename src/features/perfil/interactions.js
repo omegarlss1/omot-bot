@@ -847,39 +847,39 @@ function buildPerfilEmbed(perfil, member, { isPublic = false } = {}) {
 }
 
 async function onVerPerfil(interaction, mensagemFuncionalidade = null) {
-  const editarMensagemDoHub = interaction.customId === 'hub_principal' || Boolean(mensagemFuncionalidade);
-  if (mensagemFuncionalidade) {
-    salvarMsgFuncionalidadeGenerica(interaction, mensagemFuncionalidade);
-    if (!interaction.deferred && !interaction.replied) {
-      try { await interaction.deferUpdate(); } catch (_) {}
-    }
-    const perfil = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: interaction.user.id });
-    const voltarAoHub = editarMensagemDoHub
-      ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('← Voltar ao painel').setStyle(ButtonStyle.Secondary))]
-      : [];
-    if (!perfil) {
-      return mensagemFuncionalidade.edit({
-        content: '❌ Vc ainda não preencheu sua ficha! Clica em **Editar Ficha** pra cadastrar.',
-        embeds: [],
-        components: voltarAoHub
-      });
-    }
-    const embedPerfil = buildPerfilEmbed(perfil, interaction.member, { isPublic: false });
-    const adminButtons = hasPermissaoAdmin(interaction.member) ? buildAdminButtons(interaction.user.id) : [];
-    const titulosFisicos = getTitulosDoJogador(Array.isArray(perfil.titulosLista) ? perfil.titulosLista : []);
-    const componentsExtras = titulosFisicos.length > 10
-      ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`btn_ver_titulos_${interaction.user.id}`).setLabel(`Ver todos os títulos (${titulosFisicos.length}+)`).setStyle(ButtonStyle.Primary))]
-      : [];
-    return mensagemFuncionalidade.edit({
-      content: '',
-      embeds: [embedPerfil],
-      components: compactarLinhasComponentes([...adminButtons, ...componentsExtras, ...voltarAoHub])
-    });
-  }
-  const perfil = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: interaction.user.id });
+  const editarMensagemDoHub = Boolean(mensagemFuncionalidade);
   const voltarAoHub = editarMensagemDoHub
     ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('← Voltar ao painel').setStyle(ButtonStyle.Secondary))]
     : [];
+  const perfil = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: interaction.user.id });
+
+  if (mensagemFuncionalidade) {
+    salvarMsgFuncionalidadeGenerica(interaction, mensagemFuncionalidade);
+    if (!perfil) {
+      await mensagemFuncionalidade.edit({
+        content: '❌ Vc ainda não preencheu sua ficha! Clica em **Editar Ficha** pra cadastrar.',
+        embeds: [],
+        components: voltarAoHub
+      }).catch(() => null);
+    } else {
+      const embedPerfil = buildPerfilEmbed(perfil, interaction.member, { isPublic: false });
+      const adminButtons = hasPermissaoAdmin(interaction.member) ? buildAdminButtons(interaction.user.id) : [];
+      const titulosFisicos = getTitulosDoJogador(Array.isArray(perfil.titulosLista) ? perfil.titulosLista : []);
+      const componentsExtras = titulosFisicos.length > 10
+        ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`btn_ver_titulos_${interaction.user.id}`).setLabel(`Ver todos os títulos (${titulosFisicos.length}+)`).setStyle(ButtonStyle.Primary))]
+        : [];
+      await mensagemFuncionalidade.edit({
+        content: '',
+        embeds: [embedPerfil],
+        components: compactarLinhasComponentes([...adminButtons, ...componentsExtras, ...voltarAoHub])
+      }).catch(() => null);
+    }
+    if (!interaction.deferred && !interaction.replied) {
+      try { await interaction.deferUpdate(); } catch (_) {}
+    }
+    return;
+  }
+
   if (!perfil) {
     return responderFichaNoPainel(interaction, {
       content: '❌ Vc ainda não preencheu sua ficha! Clica em **Editar Ficha** pra cadastrar.',
@@ -900,41 +900,20 @@ async function onVerPerfil(interaction, mensagemFuncionalidade = null) {
 }
 
 async function onAbrirSelecionarPerfil(interaction, mensagemFuncionalidade = null) {
-  if (mensagemFuncionalidade) {
-    salvarMsgFuncionalidadeGenerica(interaction, mensagemFuncionalidade);
-    if (!interaction.deferred && !interaction.replied) {
-      try { await interaction.deferUpdate(); } catch (_) {}
-    }
-    const membros = [...interaction.guild.members.cache.values()]
-      .filter((membro) => !membro.user.bot)
-      .slice(0, 25);
-    const select = new StringSelectMenuBuilder()
-      .setCustomId('select_ver_perfil')
-      .setPlaceholder('Escolha um membro para ver o perfil público')
-      .addOptions(
-        membros.map((membro) => ({
-          label: membro.displayName || membro.user.username,
-          value: membro.user.id,
-          description: `Ver perfil de ${membro.user.username}`
-        }))
-      );
-    const row = new ActionRowBuilder().addComponents(select);
-    const editarFicha = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('btn_iniciar_ficha').setLabel('Editar minha ficha').setStyle(ButtonStyle.Primary).setEmoji('✏️'),
-      new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('← Voltar ao painel').setStyle(ButtonStyle.Secondary)
-    );
-    return mensagemFuncionalidade.edit({
-      content: '🔎 Selecione um membro para consultar o perfil ou edite sua própria ficha:',
-      embeds: [],
-      components: compactarLinhasComponentes([row, editarFicha])
-    });
-  }
   if (!interaction.guild) {
+    if (mensagemFuncionalidade) {
+      await mensagemFuncionalidade.edit({ content: '❌ Essa ação só funciona em servidor.', embeds: [], components: [] }).catch(() => null);
+      if (!interaction.deferred && !interaction.replied) {
+        try { await interaction.deferUpdate(); } catch (_) {}
+      }
+      return;
+    }
     return responderFichaNoPainel(interaction, { content: '❌ Essa ação só funciona em servidor.', embeds: [], components: [] });
   }
-  const membros = [...interaction.guild.members.cache.values()]
-    .filter((membro) => !membro.user.bot)
-    .slice(0, 25);
+
+  const membros = await interaction.guild.members.fetch({ limit: 50 })
+    .then((colecao) => [...colecao.values()].filter((m) => !m.user.bot).slice(0, 25))
+    .catch(() => [...interaction.guild.members.cache.values()].filter((m) => !m.user.bot).slice(0, 25));
   const select = new StringSelectMenuBuilder()
     .setCustomId('select_ver_perfil')
     .setPlaceholder('Escolha um membro para ver o perfil público')
@@ -942,7 +921,7 @@ async function onAbrirSelecionarPerfil(interaction, mensagemFuncionalidade = nul
       membros.map((membro) => ({
         label: membro.displayName || membro.user.username,
         value: membro.user.id,
-        description: `Ver perfil de ${membro.user.username}`
+        description: `Ver perfil de ${membro.user.username}`.slice(0, 100)
       }))
     );
   const row = new ActionRowBuilder().addComponents(select);
@@ -950,10 +929,22 @@ async function onAbrirSelecionarPerfil(interaction, mensagemFuncionalidade = nul
     new ButtonBuilder().setCustomId('btn_iniciar_ficha').setLabel('Editar minha ficha').setStyle(ButtonStyle.Primary).setEmoji('✏️'),
     new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('← Voltar ao painel').setStyle(ButtonStyle.Secondary)
   );
-  return responderFichaNoPainel(interaction, {
+  const payload = {
     content: '🔎 Selecione um membro para consultar o perfil ou edite sua própria ficha:',
+    embeds: [],
     components: compactarLinhasComponentes([row, editarFicha])
-  });
+  };
+
+  if (mensagemFuncionalidade) {
+    salvarMsgFuncionalidadeGenerica(interaction, mensagemFuncionalidade);
+    await mensagemFuncionalidade.edit(payload).catch(() => null);
+    if (!interaction.deferred && !interaction.replied) {
+      try { await interaction.deferUpdate(); } catch (_) {}
+    }
+    return;
+  }
+
+  return responderFichaNoPainel(interaction, payload);
 }
 
 function salvarMsgFuncionalidadeGenerica(interaction, mensagem) {
