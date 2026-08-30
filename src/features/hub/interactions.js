@@ -78,4 +78,4 @@ function register(registry) {
   registry.button('hub_voltar_principal', onVoltarPainelPrincipal);
 }
 
-module.exports = { register, buildPainelPrincipal, buildPlaceholderFuncionalidade };
+module.exports = { register, buildPainelPrincipal, buildPlaceholderFuncionalidade, obterMensagemFuncionalidade };
