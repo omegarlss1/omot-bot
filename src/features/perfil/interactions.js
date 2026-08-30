@@ -10,9 +10,11 @@ const {
   PermissionFlagsBits
 } = require('discord.js');
 const PerfilMembro = require('../../db/models/perfilMembro');
+const PainelPrincipal = require('../../db/models/painelPrincipal');
 const { getGames } = require('../games/catalog');
 const { MAPA_INDICADORES, calcularCategorias } = require('../../data/mapa_indicadores');
 const { getTitulosDoJogador, getPaginaTitulos, formatarTitulosParaTexto } = require('../../data/titulos');
+const { obterMensagemFuncionalidade } = require('../hub/interactions');
 
 const CATEGORIAS_META = {
   inteligencia_leitura: { emoji: '🧠', label: 'Inteligência e leitura de jogo' },
@@ -26,6 +28,65 @@ const CATEGORIAS_META = {
 };
 
 const fichaEmAndamento = new Map();
+const painelFichaPorUsuario = new Map();
+
+function chavePainelFicha(interaction) {
+  return `${interaction.guildId || interaction.guild?.id || 'dm'}:${interaction.user.id}`;
+}
+
+async function registrarPainelFicha(interaction) {
+  if (!interaction.message?.id || !interaction.guildId) return false;
+  const painel = await PainelPrincipal.findOne({ guildId: interaction.guildId }).lean().catch(() => null);
+  if (!painel || painel.funcMessageId !== interaction.message.id) return false;
+  painelFichaPorUsuario.set(chavePainelFicha(interaction), {
+    channelId: interaction.channelId || interaction.channel?.id,
+    messageId: interaction.message.id
+  });
+  return true;
+}
+
+async function obterMensagemPainelFicha(interaction) {
+  const referencia = painelFichaPorUsuario.get(chavePainelFicha(interaction));
+  if (referencia?.channelId && referencia?.messageId) {
+    const canal = interaction.client.channels.cache.get(referencia.channelId)
+      || await interaction.client.channels.fetch(referencia.channelId).catch(() => null);
+    const msg = await canal?.messages.fetch(referencia.messageId).catch(() => null);
+    if (msg) return msg;
+  }
+  return obterMensagemFuncionalidade(interaction).catch(() => null);
+}
+
+async function responderFichaNoPainel(interaction, payload) {
+  const mensagem = await obterMensagemPainelFicha(interaction);
+  const { ephemeral, flags, ...editPayload } = payload;
+
+  if (mensagem) {
+    if (interaction.isModalSubmit?.()) {
+      if (!interaction.deferred && !interaction.replied) {
+        try { await interaction.deferReply({ flags: 64 }); } catch (_) {}
+      }
+      await mensagem.edit(editPayload);
+      try { await interaction.deleteReply(); } catch (_) {}
+      return;
+    }
+    if (interaction.isButton?.() || interaction.isStringSelectMenu?.()) {
+      if (!interaction.deferred && !interaction.replied) {
+        try { await interaction.deferUpdate(); } catch (_) {}
+      }
+      await mensagem.edit(editPayload);
+      return;
+    }
+  }
+
+  if (interaction.deferred || interaction.replied) {
+    return interaction.editReply(payload).catch(() => null);
+  }
+  try {
+    return interaction.update(payload).catch(() => interaction.reply(payload));
+  } catch (_) {
+    return interaction.reply(payload).catch(() => null);
+  }
+}
 
 function normalizarDadosFicha(dados = {}) {
   const objetoNormalizado = {};
@@ -280,7 +341,7 @@ async function onVerTodosTitulos(interaction) {
   const member = await interaction.guild.members.fetch(targetId).catch(() => null);
 
   if (!perfil) {
-    return interaction.reply({ content: '❌ Esse jogador ainda não possui perfil completo.', flags: 64 });
+    return responderFichaNoPainel(interaction, { content: '❌ Esse jogador ainda não possui perfil completo.', embeds: [], components: [] });
   }
 
   const titulosLista = Array.isArray(perfil.titulosLista) ? perfil.titulosLista : [];
@@ -290,7 +351,7 @@ async function onVerTodosTitulos(interaction) {
     .setDescription(formatarTitulosParaTexto(titulosLista, pagina.paginaAtual, 15))
     .setColor('#FFD700');
 
-  return interaction.reply({ embeds: [embed], components: [buildTitulosButtons(targetId, 1, pagina.totalPaginas)], ephemeral: true });
+  return responderFichaNoPainel(interaction, { content: '', embeds: [embed], components: [buildTitulosButtons(targetId, 1, pagina.totalPaginas)] });
 }
 
 async function onPaginarTitulos(interaction) {
@@ -302,7 +363,7 @@ async function onPaginarTitulos(interaction) {
   const perfil = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: targetId });
 
   if (!perfil) {
-    return interaction.reply({ content: '❌ Perfil não encontrado.', flags: 64 });
+    return responderFichaNoPainel(interaction, { content: '❌ Perfil não encontrado.', embeds: [], components: [] });
   }
 
   const titulosLista = Array.isArray(perfil.titulosLista) ? perfil.titulosLista : [];
@@ -314,7 +375,7 @@ async function onPaginarTitulos(interaction) {
     .setDescription(formatarTitulosParaTexto(titulosLista, pagina.paginaAtual, 15))
     .setColor('#FFD700');
 
-  await interaction.update({ embeds: [embed], components: [buildTitulosButtons(targetId, pagina.paginaAtual, pagina.totalPaginas)] });
+  return responderFichaNoPainel(interaction, { content: '', embeds: [embed], components: [buildTitulosButtons(targetId, pagina.paginaAtual, pagina.totalPaginas)] });
 }
 
 function buildFichaModalEtapa(stepIndex, valoresPreenchidos = {}, { erro = null, campoErroId = null } = {}) {
@@ -429,6 +490,7 @@ async function onIniciarFicha(interaction) {
   }
 
   const perfilSalvo = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: interaction.user.id }).lean();
+  await registrarPainelFicha(interaction);
   const dadosSalvos = prepararDadosFichaSalva(perfilSalvo);
   fichaEmAndamento.set(interaction.user.id, dadosSalvos);
   const componentes = buildFichaSelects(dadosSalvos);
@@ -443,7 +505,7 @@ async function onIniciarFicha(interaction) {
     ));
   }
 
-  return interaction.reply({
+  return responderFichaNoPainel(interaction, {
     content: perfilSalvo
       ? 'Encontramos sua ficha anterior. Revise os selects ou continue para editar os dados salvos:'
       : 'Antes de abrir a ficha, escolha as opções fixas abaixo para ficar tudo consistente:',
@@ -506,7 +568,7 @@ async function onContinuarFicha(interaction) {
   const nomesCampos = { input: 'Input', rank_x1: 'Rank X1', rank_x2: 'Rank X2', pico_rank: 'Pico Rank' };
 
   if (faltando.length) {
-    return interaction.reply({ content: `❌ Faltam opções obrigatórias: ${faltando.map((campo) => nomesCampos[campo]).join(', ')}.`, ephemeral: true });
+    return responderFichaNoPainel(interaction, { content: `❌ Faltam opções obrigatórias: ${faltando.map((campo) => nomesCampos[campo]).join(', ')}.`, ephemeral: true });
   }
 
   return interaction.showModal(buildFichaModalEtapa(0, dados));
@@ -544,16 +606,16 @@ async function onModalAdicionarNickSec(interaction) {
   const principal = String(prev.nick_principal_input || prev.nick_principal || '').trim().toLowerCase();
 
   if (!novoNick || novoNick.length < 3 || novoNick.length > 20 || !NICK_PATTERN.test(novoNick)) {
-    return interaction.reply({ content: 'Nick inválido. Use 3-20 caracteres sem quebras de linha ou caracteres de controle.', ephemeral: true });
+    return responderFichaNoPainel(interaction, { content: 'Nick inválido. Use 3-20 caracteres sem quebras de linha ou caracteres de controle.', ephemeral: true });
   }
   if (novoNick === principal || secundarios.includes(novoNick)) {
-    return interaction.reply({ content: 'Esse nick já está em uso na sua ficha.', ephemeral: true });
+    return responderFichaNoPainel(interaction, { content: 'Esse nick já está em uso na sua ficha.', ephemeral: true });
   }
 
   secundarios.push(novoNick);
   const novo = { ...prev, nicks_secundarios: secundarios };
   fichaEmAndamento.set(userId, novo);
-  return interaction.reply({ ...buildNicksSecundariosView(novo), ephemeral: true });
+  return responderFichaNoPainel(interaction, { ...buildNicksSecundariosView(novo), ephemeral: true });
 }
 
 async function onRemoverNickSec(interaction) {
@@ -563,10 +625,10 @@ async function onRemoverNickSec(interaction) {
     .setCustomId('select_remove_nick_sec')
     .setPlaceholder('Selecione o nick para remover')
     .addOptions(secundarios.slice(0, 25).map((nick) => ({ label: nick, value: nick })));
-  return interaction.reply({
+  return responderFichaNoPainel(interaction, {
     content: secundarios.length > 25 ? 'Selecione um dos 25 primeiros nicks para remover.' : 'Escolha o nick secundário para remover:',
-    components: [new ActionRowBuilder().addComponents(menu)],
-    ephemeral: true
+    embeds: [],
+    components: [new ActionRowBuilder().addComponents(menu)]
   });
 }
 
@@ -577,7 +639,7 @@ async function onSelecionarNickParaRemover(interaction) {
   const secundarios = (Array.isArray(prev.nicks_secundarios) ? prev.nicks_secundarios : []).filter((nick) => nick !== removido);
   const novo = { ...prev, nicks_secundarios: secundarios };
   fichaEmAndamento.set(userId, novo);
-  return interaction.update(buildNicksSecundariosView(novo));
+  return responderFichaNoPainel(interaction, buildNicksSecundariosView(novo));
 }
 
 async function onCorrigirFichaCampo(interaction) {
@@ -613,16 +675,15 @@ async function onModalCorrecaoFicha(interaction) {
   });
 
   if (!validacaoEtapa.ok) {
-    return interaction.reply({
+    return responderFichaNoPainel(interaction, {
       content: validacaoEtapa.mensagem,
-      components: [criarBotaoCorrecao(obterCampoComErro(validacaoEtapa))],
-      ephemeral: true
+      components: [criarBotaoCorrecao(obterCampoComErro(validacaoEtapa))]
     });
   }
 
   if (etapaAtual === 1) {
     fichaEmAndamento.set(userId, { ...novo, etapa: 2 });
-    return interaction.reply({ ...buildNicksSecundariosView(novo), ephemeral: true });
+    return responderFichaNoPainel(interaction, buildNicksSecundariosView(novo));
   }
 
   const proximaEtapa = etapaAtual + 1;
@@ -630,19 +691,17 @@ async function onModalCorrecaoFicha(interaction) {
     const validacaoProximaEtapa = await validarCamposEtapa(proximaEtapa, novo, userId);
     if (!validacaoProximaEtapa.ok) {
       fichaEmAndamento.set(userId, { ...novo, etapa: proximaEtapa });
-      return interaction.reply({
+      return responderFichaNoPainel(interaction, {
         content: validacaoProximaEtapa.mensagem,
-        components: [criarBotaoCorrecao(obterCampoComErro(validacaoProximaEtapa))],
-        ephemeral: true
+        components: [criarBotaoCorrecao(obterCampoComErro(validacaoProximaEtapa))]
       });
     }
   }
 
   fichaEmAndamento.set(userId, { ...novo, etapa: Math.min(proximaEtapa, FICHA_MODAL_STEPS.length - 1) });
-  return interaction.reply({
+  return responderFichaNoPainel(interaction, {
     content: `✅ Campo corrigido. Clique para continuar na etapa ${Math.min(proximaEtapa + 1, FICHA_MODAL_STEPS.length)}/4.`,
-    components: [criarBotaoContinuarFicha(etapaAtual)],
-    ephemeral: true
+    components: [criarBotaoContinuarFicha(etapaAtual)]
   });
 }
 
@@ -789,51 +848,93 @@ function buildPerfilEmbed(perfil, member, { isPublic = false } = {}) {
 
 async function onVerPerfil(interaction, mensagemFuncionalidade = null) {
   const editarMensagemDoHub = interaction.customId === 'hub_principal' || Boolean(mensagemFuncionalidade);
-  if (!mensagemFuncionalidade) {
-    if (editarMensagemDoHub) await interaction.deferUpdate();
-    else await interaction.deferReply({ flags: 64 });
-  }
-  const responder = (payload) => mensagemFuncionalidade ? mensagemFuncionalidade.edit(payload) : interaction.editReply(payload);
-  const perfil = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: interaction.user.id });
-
-  if (!perfil) {
+  if (mensagemFuncionalidade) {
+    salvarMsgFuncionalidadeGenerica(interaction, mensagemFuncionalidade);
+    if (!interaction.deferred && !interaction.replied) {
+      try { await interaction.deferUpdate(); } catch (_) {}
+    }
+    const perfil = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: interaction.user.id });
     const voltarAoHub = editarMensagemDoHub
       ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('← Voltar ao painel').setStyle(ButtonStyle.Secondary))]
       : [];
-    return responder({
+    if (!perfil) {
+      return mensagemFuncionalidade.edit({
+        content: '❌ Vc ainda não preencheu sua ficha! Clica em **Editar Ficha** pra cadastrar.',
+        embeds: [],
+        components: voltarAoHub
+      });
+    }
+    const embedPerfil = buildPerfilEmbed(perfil, interaction.member, { isPublic: false });
+    const adminButtons = hasPermissaoAdmin(interaction.member) ? buildAdminButtons(interaction.user.id) : [];
+    const titulosFisicos = getTitulosDoJogador(Array.isArray(perfil.titulosLista) ? perfil.titulosLista : []);
+    const componentsExtras = titulosFisicos.length > 10
+      ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`btn_ver_titulos_${interaction.user.id}`).setLabel(`Ver todos os títulos (${titulosFisicos.length}+)`).setStyle(ButtonStyle.Primary))]
+      : [];
+    return mensagemFuncionalidade.edit({
+      content: '',
+      embeds: [embedPerfil],
+      components: compactarLinhasComponentes([...adminButtons, ...componentsExtras, ...voltarAoHub])
+    });
+  }
+  const perfil = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: interaction.user.id });
+  const voltarAoHub = editarMensagemDoHub
+    ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('← Voltar ao painel').setStyle(ButtonStyle.Secondary))]
+    : [];
+  if (!perfil) {
+    return responderFichaNoPainel(interaction, {
       content: '❌ Vc ainda não preencheu sua ficha! Clica em **Editar Ficha** pra cadastrar.',
-      embeds: [],
       components: voltarAoHub
     });
   }
-
   const embedPerfil = buildPerfilEmbed(perfil, interaction.member, { isPublic: false });
   const adminButtons = hasPermissaoAdmin(interaction.member) ? buildAdminButtons(interaction.user.id) : [];
   const titulosFisicos = getTitulosDoJogador(Array.isArray(perfil.titulosLista) ? perfil.titulosLista : []);
   const componentsExtras = titulosFisicos.length > 10
     ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`btn_ver_titulos_${interaction.user.id}`).setLabel(`Ver todos os títulos (${titulosFisicos.length}+)`).setStyle(ButtonStyle.Primary))]
     : [];
-  const voltarAoHub = editarMensagemDoHub
-    ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('← Voltar ao painel').setStyle(ButtonStyle.Secondary))]
-    : [];
-
-  return responder({ content: '', embeds: [embedPerfil], components: compactarLinhasComponentes([...adminButtons, ...componentsExtras, ...voltarAoHub]) });
+  return responderFichaNoPainel(interaction, {
+    content: '',
+    embeds: [embedPerfil],
+    components: compactarLinhasComponentes([...adminButtons, ...componentsExtras, ...voltarAoHub])
+  });
 }
 
 async function onAbrirSelecionarPerfil(interaction, mensagemFuncionalidade = null) {
-  const responder = (payload) => {
-    if (!mensagemFuncionalidade) return interaction.reply(payload);
-    const { flags, ...editPayload } = payload;
-    return mensagemFuncionalidade.edit(editPayload);
-  };
-  if (!interaction.guild) {
-    return responder({ content: '❌ Essa ação só funciona em servidor.', flags: 64 });
+  if (mensagemFuncionalidade) {
+    salvarMsgFuncionalidadeGenerica(interaction, mensagemFuncionalidade);
+    if (!interaction.deferred && !interaction.replied) {
+      try { await interaction.deferUpdate(); } catch (_) {}
+    }
+    const membros = [...interaction.guild.members.cache.values()]
+      .filter((membro) => !membro.user.bot)
+      .slice(0, 25);
+    const select = new StringSelectMenuBuilder()
+      .setCustomId('select_ver_perfil')
+      .setPlaceholder('Escolha um membro para ver o perfil público')
+      .addOptions(
+        membros.map((membro) => ({
+          label: membro.displayName || membro.user.username,
+          value: membro.user.id,
+          description: `Ver perfil de ${membro.user.username}`
+        }))
+      );
+    const row = new ActionRowBuilder().addComponents(select);
+    const editarFicha = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('btn_iniciar_ficha').setLabel('Editar minha ficha').setStyle(ButtonStyle.Primary).setEmoji('✏️'),
+      new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('← Voltar ao painel').setStyle(ButtonStyle.Secondary)
+    );
+    return mensagemFuncionalidade.edit({
+      content: '🔎 Selecione um membro para consultar o perfil ou edite sua própria ficha:',
+      embeds: [],
+      components: compactarLinhasComponentes([row, editarFicha])
+    });
   }
-
+  if (!interaction.guild) {
+    return responderFichaNoPainel(interaction, { content: '❌ Essa ação só funciona em servidor.', embeds: [], components: [] });
+  }
   const membros = [...interaction.guild.members.cache.values()]
     .filter((membro) => !membro.user.bot)
     .slice(0, 25);
-
   const select = new StringSelectMenuBuilder()
     .setCustomId('select_ver_perfil')
     .setPlaceholder('Escolha um membro para ver o perfil público')
@@ -844,17 +945,22 @@ async function onAbrirSelecionarPerfil(interaction, mensagemFuncionalidade = nul
         description: `Ver perfil de ${membro.user.username}`
       }))
     );
-
   const row = new ActionRowBuilder().addComponents(select);
   const editarFicha = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('btn_iniciar_ficha').setLabel('Editar minha ficha').setStyle(ButtonStyle.Primary).setEmoji('✏️'),
     new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('← Voltar ao painel').setStyle(ButtonStyle.Secondary)
   );
-  return responder({
+  return responderFichaNoPainel(interaction, {
     content: '🔎 Selecione um membro para consultar o perfil ou edite sua própria ficha:',
-    embeds: [],
-    components: compactarLinhasComponentes([row, editarFicha]),
-    flags: 64
+    components: compactarLinhasComponentes([row, editarFicha])
+  });
+}
+
+function salvarMsgFuncionalidadeGenerica(interaction, mensagem) {
+  if (!mensagem) return;
+  painelFichaPorUsuario.set(chavePainelFicha(interaction), {
+    channelId: mensagem.channelId || mensagem.channel?.id,
+    messageId: mensagem.id
   });
 }
 
@@ -863,12 +969,12 @@ async function onSelectVerPerfil(interaction) {
   const member = await interaction.guild.members.fetch(targetId).catch(() => null);
 
   if (!member) {
-    return interaction.reply({ content: '❌ Não foi possível localizar esse membro no servidor.', flags: 64 });
+    return interaction.update({ content: '❌ Não foi possível localizar esse membro no servidor.', embeds: [], components: [] });
   }
 
   const perfil = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: targetId });
   if (!perfil) {
-    return interaction.reply({ content: `❌ ${member.displayName} ainda não completou o perfil.`, flags: 64 });
+    return interaction.update({ content: `❌ ${member.displayName} ainda não completou o perfil.`, embeds: [], components: [] });
   }
 
   const embedPerfil = buildPerfilEmbed(perfil, member, { isPublic: true });
@@ -878,7 +984,15 @@ async function onSelectVerPerfil(interaction) {
     ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`btn_ver_titulos_${targetId}`).setLabel(`Ver todos os títulos (${titulosFisicos.length}+)`).setStyle(ButtonStyle.Primary))]
     : [];
 
-  return interaction.reply({ embeds: [embedPerfil], components: compactarLinhasComponentes([...adminButtons, ...componentsExtras]) });
+  return interaction.update({
+    content: '',
+    embeds: [embedPerfil],
+    components: compactarLinhasComponentes([
+      ...adminButtons,
+      ...componentsExtras,
+      new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('← Voltar ao painel').setStyle(ButtonStyle.Secondary))
+    ])
+  });
 }
 
 async function validarCamposEtapa(stepIndex, dadosEtapa, userId = null) {
@@ -1004,10 +1118,9 @@ async function onModalFichaPerfil(interaction) {
     const userId = interaction.user.id;
     fichaEmAndamento.set(userId, { ...normalizarDadosFicha(fichaEmAndamento.get(userId)), ...dadosExistentes, etapa: etapaAtual });
 
-    return interaction.reply({
+    return responderFichaNoPainel(interaction, {
       content: validacaoEtapa.mensagem,
-      components: [criarBotaoCorrecao(campoComErro)],
-      ephemeral: true
+      components: [criarBotaoCorrecao(campoComErro)]
     });
   }
 
@@ -1017,25 +1130,22 @@ async function onModalFichaPerfil(interaction) {
     const etapaSeguinte = etapaAtual + 1;
     fichaEmAndamento.set(userId, { ...normalizarDadosFicha(fichaEmAndamento.get(userId)), ...dadosAtual, etapa: etapaSeguinte });
     if (etapaAtual === 1) {
-      return interaction.reply({ ...buildNicksSecundariosView(fichaEmAndamento.get(userId)), ephemeral: true });
+      return responderFichaNoPainel(interaction, buildNicksSecundariosView(fichaEmAndamento.get(userId)));
     }
     const proximaEtapa = etapaAtual + 2;
 
-    return interaction.reply({
+    return responderFichaNoPainel(interaction, {
       content: `✅ Etapa ${etapaAtual + 1}/4 salva. Clique para continuar na etapa ${proximaEtapa}/4.`,
-      components: [criarBotaoContinuarFicha(etapaAtual)],
-      ephemeral: true
+      components: [criarBotaoContinuarFicha(etapaAtual)]
     });
   }
-
-  await interaction.deferReply({ flags: 64 });
 
   const dados = fichaEmAndamento.get(interaction.user.id) || {};
 
   const nomeComum = sanitizeTextoLivre(dados.nome_comum_input || interaction.user.username, { maxLength: 60, allowEmpty: false }) || interaction.user.username;
   const nascimentoValido = validarDataNascimento(dados.data_nascimento_input);
   if (!nascimentoValido.ok) {
-    return interaction.editReply({ content: nascimentoValido.error, flags: 64 });
+    return responderFichaNoPainel(interaction, { content: nascimentoValido.error, embeds: [], components: [] });
   }
   const dataNascimento = nascimentoValido.value;
   const estado = sanitizeTextoLivre(dados.estado_input, { maxLength: 60 });
@@ -1059,7 +1169,7 @@ async function onModalFichaPerfil(interaction) {
   const plataforma = normalizarOpcaoPermitida(dados.plataforma || dados.select_ficha_plataforma, VALORES_PLATAFORMA_PERMITIDAS) || 'Mobile';
 
   if (!input || !rankX1 || !rankX2 || !picoRank) {
-    return interaction.editReply({ content: '❌ Faltou alguma opção fixa da ficha. Refaça a configuração inicial e tente novamente.', flags: 64 });
+    return responderFichaNoPainel(interaction, { content: '❌ Faltou alguma opção fixa da ficha. Refaça a configuração inicial e tente novamente.', embeds: [], components: [] });
   }
 
   const idade = calcularIdade(dataNascimento);
@@ -1130,18 +1240,11 @@ async function onModalFichaPerfil(interaction) {
       )
   );
 
-  try {
-    await interaction.user.send({
-      content: `✅ Sua ficha foi finalizada com sucesso! Seu perfil já está salvo no sistema da Ômega. ${interaction.member ? `Olá, ${interaction.member.displayName}!` : ''}`
-    });
-  } catch (error) {
-    await interaction.followUp({
-      content: '✅ Sua ficha foi finalizada com sucesso e salva no perfil. Se as DMs estiverem bloqueadas, você pode continuar normalmente pelo canal.',
-      ephemeral: true
-    }).catch(() => {});
-  }
+  interaction.user.send({
+    content: `✅ Sua ficha foi finalizada com sucesso! Seu perfil já está salvo no sistema da Ômega. ${interaction.member ? `Olá, ${interaction.member.displayName}!` : ''}`
+  }).catch(() => null);
 
-  return interaction.editReply({
+  return responderFichaNoPainel(interaction, {
     content: '✅ Perfil salvo! Agora escolha abaixo os avisos que vc quer receber quando chamarem pro time:',
     components: [selectCargos]
   });
@@ -1149,12 +1252,12 @@ async function onModalFichaPerfil(interaction) {
 
 async function onAbrirModalAdminEstatistica(interaction) {
   if (!hasPermissaoAdmin(interaction.member)) {
-    return interaction.reply({ content: '❌ Apenas administradores ou membros de staff podem alterar essas estatísticas.', flags: 64 });
+    return responderFichaNoPainel(interaction, { content: '❌ Apenas administradores ou membros de staff podem alterar essas estatísticas.', embeds: [], components: [] });
   }
 
   const [, campo, targetId] = interaction.customId.match(/^btn_admin_(gol|assist|save|chutes|mvp|pontuacao)_(.+)$/) || [];
   if (!campo || !targetId) {
-    return interaction.reply({ content: '❌ Comando de administração inválido.', flags: 64 });
+    return responderFichaNoPainel(interaction, { content: '❌ Comando de administração inválido.', embeds: [], components: [] });
   }
 
   return interaction.showModal(buildAdminStatModal(campo, targetId));
@@ -1164,7 +1267,7 @@ async function onAdminIncrement(interaction) {
   if (!interaction || !interaction.isModalSubmit) return;
 
   if (!hasPermissaoAdmin(interaction.member)) {
-    return interaction.reply({ content: '❌ Apenas administradores ou membros de staff podem alterar essas estatísticas.', flags: 64 });
+    return responderFichaNoPainel(interaction, { content: '❌ Apenas administradores ou membros de staff podem alterar essas estatísticas.', embeds: [], components: [] });
   }
 
   const match = interaction.customId.match(/^modal_admin_stat_(gol|assist|save|chutes|mvp|pontuacao)_(.+)$/);
@@ -1173,7 +1276,7 @@ async function onAdminIncrement(interaction) {
   const [, campo, targetId] = match;
   const valorTexto = interaction.fields.getTextInputValue('admin_stat_valor').trim();
   if (!/^-?\d+(?:[.,]\d+)?$/.test(valorTexto.replace(/\s/g, ''))) {
-    return interaction.reply({ content: '❌ Digite apenas números no campo de valor, sem letras ou caracteres extras.', ephemeral: true });
+    return responderFichaNoPainel(interaction, { content: '❌ Digite apenas números no campo de valor, sem letras ou caracteres extras.', embeds: [], components: [] });
   }
 
   const camposMap = {
@@ -1186,11 +1289,11 @@ async function onAdminIncrement(interaction) {
   };
 
   const fieldName = camposMap[campo];
-  if (!fieldName) return interaction.reply({ content: '❌ Campo de stats inválido.', flags: 64 });
+  if (!fieldName) return responderFichaNoPainel(interaction, { content: '❌ Campo de stats inválido.', embeds: [], components: [] });
 
   const valor = Number(valorTexto.replace(',', '.'));
   if (!Number.isFinite(valor)) {
-    return interaction.reply({ content: '❌ Valor numérico inválido.', ephemeral: true });
+    return responderFichaNoPainel(interaction, { content: '❌ Valor numérico inválido.', embeds: [], components: [] });
   }
 
   const target = await interaction.guild.members.fetch(targetId).catch(() => null);
@@ -1200,14 +1303,14 @@ async function onAdminIncrement(interaction) {
     { upsert: true, new: true }
   );
 
-  return interaction.reply({
+  return responderFichaNoPainel(interaction, {
     content: `✅ Estatística **${fieldName.toUpperCase()}** atualizada em **${valor}** para ${target ? target.displayName : 'o jogador'}!`,
-    flags: 64
+    embeds: [],
+    components: []
   });
 }
 
 async function onSelectCargos(interaction) {
-  await interaction.deferReply({ flags: 64 });
   const games = await getGames(interaction.guildId);
   const roleIds = games.map((game) => game.roleId).filter(Boolean);
   const selecionados = new Set(interaction.values);
@@ -1219,10 +1322,18 @@ async function onSelectCargos(interaction) {
   ]);
 
   if (resultados.some((resultado) => resultado.status === 'rejected')) {
-    return interaction.editReply({ content: '⚠️ O perfil foi salvo, mas não consegui atualizar todos os cargos. Verifique as permissões do bot.' });
+    return responderFichaNoPainel(interaction, {
+      content: '⚠️ O perfil foi salvo, mas não consegui atualizar todos os cargos. Verifique as permissões do bot.',
+      embeds: [],
+      components: []
+    });
   }
 
-  return interaction.editReply({ content: '🎉 Ficha concluída! Vc já tá pronto pra jogar com a gente.' });
+  return responderFichaNoPainel(interaction, {
+    content: '🎉 Ficha concluída! Vc já tá pronto pra jogar com a gente.',
+    embeds: [],
+    components: []
+  });
 }
 
 function register(registry) {
