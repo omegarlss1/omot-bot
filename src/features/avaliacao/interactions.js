@@ -3,11 +3,38 @@ const { MAPA_INDICADORES, calcularCategorias, calcularNotaCategoria } = require(
 const { CATEGORIAS_INDICADORES, INDICADORES_POR_CATEGORIA } = require('../../data/indicadores');
 const AvaliacaoPerfil = require('../../db/models/avaliacaoPerfil');
 const PerfilMembro = require('../../db/models/perfilMembro');
+const { obterMensagemFuncionalidade } = require('../hub/interactions');
 
 const avaliacoes = new Map();
 const categoriaAtual = new Map();
 const paginaAtual = new Map();
 const progressoSalvo = new Map();
+const msgFuncionalidadePorUsuario = new Map();
+
+function chaveUsuario(interaction) {
+  return `${interaction.guildId || interaction.guild?.id || 'dm'}:${interaction.user.id}`;
+}
+
+function salvarMsgFuncionalidade(interaction, mensagem) {
+  if (!mensagem) return;
+  msgFuncionalidadePorUsuario.set(chaveUsuario(interaction), {
+    channelId: mensagem.channelId || mensagem.channel?.id,
+    messageId: mensagem.id
+  });
+}
+
+async function obterMsgFuncionalidadeSalva(interaction) {
+  const ref = msgFuncionalidadePorUsuario.get(chaveUsuario(interaction));
+  if (ref?.channelId && ref?.messageId) {
+    const canal = interaction.client.channels.cache.get(ref.channelId)
+      || await interaction.client.channels.fetch(ref.channelId).catch(() => null);
+    if (canal) {
+      const msg = await canal.messages.fetch(ref.messageId).catch(() => null);
+      if (msg) return msg;
+    }
+  }
+  return obterMensagemFuncionalidade(interaction).catch(() => null);
+}
 
 const ICONE_CATEGORIAS = {
   inteligencia_leitura: '🧠',
@@ -150,16 +177,40 @@ function buildContinuarButton() {
   );
 }
 
-async function responderMensagem(target, payload) {
-  if (!target) return null;
-  if (typeof target.update === 'function') return target.update(payload);
-  if (typeof target.edit === 'function') {
-    const { ephemeral, ...editPayload } = payload;
-    return target.edit(editPayload);
+async function responderAvaliacao(interaction, payload) {
+  const { ephemeral, flags, ...editPayload } = payload;
+  const msgFunc = await obterMsgFuncionalidadeSalva(interaction).catch(() => null);
+
+  if (msgFunc) {
+    if (interaction.isButton?.() || interaction.isStringSelectMenu?.()) {
+      if (!interaction.deferred && !interaction.replied) {
+        try {
+          await interaction.deferUpdate();
+        } catch (_) {}
+      }
+      await msgFunc.edit(editPayload);
+      return;
+    }
+    if (interaction.isModalSubmit?.()) {
+      if (!interaction.deferred && !interaction.replied) {
+        try {
+          await interaction.deferReply({ flags: 64 });
+        } catch (_) {}
+      }
+      await msgFunc.edit(editPayload);
+      try { await interaction.deleteReply(); } catch (_) {}
+      return;
+    }
   }
-  if (typeof target.reply === 'function') return target.reply(payload);
-  if (target.channel && typeof target.channel.send === 'function') return target.channel.send(payload);
-  return null;
+
+  if (interaction.deferred || interaction.replied) {
+    return interaction.editReply(payload).catch(() => null);
+  }
+  try {
+    return interaction.update(payload).catch(() => interaction.reply(payload));
+  } catch (_) {
+    return interaction.reply(payload).catch(() => null);
+  }
 }
 
 function buildCategoriaEmbedReal(categoriaIndex, userId, pagina = 0) {
@@ -198,13 +249,13 @@ async function renderizarCategoria(interaction, categoriaIndex, userIdInformado 
   const pagina = paginaAtual.get(userId) || 0;
 
   if (!categoria) {
-    return responderMensagem(interaction, { content: '✅ Avaliação concluída!', embeds: [], components: [], ephemeral: true });
+    return responderAvaliacao(interaction, { content: '✅ Avaliação concluída!', embeds: [], components: [] });
   }
 
   const components = buildCategoriaComponents(categoriaIndex, respostas, pagina);
   const embed = buildCategoriaEmbedReal(categoriaIndex, userId, pagina);
 
-  return responderMensagem(interaction, { content: '', embeds: [embed], components, ephemeral: true });
+  return responderAvaliacao(interaction, { content: '', embeds: [embed], components });
 }
 
 async function salvarProgresso(userId, guildId) {
@@ -247,6 +298,10 @@ async function iniciarAvaliacao(interaction, mensagemFuncionalidade = null) {
     categoriaAtual.set(userId, 0);
   }
 
+  if (mensagemFuncionalidade) {
+    salvarMsgFuncionalidade(interaction, mensagemFuncionalidade);
+  }
+
   const registro = guildId ? await AvaliacaoPerfil.findOne({ guildId, userId }).lean().catch(() => null) : null;
   const temProgressoSalvo = !!(registro && registro.status === 'em_andamento' && registro.respostas && Object.keys(registro.respostas).length > 0);
 
@@ -262,16 +317,34 @@ async function iniciarAvaliacao(interaction, mensagemFuncionalidade = null) {
   }
 
   if (temProgressoSalvo && Object.keys(getRespostas(userId)).length > 0) {
-    return responderMensagem(mensagemFuncionalidade || interaction, {
+    const payload = {
       content: '🔄 Você já tem uma avaliação salva. Deseja continuar de onde parou?',
       embeds: [],
-      components: [buildContinuarButton()],
-      ephemeral: true
-    });
+      components: [buildContinuarButton()]
+    };
+    if (mensagemFuncionalidade) {
+      await mensagemFuncionalidade.edit(payload);
+      if (!interaction.deferred && !interaction.replied) {
+        try { await interaction.deferUpdate(); } catch (_) {}
+      }
+      return;
+    }
+    return responderAvaliacao(interaction, payload);
   }
 
   const categoriaIndex = getCategoriaAtual(userId);
-  await renderizarCategoria(mensagemFuncionalidade || interaction, categoriaIndex, userId);
+  if (mensagemFuncionalidade) {
+    const respostas = getRespostas(userId);
+    const pagina = paginaAtual.get(userId) || 0;
+    const components = buildCategoriaComponents(categoriaIndex, respostas, pagina);
+    const embed = buildCategoriaEmbedReal(categoriaIndex, userId, pagina);
+    await mensagemFuncionalidade.edit({ content: '', embeds: [embed], components });
+    if (!interaction.deferred && !interaction.replied) {
+      try { await interaction.deferUpdate(); } catch (_) {}
+    }
+    return;
+  }
+  await renderizarCategoria(interaction, categoriaIndex, userId);
 }
 
 async function onIndicadoresBinariosSelecionados(interaction) {
@@ -324,7 +397,7 @@ async function onProximaCategoria(interaction) {
   const totalPaginas = categoria ? Math.ceil(categoria.itens.length / getItensPorPagina(categoria)) : 0;
 
   if (!categoria || pagina !== totalPaginas - 1) {
-    return interaction.reply({ content: '⚠️ Use “Ver mais 5” para chegar à última página da categoria.', ephemeral: true });
+    return responderAvaliacao(interaction, { content: '⚠️ Use “Ver mais 5” para chegar à última página da categoria.', embeds: [], components: [] });
   }
 
   registrarItensNaoAvaliados(categoria.itens, respostas);
@@ -401,7 +474,7 @@ async function finalizarAvaliacao(interaction) {
   categoriaAtual.delete(userId);
   paginaAtual.delete(userId);
 
-  return responderMensagem(interaction, { embeds: [embed], components: [], ephemeral: true });
+  return responderAvaliacao(interaction, { embeds: [embed], components: [] });
 }
 
 async function onSalvarProgresso(interaction) {
@@ -409,10 +482,9 @@ async function onSalvarProgresso(interaction) {
   const guildId = interaction.guildId || interaction.guild?.id;
   await salvarProgresso(userId, guildId);
 
-  return responderMensagem(interaction, {
+  return responderAvaliacao(interaction, {
     content: '💾 Progresso salvo no Mongo. Pode continuar depois pelo botão abaixo.',
-    components: [buildContinuarButton()],
-    ephemeral: true
+    components: [buildContinuarButton()]
   });
 }
 
