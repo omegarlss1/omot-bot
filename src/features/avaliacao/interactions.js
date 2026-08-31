@@ -345,8 +345,7 @@ async function iniciarAvaliacao(interaction, mensagemFuncionalidade = null) {
     const respostas = getRespostas(userId);
     const pagina = paginaAtual.get(userId) || 0;
     const components = buildCategoriaComponents(categoriaIndex, respostas, pagina);
-    const embed = buildCategoriaEmbedReal(categoriaIndex, userId, pagina);
-    await mensagemFuncionalidade.edit({ content: '', embeds: [embed], components });
+    await mensagemFuncionalidade.edit({ content: '', embeds: [], components });
     if (!interaction.deferred && !interaction.replied) {
       try { await interaction.deferUpdate(); } catch (_) {}
     }

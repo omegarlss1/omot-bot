@@ -441,56 +441,31 @@ function buildFichaModalEtapa(stepIndex, valoresPreenchidos = {}, { erro = null,
   return modal;
 }
 
-function buildFichaButtons(dados = {}) {
+function buildFichaSelects(dados = {}) {
   const rows = [];
+  const selectInput = new StringSelectMenuBuilder()
+    .setCustomId('select_ficha_input')
+    .setPlaceholder(dados.input || 'Selecione o Input')
+    .addOptions(VALORES_INPUT_PERMITIDOS.map((valor) => ({ label: valor, value: valor })));
+  rows.push(new ActionRowBuilder().addComponents(selectInput));
 
-  const inputSelecionado = dados.input || '';
-  const inputRow = new ActionRowBuilder();
-  VALORES_INPUT_PERMITIDOS.forEach((valor) => {
-    inputRow.addComponents(
-      new ButtonBuilder()
-        .setCustomId(`ficha_input_${valor}`)
-        .setLabel(valor)
-        .setStyle(inputSelecionado === valor ? ButtonStyle.Primary : ButtonStyle.Secondary)
-    );
-  });
-  rows.push(inputRow);
+  const selectRanks = new StringSelectMenuBuilder()
+    .setCustomId('select_ficha_rank_x1')
+    .setPlaceholder(dados.rank_x1 || 'Selecione o Rank X1')
+    .addOptions(VALORES_RANK_PERMITIDOS.map((valor) => ({ label: valor, value: valor })));
+  rows.push(new ActionRowBuilder().addComponents(selectRanks));
 
-  const rankX1Selecionado = dados.rank_x1 || '';
-  const rankX1Row = new ActionRowBuilder();
-  VALORES_RANK_PERMITIDOS.forEach((valor) => {
-    rankX1Row.addComponents(
-      new ButtonBuilder()
-        .setCustomId(`ficha_rank_x1_${valor}`)
-        .setLabel(valor)
-        .setStyle(rankX1Selecionado === valor ? ButtonStyle.Primary : ButtonStyle.Secondary)
-    );
-  });
-  rows.push(rankX1Row);
+  const selectRanksX2 = new StringSelectMenuBuilder()
+    .setCustomId('select_ficha_rank_x2')
+    .setPlaceholder(dados.rank_x2 || 'Selecione o Rank X2')
+    .addOptions(VALORES_RANK_PERMITIDOS.map((valor) => ({ label: valor, value: valor })));
+  rows.push(new ActionRowBuilder().addComponents(selectRanksX2));
 
-  const rankX2Selecionado = dados.rank_x2 || '';
-  const rankX2Row = new ActionRowBuilder();
-  VALORES_RANK_PERMITIDOS.forEach((valor) => {
-    rankX2Row.addComponents(
-      new ButtonBuilder()
-        .setCustomId(`ficha_rank_x2_${valor}`)
-        .setLabel(valor)
-        .setStyle(rankX2Selecionado === valor ? ButtonStyle.Primary : ButtonStyle.Secondary)
-    );
-  });
-  rows.push(rankX2Row);
-
-  const picoSelecionado = dados.pico_rank || '';
-  const picoRow = new ActionRowBuilder();
-  VALORES_RANK_PERMITIDOS.forEach((valor) => {
-    picoRow.addComponents(
-      new ButtonBuilder()
-        .setCustomId(`ficha_pico_rank_${valor}`)
-        .setLabel(valor)
-        .setStyle(picoSelecionado === valor ? ButtonStyle.Primary : ButtonStyle.Secondary)
-    );
-  });
-  rows.push(picoRow);
+  const selectPico = new StringSelectMenuBuilder()
+    .setCustomId('select_ficha_pico_rank')
+    .setPlaceholder(dados.pico_rank || 'Selecione o Pico Rank')
+    .addOptions(VALORES_RANK_PERMITIDOS.map((valor) => ({ label: valor, value: valor })));
+  rows.push(new ActionRowBuilder().addComponents(selectPico));
 
   return rows;
 }
@@ -535,7 +510,7 @@ async function onIniciarFicha(interaction, mensagemFuncionalidade = null) {
   const perfilSalvo = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: interaction.user.id }).lean();
   const dadosSalvos = prepararDadosFichaSalva(perfilSalvo);
   fichaEmAndamento.set(interaction.user.id, dadosSalvos);
-  const componentes = buildFichaButtons(dadosSalvos);
+  const componentes = buildFichaSelects(dadosSalvos);
   const selecoesCompletas = OBRIGATORIOS.every((campo) => dadosSalvos[campo]);
 
   if (selecoesCompletas) {
@@ -549,10 +524,10 @@ async function onIniciarFicha(interaction, mensagemFuncionalidade = null) {
 
   const payload = {
     content: perfilSalvo
-      ? 'Encontramos sua ficha anterior. Revise os botões ou continue para editar os dados salvos:'
+      ? 'Encontramos sua ficha anterior. Revise os selects ou continue para editar os dados salvos:'
       : 'Antes de abrir a ficha, escolha as opções fixas abaixo para ficar tudo consistente:',
     components: componentes,
-    ephemeral: true
+    ephemeral: false
   };
 
   if (mensagemFuncionalidade) {
@@ -568,19 +543,25 @@ async function onIniciarFicha(interaction, mensagemFuncionalidade = null) {
   return responderFichaNoPainel(interaction, payload);
 }
 
-async function onSelecionarOpcaoFicha(interaction) {
-  const match = interaction.customId.match(/^ficha_(input|rank_x1|rank_x2|pico_rank)_(.+)$/);
-  if (!match) return;
+async function onSelectFichaOpcao(interaction) {
+  const mapa = {
+    select_ficha_input: 'input',
+    select_ficha_rank_x1: 'rank_x1',
+    select_ficha_rank_x2: 'rank_x2',
+    select_ficha_pico_rank: 'pico_rank'
+  };
 
-  const [, chave, valorRaw] = match;
-  const valor = valorRaw.replace(/_/g, ' ');
+  const chave = mapa[interaction.customId];
+  if (!chave) return;
+
+  const valor = interaction.values[0];
   const userId = interaction.user.id;
   const prev = fichaEmAndamento.get(userId) || {};
   const novo = { ...prev, [chave]: valor };
   fichaEmAndamento.set(userId, novo);
   const faltando = OBRIGATORIOS.filter((campo) => !novo[campo]).length;
 
-  console.log('[ficha-botao]', {
+  console.log('[ficha-select]', {
     userId,
     customId: interaction.customId,
     chave,
@@ -589,16 +570,22 @@ async function onSelecionarOpcaoFicha(interaction) {
     faltando
   });
 
-  if (!interaction.deferred && !interaction.replied) {
-    try { await interaction.deferUpdate(); } catch (_) {}
+  const ehUltimaEscolha = interaction.customId === 'select_ficha_pico_rank';
+  if (!ehUltimaEscolha) {
+    return interaction.update({
+      content: faltando.length > 0
+        ? `✅ Opção salva: **${valor}**. Falta(m) ${faltando.length} campo(s) para continuar.`
+        : `✅ Opção salva: **${valor}**. Pronto para continuar.`,
+      components: buildFichaSelects(novo),
+      ephemeral: false
+    });
   }
-  return responderFichaNoPainel(interaction, {
-    content: faltando.length > 0
-      ? `✅ Opção salva: **${valor}**. Falta(m) ${faltando.length} campo(s) para continuar.`
-      : `✅ Opção salva: **${valor}**. Pronto para continuar.`,
-    components: buildFichaButtons(novo),
-    ephemeral: true
-  });
+
+  if (!interaction || typeof interaction.showModal !== 'function') {
+    return;
+  }
+
+  return interaction.showModal(buildFichaModalEtapa(0, novo));
 }
 
 async function onContinuarFicha(interaction) {
@@ -973,28 +960,25 @@ async function onAbrirSelecionarPerfil(interaction, mensagemFuncionalidade = nul
   const membros = await interaction.guild.members.fetch({ limit: 50 })
     .then((colecao) => [...colecao.values()].filter((m) => !m.user.bot).slice(0, 25))
     .catch(() => [...interaction.guild.members.cache.values()].filter((m) => !m.user.bot).slice(0, 25));
-
-  const membrosRows = [];
-  const membrosRow = new ActionRowBuilder();
-  membros.forEach((membro) => {
-    membrosRow.addComponents(
-      new ButtonBuilder()
-        .setCustomId(`btn_ver_perfil_${membro.user.id}`)
-        .setLabel(membro.displayName || membro.user.username)
-        .setStyle(ButtonStyle.Secondary)
+  const select = new StringSelectMenuBuilder()
+    .setCustomId('select_ver_perfil')
+    .setPlaceholder('Escolha um membro para ver o perfil público')
+    .addOptions(
+      membros.map((membro) => ({
+        label: membro.displayName || membro.user.username,
+        value: membro.user.id,
+        description: `Ver perfil de ${membro.user.username}`.slice(0, 100)
+      }))
     );
-  });
-  membrosRows.push(membrosRow);
-
+  const row = new ActionRowBuilder().addComponents(select);
   const editarFicha = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('btn_iniciar_ficha').setLabel('Editar minha ficha').setStyle(ButtonStyle.Primary).setEmoji('✏️'),
     new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('← Voltar ao painel').setStyle(ButtonStyle.Secondary)
   );
-
   const payload = {
-    content: `🔎 Clique em um membro abaixo para consultar o perfil ou edite sua própria ficha:`,
+    content: '🔎 Selecione um membro para consultar o perfil ou edite sua própria ficha:',
     embeds: [],
-    components: compactarLinhasComponentes([...membrosRows, editarFicha])
+    components: compactarLinhasComponentes([row, editarFicha])
   };
 
   if (mensagemFuncionalidade) {
@@ -1014,40 +998,6 @@ function salvarMsgFuncionalidadeGenerica(interaction, mensagem) {
   painelFichaPorUsuario.set(chavePainelFicha(interaction), {
     channelId: mensagem.channelId || mensagem.channel?.id,
     messageId: mensagem.id
-  });
-}
-
-async function onVerPerfilDeOutro(interaction) {
-  const targetId = interaction.customId.replace(/^btn_ver_perfil_/, '');
-  const member = await interaction.guild.members.fetch(targetId).catch(() => null);
-
-  if (!member) {
-    return interaction.update({ content: '❌ Não foi possível localizar esse membro no servidor.', embeds: [], components: [] });
-  }
-
-  const perfil = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: targetId });
-  if (!perfil) {
-    return interaction.update({ content: `❌ ${member.displayName} ainda não completou o perfil.`, embeds: [], components: [] });
-  }
-
-  const embedPerfil = buildPerfilEmbed(perfil, member, { isPublic: true });
-  const adminButtons = hasPermissaoAdmin(interaction.member) ? buildAdminButtons(targetId) : [];
-  const titulosFisicos = getTitulosDoJogador(Array.isArray(perfil.titulosLista) ? perfil.titulosLista : []);
-  const componentsExtras = titulosFisicos.length > 10
-    ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`btn_ver_titulos_${targetId}`).setLabel(`Ver todos os títulos (${titulosFisicos.length}+)`).setStyle(ButtonStyle.Primary))]
-    : [];
-
-  if (!interaction.deferred && !interaction.replied) {
-    try { await interaction.deferUpdate(); } catch (_) {}
-  }
-  return responderFichaNoPainel(interaction, {
-    content: '',
-    embeds: [embedPerfil],
-    components: compactarLinhasComponentes([
-      ...adminButtons,
-      ...componentsExtras,
-      new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('← Voltar ao painel').setStyle(ButtonStyle.Secondary))
-    ])
   });
 }
 
@@ -1437,17 +1387,17 @@ function register(registry) {
   registry.button(/^btn_ver_titulos_\d+$/, onVerTodosTitulos);
   registry.button(/^btn_titulos_(prev|next)_\d+_\d+$/, onPaginarTitulos);
   registry.button(/^btn_admin_(gol|assist|save|chutes|mvp|pontuacao)_[0-9]+$/, onAbrirModalAdminEstatistica);
-  registry.button(/^btn_ver_perfil_\d+$/, onVerPerfilDeOutro);
-  registry.button(/^ficha_input_.+$/, onSelecionarOpcaoFicha);
-  registry.button(/^ficha_rank_x1_.+$/, onSelecionarOpcaoFicha);
-  registry.button(/^ficha_rank_x2_.+$/, onSelecionarOpcaoFicha);
-  registry.button(/^ficha_pico_rank_.+$/, onSelecionarOpcaoFicha);
   registry.modal(/^modal_admin_stat_(gol|assist|save|chutes|mvp|pontuacao)_[0-9]+$/, onAdminIncrement);
   registry.modal(/^modal_ficha_correcao_/, onModalCorrecaoFicha);
   registry.modal('modal_add_nick_sec', onModalAdicionarNickSec);
   registry.modal(/^modal_ficha_perfil_\d+$/, onModalFichaPerfil);
   registry.select('select_cargos_jogos', onSelectCargos);
+  registry.select('select_ver_perfil', onSelectVerPerfil);
+  registry.select('select_ficha_input', onSelectFichaOpcao);
+  registry.select('select_ficha_rank_x1', onSelectFichaOpcao);
+  registry.select('select_ficha_rank_x2', onSelectFichaOpcao);
+  registry.select('select_ficha_pico_rank', onSelectFichaOpcao);
   registry.select('select_remove_nick_sec', onSelecionarNickParaRemover);
 }
 
-module.exports = { register, buildPerfilEmbed, calcularIdade, calcularCategorias, MAPA_INDICADORES, onVerPerfil, onAbrirSelecionarPerfil, onVerPerfilDeOutro, onSelecionarOpcaoFicha, onVoltarNicks, onIniciarFicha };
+module.exports = { register, buildPerfilEmbed, calcularIdade, calcularCategorias, MAPA_INDICADORES, onVerPerfil, onAbrirSelecionarPerfil, onSelectVerPerfil, onSelectFichaOpcao, onVoltarNicks, onIniciarFicha };

@@ -13,14 +13,16 @@ module.exports = {
     try {
       const canal = interaction.channel;
       const registro = await PainelPrincipal.findOne({ guildId: interaction.guildId }).catch(() => null);
-      let hub = registro?.hubMessageId ? await canal.messages.fetch(registro.hubMessageId).catch(() => null) : null;
-      let funcionalidade = registro?.funcMessageId ? await canal.messages.fetch(registro.funcMessageId).catch(() => null) : null;
 
-      if (hub) await hub.edit(buildPainelPrincipal());
-      else hub = await canal.send(buildPainelPrincipal());
+      if (registro?.hubMessageId) {
+        await canal.messages.fetch(registro.hubMessageId).then((m) => m.delete().catch(() => {})).catch(() => {});
+      }
+      if (registro?.funcMessageId) {
+        await canal.messages.fetch(registro.funcMessageId).then((m) => m.delete().catch(() => {})).catch(() => {});
+      }
 
-      if (funcionalidade) await funcionalidade.edit(buildPlaceholderFuncionalidade());
-      else funcionalidade = await canal.send(buildPlaceholderFuncionalidade());
+      const hub = await canal.send(buildPainelPrincipal());
+      const funcionalidade = await canal.send(buildPlaceholderFuncionalidade());
 
       await PainelPrincipal.findOneAndUpdate(
         { guildId: interaction.guildId },
@@ -33,10 +35,11 @@ module.exports = {
         },
         { upsert: true, new: true }
       );
-      return interaction.editReply({ content: 'Painel Principal enviado!', ephemeral: true });
+
+      await interaction.deleteReply().catch(() => {});
     } catch (err) {
       console.error('ERRO /setup-painel-principal:', err);
-      return interaction.editReply({ content: `❌ Erro: ${err.message}`, ephemeral: true });
+      await interaction.editReply({ content: `❌ Erro: ${err.message}`, ephemeral: true }).catch(() => {});
     }
   }
 };
