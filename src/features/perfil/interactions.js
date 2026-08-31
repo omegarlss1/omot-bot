@@ -45,6 +45,17 @@ async function registrarPainelFicha(interaction) {
   return true;
 }
 
+async function registrarPainelFichaComMensagem(interaction, mensagem) {
+  if (!mensagem?.id || !interaction.guildId) return false;
+  const painel = await PainelPrincipal.findOne({ guildId: interaction.guildId }).lean().catch(() => null);
+  if (!painel || painel.funcMessageId !== mensagem.id) return false;
+  painelFichaPorUsuario.set(chavePainelFicha(interaction), {
+    channelId: mensagem.channelId || mensagem.channel?.id,
+    messageId: mensagem.id
+  });
+  return true;
+}
+
 async function obterMensagemPainelFicha(interaction) {
   const referencia = painelFichaPorUsuario.get(chavePainelFicha(interaction));
   if (referencia?.channelId && referencia?.messageId) {
@@ -509,13 +520,12 @@ function buildNicksSecundariosView(dados = {}) {
   };
 }
 
-async function onIniciarFicha(interaction) {
+async function onIniciarFicha(interaction, mensagemFuncionalidade = null) {
   if (!interaction || typeof interaction.reply !== 'function') {
     return;
   }
 
   const perfilSalvo = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: interaction.user.id }).lean();
-  await registrarPainelFicha(interaction);
   const dadosSalvos = prepararDadosFichaSalva(perfilSalvo);
   fichaEmAndamento.set(interaction.user.id, dadosSalvos);
   const componentes = buildFichaButtons(dadosSalvos);
@@ -530,13 +540,25 @@ async function onIniciarFicha(interaction) {
     ));
   }
 
-  return responderFichaNoPainel(interaction, {
+  const payload = {
     content: perfilSalvo
       ? 'Encontramos sua ficha anterior. Revise os botões ou continue para editar os dados salvos:'
       : 'Antes de abrir a ficha, escolha as opções fixas abaixo para ficar tudo consistente:',
     components: componentes,
     ephemeral: true
-  });
+  };
+
+  if (mensagemFuncionalidade) {
+    await registrarPainelFichaComMensagem(interaction, mensagemFuncionalidade);
+    await mensagemFuncionalidade.edit(payload).catch(() => null);
+    if (!interaction.deferred && !interaction.replied) {
+      try { await interaction.deferUpdate(); } catch (_) {}
+    }
+    return;
+  }
+
+  await registrarPainelFicha(interaction);
+  return responderFichaNoPainel(interaction, payload);
 }
 
 async function onSelecionarOpcaoFicha(interaction) {
@@ -1421,4 +1443,4 @@ function register(registry) {
   registry.select('select_remove_nick_sec', onSelecionarNickParaRemover);
 }
 
-module.exports = { register, buildPerfilEmbed, calcularIdade, calcularCategorias, MAPA_INDICADORES, onVerPerfil, onAbrirSelecionarPerfil, onVerPerfilDeOutro, onSelecionarOpcaoFicha, onVoltarNicks };
+module.exports = { register, buildPerfilEmbed, calcularIdade, calcularCategorias, MAPA_INDICADORES, onVerPerfil, onAbrirSelecionarPerfil, onVerPerfilDeOutro, onSelecionarOpcaoFicha, onVoltarNicks, onIniciarFicha };
