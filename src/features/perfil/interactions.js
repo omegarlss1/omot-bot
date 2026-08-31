@@ -69,14 +69,21 @@ async function obterMensagemPainelFicha(interaction) {
 
 async function responderFichaNoPainel(interaction, payload) {
   const mensagem = await obterMensagemPainelFicha(interaction);
-  const { ephemeral, flags, ...editPayload } = payload;
+  const { ephemeral, flags, content, ...editPayload } = payload;
+
+  const payloadLimpo = { ...editPayload };
+  if (content === undefined && !flags) {
+    payloadLimpo.content = '';
+  } else if (content !== undefined) {
+    payloadLimpo.content = content;
+  }
 
   if (mensagem) {
     if (interaction.isModalSubmit?.()) {
       if (!interaction.deferred && !interaction.replied) {
         try { await interaction.deferReply({ flags: 64 }); } catch (_) {}
       }
-      await mensagem.edit(editPayload);
+      await mensagem.edit(payloadLimpo);
       try { await interaction.deleteReply(); } catch (_) {}
       return;
     }
@@ -84,18 +91,18 @@ async function responderFichaNoPainel(interaction, payload) {
       if (!interaction.deferred && !interaction.replied) {
         try { await interaction.deferUpdate(); } catch (_) {}
       }
-      await mensagem.edit(editPayload);
+      await mensagem.edit(payloadLimpo);
       return;
     }
   }
 
   if (interaction.deferred || interaction.replied) {
-    return interaction.editReply(payload).catch(() => null);
+    return interaction.editReply(payloadLimpo).catch(() => null);
   }
   try {
-    return interaction.update(payload).catch(() => interaction.reply(payload));
+    return interaction.update(payloadLimpo).catch(() => interaction.reply(payloadLimpo));
   } catch (_) {
-    return interaction.reply(payload).catch(() => null);
+    return interaction.reply(payloadLimpo).catch(() => null);
   }
 }
 

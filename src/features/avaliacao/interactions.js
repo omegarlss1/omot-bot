@@ -178,7 +178,15 @@ function buildContinuarButton() {
 }
 
 async function responderAvaliacao(interaction, payload) {
-  const { ephemeral, flags, ...editPayload } = payload;
+  const { ephemeral, flags, content, ...editPayload } = payload;
+
+  const payloadLimpo = { ...editPayload };
+  if (content === undefined && !flags) {
+    payloadLimpo.content = '';
+  } else if (content !== undefined) {
+    payloadLimpo.content = content;
+  }
+
   const msgFunc = await obterMsgFuncionalidadeSalva(interaction).catch(() => null);
 
   if (msgFunc) {
@@ -188,7 +196,7 @@ async function responderAvaliacao(interaction, payload) {
           await interaction.deferUpdate();
         } catch (_) {}
       }
-      await msgFunc.edit(editPayload);
+      await msgFunc.edit(payloadLimpo);
       return;
     }
     if (interaction.isModalSubmit?.()) {
@@ -197,19 +205,19 @@ async function responderAvaliacao(interaction, payload) {
           await interaction.deferReply({ flags: 64 });
         } catch (_) {}
       }
-      await msgFunc.edit(editPayload);
+      await msgFunc.edit(payloadLimpo);
       try { await interaction.deleteReply(); } catch (_) {}
       return;
     }
   }
 
   if (interaction.deferred || interaction.replied) {
-    return interaction.editReply(payload).catch(() => null);
+    return interaction.editReply(payloadLimpo).catch(() => null);
   }
   try {
-    return interaction.update(payload).catch(() => interaction.reply(payload));
+    return interaction.update(payloadLimpo).catch(() => interaction.reply(payloadLimpo));
   } catch (_) {
-    return interaction.reply(payload).catch(() => null);
+    return interaction.reply(payloadLimpo).catch(() => null);
   }
 }
 
@@ -258,7 +266,7 @@ async function renderizarCategoria(interaction, categoriaIndex, userIdInformado 
   return responderAvaliacao(interaction, { content: '', embeds: [embed], components });
 }
 
-async function salvarProgresso(userId, guildId) {
+async function salvarProgresso(userId, guildId, salvarNoMongo = false) {
   const respostas = getRespostas(userId);
   const atual = getCategoriaAtual(userId);
 
@@ -268,7 +276,7 @@ async function salvarProgresso(userId, guildId) {
     atualizadoEm: Date.now()
   });
 
-  if (!guildId) return;
+  if (!salvarNoMongo || !guildId) return;
 
   await AvaliacaoPerfil.findOneAndUpdate(
     { guildId, userId },
@@ -405,7 +413,7 @@ async function onProximaCategoria(interaction) {
     const proximo = atual + 1;
     categoriaAtual.set(userId, proximo);
     paginaAtual.set(userId, 0);
-    await salvarProgresso(userId, guildId);
+    await salvarProgresso(userId, guildId, true);
     await renderizarCategoria(interaction, proximo);
     return;
   }
@@ -480,7 +488,7 @@ async function finalizarAvaliacao(interaction) {
 async function onSalvarProgresso(interaction) {
   const userId = interaction.user.id;
   const guildId = interaction.guildId || interaction.guild?.id;
-  await salvarProgresso(userId, guildId);
+  await salvarProgresso(userId, guildId, true);
 
   return responderAvaliacao(interaction, {
     content: '💾 Progresso salvo no Mongo. Pode continuar depois pelo botão abaixo.',
