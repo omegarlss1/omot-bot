@@ -9,7 +9,7 @@ module.exports = {
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   async execute(interaction) {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: 64 });
     try {
       const canal = interaction.channel;
       const registro = await PainelPrincipal.findOne({ guildId: interaction.guildId }).catch(() => null);
@@ -39,7 +39,7 @@ module.exports = {
       await interaction.deleteReply().catch(() => {});
     } catch (err) {
       console.error('ERRO /setup-painel-principal:', err);
-      await interaction.editReply({ content: `❌ Erro: ${err.message}`, ephemeral: true }).catch(() => {});
+      await interaction.editReply({ content: `❌ Erro: ${err.message}`, flags: 64 }).catch(() => {});
     }
   }
 };

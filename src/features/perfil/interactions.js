@@ -598,7 +598,7 @@ async function onContinuarFicha(interaction) {
   const nomesCampos = { input: 'Input', rank_x1: 'Rank X1', rank_x2: 'Rank X2', pico_rank: 'Pico Rank' };
 
   if (faltando.length) {
-    return responderFichaNoPainel(interaction, { content: `❌ Faltam opções obrigatórias: ${faltando.map((campo) => nomesCampos[campo]).join(', ')}.`, ephemeral: true });
+    return responderFichaNoPainel(interaction, { content: `❌ Faltam opções obrigatórias: ${faltando.map((campo) => nomesCampos[campo]).join(', ')}.`, flags: 64 });
   }
 
   return interaction.showModal(buildFichaModalEtapa(0, dados));
@@ -636,16 +636,16 @@ async function onModalAdicionarNickSec(interaction) {
   const principal = String(prev.nick_principal_input || prev.nick_principal || '').trim().toLowerCase();
 
   if (!novoNick || novoNick.length < 3 || novoNick.length > 20 || !NICK_PATTERN.test(novoNick)) {
-    return responderFichaNoPainel(interaction, { content: 'Nick inválido. Use 3-20 caracteres sem quebras de linha ou caracteres de controle.', ephemeral: true });
+    return responderFichaNoPainel(interaction, { content: 'Nick inválido. Use 3-20 caracteres sem quebras de linha ou caracteres de controle.', flags: 64 });
   }
   if (novoNick === principal || secundarios.includes(novoNick)) {
-    return responderFichaNoPainel(interaction, { content: 'Esse nick já está em uso na sua ficha.', ephemeral: true });
+    return responderFichaNoPainel(interaction, { content: 'Esse nick já está em uso na sua ficha.', flags: 64 });
   }
 
   secundarios.push(novoNick);
   const novo = { ...prev, nicks_secundarios: secundarios };
   fichaEmAndamento.set(userId, novo);
-  return responderFichaNoPainel(interaction, { ...buildNicksSecundariosView(novo), ephemeral: true });
+  return responderFichaNoPainel(interaction, { ...buildNicksSecundariosView(novo), flags: 64 });
 }
 
 async function onRemoverNickSec(interaction) {
@@ -947,6 +947,7 @@ async function onVerPerfil(interaction, mensagemFuncionalidade = null) {
 }
 
 async function onAbrirSelecionarPerfil(interaction, mensagemFuncionalidade = null) {
+  console.log('[ver_outros] clique', Date.now());
   if (!interaction.guild) {
     if (mensagemFuncionalidade) {
       await mensagemFuncionalidade.edit({ content: '❌ Essa ação só funciona em servidor.', embeds: [], components: [] }).catch(() => null);
@@ -1006,7 +1007,9 @@ async function onAbrirSelecionarPerfil(interaction, mensagemFuncionalidade = nul
 
   if (mensagemFuncionalidade) {
     salvarMsgFuncionalidadeGenerica(interaction, mensagemFuncionalidade);
+    console.log('[ver_outros] antes edit msg2', Date.now());
     await mensagemFuncionalidade.edit(payload).catch(() => null);
+    console.log('[ver_outros] depois edit msg2', Date.now());
     return;
   }
 

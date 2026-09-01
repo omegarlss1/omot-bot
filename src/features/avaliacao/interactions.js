@@ -503,7 +503,7 @@ async function onContinuarAvaliacao(interaction) {
   if (!registro || !registro.respostas || Object.keys(registro.respostas).length === 0) {
     return responderAvaliacao(interaction, {
       content: '❌ Não existe avaliação salva para continuar.',
-      ephemeral: true
+      flags: 64
     });
   }
 
