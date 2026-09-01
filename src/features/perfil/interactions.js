@@ -973,9 +973,16 @@ async function onAbrirSelecionarPerfil(interaction, mensagemFuncionalidade = nul
     try { await interaction.deferUpdate(); } catch (_) {}
   }
 
-  const membros = await interaction.guild.members.fetch({ limit: 50 })
-    .then((colecao) => [...colecao.values()].filter((m) => !m.user.bot).slice(0, 25))
-    .catch(() => [...interaction.guild.members.cache.values()].filter((m) => !m.user.bot).slice(0, 25));
+  let membros = [...interaction.guild.members.cache.values()].filter((m) => !m.user.bot).slice(0, 25);
+  if (membros.length < 25) {
+    try {
+      const fetched = await interaction.guild.members.fetch({ limit: 250 }).catch(() => null);
+      if (fetched) {
+        membros = [...fetched.values()].filter((m) => !m.user.bot).slice(0, 25);
+      }
+    } catch (_) {}
+  }
+
   const select = new StringSelectMenuBuilder()
     .setCustomId('select_ver_perfil')
     .setPlaceholder('Escolha um membro para ver o perfil público')

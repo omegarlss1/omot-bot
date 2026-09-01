@@ -224,24 +224,11 @@ async function responderAvaliacao(interaction, payload) {
 
 function buildCategoriaEmbedReal(categoriaIndex, userId, pagina = 0) {
   const categoria = CATEGORIAS[categoriaIndex];
-  const respostas = getRespostas(userId);
   const totalAvaliados = totalItensAvaliados(userId);
-  const itensPorPagina = getItensPorPagina(categoria);
-  const totalPaginas = Math.ceil(categoria.itens.length / itensPorPagina);
-  const inicio = pagina * itensPorPagina;
 
   const embed = new EmbedBuilder()
     .setTitle(`${categoria.icone} ${categoria.nome}`)
     .setColor('#00C2FF');
-
-  categoria.itens.slice(inicio, inicio + itensPorPagina).forEach((item) => {
-    const valor = respostas[item.id];
-    embed.addFields({
-      name: item.label,
-      value: `Status: **${valor ? 'Marcado' : 'Não marcado'}**`,
-      inline: false
-    });
-  });
 
   embed.setFooter({
     text: `Progresso: ${totalAvaliados} / 75 itens avaliados | Categoria ${categoriaIndex + 1} de ${CATEGORIAS.length}`
