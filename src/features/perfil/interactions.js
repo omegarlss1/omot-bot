@@ -29,6 +29,7 @@ const CATEGORIAS_META = {
 
 const fichaEmAndamento = new Map();
 const painelFichaPorUsuario = new Map();
+const lockVerPerfil = new Map();
 
 function chavePainelFicha(interaction) {
   return `${interaction.guildId || interaction.guild?.id || 'dm'}:${interaction.user.id}`;
@@ -957,6 +958,21 @@ async function onAbrirSelecionarPerfil(interaction, mensagemFuncionalidade = nul
     return responderFichaNoPainel(interaction, { content: '❌ Essa ação só funciona em servidor.', embeds: [], components: [] });
   }
 
+  const lockKey = `${interaction.guildId}:${interaction.user.id}`;
+  const agora = Date.now();
+  const ultimoClique = lockVerPerfil.get(lockKey) || 0;
+  if (agora - ultimoClique < 800) {
+    if (!interaction.deferred && !interaction.replied) {
+      try { await interaction.deferUpdate(); } catch (_) {}
+    }
+    return;
+  }
+  lockVerPerfil.set(lockKey, agora);
+
+  if (!interaction.deferred && !interaction.replied) {
+    try { await interaction.deferUpdate(); } catch (_) {}
+  }
+
   const membros = await interaction.guild.members.fetch({ limit: 50 })
     .then((colecao) => [...colecao.values()].filter((m) => !m.user.bot).slice(0, 25))
     .catch(() => [...interaction.guild.members.cache.values()].filter((m) => !m.user.bot).slice(0, 25));
@@ -984,9 +1000,6 @@ async function onAbrirSelecionarPerfil(interaction, mensagemFuncionalidade = nul
   if (mensagemFuncionalidade) {
     salvarMsgFuncionalidadeGenerica(interaction, mensagemFuncionalidade);
     await mensagemFuncionalidade.edit(payload).catch(() => null);
-    if (!interaction.deferred && !interaction.replied) {
-      try { await interaction.deferUpdate(); } catch (_) {}
-    }
     return;
   }
 
@@ -1276,10 +1289,6 @@ async function onModalFichaPerfil(interaction) {
         }))
       )
   );
-
-  interaction.user.send({
-    content: `✅ Sua ficha foi finalizada com sucesso! Seu perfil já está salvo no sistema da Ômega. ${interaction.member ? `Olá, ${interaction.member.displayName}!` : ''}`
-  }).catch(() => null);
 
   return responderFichaNoPainel(interaction, {
     content: '✅ Perfil salvo! Agora escolha abaixo os avisos que vc quer receber quando chamarem pro time:',

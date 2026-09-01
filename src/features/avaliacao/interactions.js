@@ -147,6 +147,7 @@ function buildCategoriaComponents(categoriaIndex, respostas, pagina = 0) {
 
   const estaNaUltimaPagina = pagina === totalPaginas - 1;
   const rowAcao = new ActionRowBuilder().addComponents(
+    ...(categoriaIndex > 0 ? [new ButtonBuilder().setCustomId('voltar_categoria').setLabel('← Voltar').setStyle(ButtonStyle.Secondary)] : []),
     ...(pagina > 0 ? [new ButtonBuilder().setCustomId('pagina_categoria_anterior').setLabel('← Página anterior').setStyle(ButtonStyle.Secondary)] : []),
     ...(pagina < totalPaginas - 1 ? [new ButtonBuilder()
       .setCustomId('pagina_categoria_proxima')
@@ -230,15 +231,14 @@ function buildCategoriaEmbedReal(categoriaIndex, userId, pagina = 0) {
   const inicio = pagina * itensPorPagina;
 
   const embed = new EmbedBuilder()
-    .setTitle(`📊 Avaliação - ${categoria.icone} ${categoria.nome} (${categoriaIndex + 1}/${CATEGORIAS.length})`)
-    .setDescription('Marque as características que fazem parte do perfil do jogador. A descrição explica cada indicador.')
+    .setTitle(`${categoria.icone} ${categoria.nome}`)
     .setColor('#00C2FF');
 
   categoria.itens.slice(inicio, inicio + itensPorPagina).forEach((item) => {
     const valor = respostas[item.id];
     embed.addFields({
-      name: `**${item.label}**`,
-      value: `${item.descricao || 'Sem descrição.'}\nStatus: **${valor ? 'Marcado' : 'Não marcado'}**`,
+      name: item.label,
+      value: `Status: **${valor ? 'Marcado' : 'Não marcado'}**`,
       inline: false
     });
   });
@@ -374,6 +374,19 @@ async function onIndicadoresBinariosSelecionados(interaction) {
   categoriaAtual.set(interaction.user.id, categoriaIndex);
   await salvarProgresso(interaction.user.id, interaction.guildId || interaction.guild?.id);
   return renderizarCategoria(interaction, categoriaIndex);
+}
+
+async function onVoltarCategoria(interaction) {
+  const userId = interaction.user.id;
+  const atual = getCategoriaAtual(userId);
+  if (atual <= 0) {
+    return responderAvaliacao(interaction, { content: '⚠️ Já está na primeira categoria.', embeds: [], components: [] });
+  }
+  const anterior = atual - 1;
+  categoriaAtual.set(userId, anterior);
+  paginaAtual.set(userId, 0);
+  await salvarProgresso(userId, interaction.guildId || interaction.guild?.id, true);
+  return renderizarCategoria(interaction, anterior);
 }
 
 async function onPaginaCategoria(interaction) {
@@ -521,6 +534,7 @@ async function onAbrirAvaliacao(interaction) {
 
 function register(registry) {
   registry.select(/^avaliar_binario_\d+_\d+$/, onIndicadoresBinariosSelecionados);
+  registry.button('voltar_categoria', onVoltarCategoria);
   registry.button('proxima_categoria', onProximaCategoria);
   registry.button('pagina_categoria_anterior', onPaginaCategoria);
   registry.button('pagina_categoria_proxima', onPaginaCategoria);
