@@ -975,9 +975,9 @@ async function onAbrirSelecionarPerfil(interaction, mensagemFuncionalidade = nul
   }
 
   let membros = [...interaction.guild.members.cache.values()].filter((m) => !m.user.bot).slice(0, 25);
-  if (membros.length < 25) {
+  if (membros.length === 0) {
     try {
-      const fetched = await interaction.guild.members.fetch({ limit: 250 }).catch(() => null);
+      const fetched = await interaction.guild.members.fetch({ limit: 100 }).catch(() => null);
       if (fetched) {
         membros = [...fetched.values()].filter((m) => !m.user.bot).slice(0, 25);
       }
