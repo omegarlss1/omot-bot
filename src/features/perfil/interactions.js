@@ -1,6 +1,7 @@
 const {
   ActionRowBuilder,
   StringSelectMenuBuilder,
+  UserSelectMenuBuilder,
   EmbedBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -13,7 +14,7 @@ const PerfilMembro = require('../../db/models/perfilMembro');
 const PainelPrincipal = require('../../db/models/painelPrincipal');
 const { getGames } = require('../games/catalog');
 const { MAPA_INDICADORES, calcularCategorias } = require('../../data/mapa_indicadores');
-const { getTitulosDoJogador, getPaginaTitulos, formatarTitulosParaTexto } = require('../../data/titulos');
+const { getTitulosDoJogador, getPaginaTitulos, formatarTitulosParaTexto, extrairIconeTitulo } = require('../../data/titulos');
 const { obterMensagemFuncionalidade } = require('../hub/mensagem');
 
 const {
@@ -46,9 +47,11 @@ const {
   compactarLinhasComponentes,
   buildAdminButtons,
   buildAdminStatModal,
+  buildAddTituloModal,
   buildTitulosButtons,
   buildFichaModalEtapa,
   buildFichaSelects,
+  buildFichaNavegacao,
   criarBotaoCorrecao,
   criarModalCorrecao,
   criarBotaoContinuarFicha
@@ -115,7 +118,7 @@ async function responderFichaNoPainel(interaction, payload) {
       try { await interaction.deleteReply(); } catch (_) {}
       return;
     }
-    if (interaction.isButton?.() || interaction.isStringSelectMenu?.()) {
+    if (interaction.isButton?.() || interaction.isStringSelectMenu?.() || interaction.isUserSelectMenu?.()) {
       if (!interaction.deferred && !interaction.replied) {
         try { await interaction.deferUpdate(); } catch (_) {}
       }
@@ -149,17 +152,6 @@ function normalizarDadosFicha(dados = {}) {
   }
 
   return objetoNormalizado;
-}
-
-function salvarDadosFichaUsuario(userId, novosDados = {}) {
-  const dadosAtuais = normalizarDadosFicha(fichaEmAndamento.get(userId));
-  const dadosAtualizados = { ...dadosAtuais, ...normalizarDadosFicha(novosDados) };
-  fichaEmAndamento.set(userId, dadosAtualizados);
-  return dadosAtualizados;
-}
-
-function resetarFichaEmAndamento(userId) {
-  fichaEmAndamento.set(userId, {});
 }
 
 function prepararDadosFichaSalva(perfil) {
@@ -198,32 +190,32 @@ function salvarMsgFuncionalidadeGenerica(interaction, mensagem) {
   });
 }
 
+const INSTRUCOES_RANKS = 'ℹ️ **Atenção aos Ranks (X1 e X2):**\nSelecione o rank que você normalmente conquista e mantém com frequência durante as seasons. Esse dado será utilizado pela staff para balanceamento e equilíbrio justo das equipes em campeonatos internos!';
+
 async function onIniciarFicha(interaction, mensagemFuncionalidade = null) {
-  if (!interaction || typeof interaction.reply !== 'function') {
-    return;
-  }
+  if (!interaction || typeof interaction.reply !== 'function') return;
 
   const perfilSalvo = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: interaction.user.id }).lean();
   const dadosSalvos = prepararDadosFichaSalva(perfilSalvo);
   fichaEmAndamento.set(interaction.user.id, dadosSalvos);
-  const componentes = buildFichaSelects(dadosSalvos);
+
   const selecoesCompletas = OBRIGATORIOS.every((campo) => dadosSalvos[campo]);
 
+  let componentes = [];
+  let content = '';
+
   if (selecoesCompletas) {
-    componentes.push(new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('btn_continuar_ficha')
-        .setLabel('Continuar com os dados salvos')
-        .setStyle(ButtonStyle.Success)
-    ));
+    componentes = buildFichaNavegacao(dadosSalvos);
+    content = `${INSTRUCOES_RANKS}\n\n📋 **Painel da Ficha de Membro:**\nClique em qualquer etapa abaixo para preencher ou editar as informações do seu perfil:`;
+  } else {
+    componentes = buildFichaSelects(dadosSalvos);
+    content = `${INSTRUCOES_RANKS}\n\nEscolha as opções fixas abaixo para liberar os formulários:`;
   }
 
   const payload = {
-    content: perfilSalvo
-      ? 'Encontramos sua ficha anterior. Revise os selects ou continue para editar os dados salvos:'
-      : 'Antes de abrir a ficha, escolha as opções fixas abaixo para ficar tudo consistente:',
-    components: componentes,
-    ephemeral: false
+    content,
+    embeds: [],
+    components: compactarLinhasComponentes(componentes)
   };
 
   if (mensagemFuncionalidade) {
@@ -257,46 +249,200 @@ async function onSelectFichaOpcao(interaction) {
   fichaEmAndamento.set(userId, novo);
   const faltando = OBRIGATORIOS.filter((campo) => !novo[campo]).length;
 
-  const ehUltimaEscolha = interaction.customId === 'select_ficha_pico_rank';
-  if (!ehUltimaEscolha) {
-    return interaction.update({
-      content: faltando.length > 0
-        ? `✅ Opção salva: **${valor}**. Falta(m) ${faltando.length} campo(s) para continuar.`
-        : `✅ Opção salva: **${valor}**. Pronto para continuar.`,
-      components: buildFichaSelects(novo),
-      ephemeral: false
+  if (faltando > 0) {
+    return responderFichaNoPainel(interaction, {
+      content: `${INSTRUCOES_RANKS}\n\n✅ Opção salva: **${valor}**. Falta(m) ${faltando} opção(ões) obrigatória(s).`,
+      embeds: [],
+      components: compactarLinhasComponentes(buildFichaSelects(novo))
     });
   }
 
-  if (!interaction || typeof interaction.showModal !== 'function') {
-    return;
-  }
-
-  return interaction.showModal(buildFichaModalEtapa(0, novo));
+  return responderFichaNoPainel(interaction, {
+    content: `${INSTRUCOES_RANKS}\n\n🎉 **Opções fixas configuradas!**\nClique nas etapas abaixo para preencher os dados da sua ficha:`,
+    embeds: [],
+    components: compactarLinhasComponentes(buildFichaNavegacao(novo))
+  });
 }
 
-async function onContinuarFicha(interaction) {
-  const dados = normalizarDadosFicha(fichaEmAndamento.get(interaction.user.id));
-  if (Number(dados.etapa) === 2) {
-    return interaction.showModal(buildFichaModalEtapa(2, dados));
-  }
-  const faltando = OBRIGATORIOS.filter((campo) => !dados[campo]);
-  const nomesCampos = { input: 'Input', rank_x1: 'Rank X1', rank_x2: 'Rank X2', pico_rank: 'Pico Rank' };
-
-  if (faltando.length) {
-    return responderFichaNoPainel(interaction, { content: `❌ Faltam opções obrigatórias: ${faltando.map((campo) => nomesCampos[campo]).join(', ')}.`, flags: 64 });
-  }
-
-  return interaction.showModal(buildFichaModalEtapa(0, dados));
-}
-
-async function onContinuarFichaEtapa(interaction) {
-  const match = interaction.customId.match(/^btn_continuar_ficha_(\d+)$/);
+async function onAbrirEtapaFicha(interaction) {
+  const match = interaction.customId.match(/^btn_etapa_(\d+)$/);
   if (!match) return;
 
   const stepIndex = Number(match[1]) - 1;
   const dados = normalizarDadosFicha(fichaEmAndamento.get(interaction.user.id));
   return interaction.showModal(buildFichaModalEtapa(stepIndex, dados));
+}
+
+async function onModalFichaPerfil(interaction) {
+  if (!interaction || !interaction.isModalSubmit) return;
+
+  const match = interaction.customId.match(/^modal_ficha_perfil_(\d+)$/);
+  if (!match) return;
+
+  const etapaAtual = Number(match[1]) - 1;
+  const dadosExistentes = normalizarDadosFicha(fichaEmAndamento.get(interaction.user.id));
+
+  FICHA_MODAL_STEPS[etapaAtual].forEach((campo) => {
+    const valor = interaction.fields.getTextInputValue(campo.id).trim();
+    if (valor !== '') {
+      dadosExistentes[campo.id] = valor;
+    }
+  });
+
+  const validacaoEtapa = await validarCamposEtapa(etapaAtual, dadosExistentes, interaction.user.id, PerfilMembro);
+
+  if (!validacaoEtapa.ok) {
+    const campoComErro = obterCampoComErro(validacaoEtapa);
+    const userId = interaction.user.id;
+    fichaEmAndamento.set(userId, { ...dadosExistentes });
+
+    return responderFichaNoPainel(interaction, {
+      content: validacaoEtapa.mensagem,
+      embeds: [],
+      components: [criarBotaoCorrecao(campoComErro)]
+    });
+  }
+
+  fichaEmAndamento.set(interaction.user.id, dadosExistentes);
+
+  const titulosEtapas = [
+    '1. Nome / Nasc / Estado',
+    '2. País / Bio / CLA / Nick',
+    '3. CLAs / Modo / Controle',
+    '4. TikTok / Instagram'
+  ];
+  const etapaNome = titulosEtapas[etapaAtual] || `Etapa ${etapaAtual + 1}`;
+
+  return responderFichaNoPainel(interaction, {
+    content: `✅ Dados salvos da etapa **${etapaNome}**!\nContinue navegando pelas outras etapas ou clique em **Finalizar e Salvar Perfil**:`,
+    embeds: [],
+    components: compactarLinhasComponentes(buildFichaNavegacao(dadosExistentes))
+  });
+}
+
+async function onSalvarConcluirFicha(interaction) {
+  const dados = normalizarDadosFicha(fichaEmAndamento.get(interaction.user.id));
+
+  const input = normalizarOpcaoPermitida(dados.input, VALORES_INPUT_PERMITIDOS);
+  const rankX1 = normalizarOpcaoPermitida(dados.rank_x1, VALORES_RANK_PERMITIDOS);
+  const rankX2 = normalizarOpcaoPermitida(dados.rank_x2, VALORES_RANK_PERMITIDOS);
+  const picoRank = normalizarOpcaoPermitida(dados.pico_rank, VALORES_RANK_PERMITIDOS);
+  const nickPrincipal = String(dados.nick_principal_input || dados.nick_principal || '').trim();
+
+  if (!input || !rankX1 || !rankX2 || !picoRank) {
+    return responderFichaNoPainel(interaction, {
+      content: '❌ Faltam as opções fixas obrigatórias (Input, Rank X1, Rank X2 ou Pico). Configure-as abaixo:',
+      embeds: [],
+      components: compactarLinhasComponentes(buildFichaSelects(dados))
+    });
+  }
+
+  if (!nickPrincipal || nickPrincipal.length < 3 || nickPrincipal.length > 20 || !NICK_PATTERN.test(nickPrincipal)) {
+    return responderFichaNoPainel(interaction, {
+      content: '❌ O **Nick Principal** é obrigatório e precisa ter de 3 a 20 caracteres. Clique na etapa 2 para preenchê-lo:',
+      embeds: [],
+      components: compactarLinhasComponentes(buildFichaNavegacao(dados))
+    });
+  }
+
+  const existente = await PerfilMembro.findOne({ nick_principal: nickPrincipal.toLowerCase(), userId: { $ne: interaction.user.id } }).select('_id').lean();
+  if (existente) {
+    return responderFichaNoPainel(interaction, {
+      content: `❌ O nick principal **${nickPrincipal}** já está em uso por outro membro. Altere-o na etapa 2:`,
+      embeds: [],
+      components: compactarLinhasComponentes(buildFichaNavegacao(dados))
+    });
+  }
+
+  const nomeComum = sanitizeTextoLivre(dados.nome_comum_input || interaction.user.username, { maxLength: 60, allowEmpty: false }) || interaction.user.username;
+  const nascimentoValido = validarDataNascimento(dados.data_nascimento_input);
+  const dataNascimento = nascimentoValido.ok ? nascimentoValido.value : null;
+  const idade = calcularIdade(dataNascimento);
+
+  const estado = sanitizeTextoLivre(dados.estado_input, { maxLength: 60 });
+  const pais = sanitizeTextoLivre(dados.pais_input, { maxLength: 60 });
+  const bio = sanitizeTextoLivre(dados.bio_input, { maxLength: 150 });
+  const claAtual = sanitizeTextoLivre(dados.cla_atual_input, { maxLength: 60 });
+  const clasAnteriores = sanitizeTextoLivre(dados.clas_anteriores_input, { maxLength: 200 });
+  const modoFavorito = sanitizeTextoLivre(dados.modo_favorito_input, { maxLength: 60 });
+  const controleTipo = sanitizeTextoLivre(dados.controle_tipo_input, { maxLength: 100 });
+  const tiktok = sanitizeTextoLivre(dados.tiktok_input, { maxLength: 60 });
+  const instagram = sanitizeTextoLivre(dados.instagram_input, { maxLength: 60 });
+
+  const nicksSecundarios = [...new Set((Array.isArray(dados.nicks_secundarios) ? dados.nicks_secundarios : [])
+    .map((nick) => String(nick).trim())
+    .filter((nick) => nick && nick.toLowerCase() !== nickPrincipal.toLowerCase()))];
+
+  const perfilAtual = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: interaction.user.id });
+  const indicadoresDetalhados = perfilAtual?.indicadoresDetalhados || {};
+  const categoriasCalculadas = calcularCategorias(indicadoresDetalhados);
+  const clasAnterioresArray = clasAnteriores ? clasAnteriores.split(',').map((item) => item.trim()).filter(Boolean) : perfilAtual?.clasAnteriores || [];
+
+  const dadosPerfil = {
+    guildId: interaction.guildId,
+    userId: interaction.user.id,
+    discordId: interaction.user.id,
+    nomeComum,
+    dataNascimento: dataNascimento || perfilAtual?.dataNascimento || null,
+    dataEntradaOmega: perfilAtual?.dataEntradaOmega || null,
+    idade: idade || perfilAtual?.idade || 0,
+    estado: estado || perfilAtual?.estado || null,
+    pais: pais || perfilAtual?.pais || null,
+    bio: bio || perfilAtual?.bio || null,
+    claAtual: claAtual || perfilAtual?.claAtual || null,
+    clasAnteriores: clasAnterioresArray,
+    nick_principal: nickPrincipal.toLowerCase(),
+    nicks_secundarios: nicksSecundarios,
+    rankX1,
+    rankX2,
+    picoRank,
+    modoFavorito: modoFavorito || perfilAtual?.modoFavorito || null,
+    input,
+    controleTipo: controleTipo || perfilAtual?.controleTipo || null,
+    tiktok: tiktok || perfilAtual?.tiktok || null,
+    instagram: instagram || perfilAtual?.instagram || null,
+    nickJogo: nickPrincipal,
+    rankSideSwipe: perfilAtual?.rankSideSwipe || 'Unranked',
+    indicadoresDetalhados,
+    inteligenciaLeitura: categoriasCalculadas.inteligencia_leitura || perfilAtual?.inteligenciaLeitura || 0,
+    conhecimentoEvolucao: categoriasCalculadas.conhecimento_evolucao || perfilAtual?.conhecimentoEvolucao || 0,
+    controleMecanica: categoriasCalculadas.controle_mecanica || perfilAtual?.controleMecanica || 0,
+    ataque: categoriasCalculadas.ataque || perfilAtual?.ataque || 0,
+    defesa: categoriasCalculadas.defesa || perfilAtual?.defesa || 0,
+    equipe: categoriasCalculadas.equipe || perfilAtual?.equipe || 0,
+    criatividade: categoriasCalculadas.criatividade || perfilAtual?.criatividade || 0,
+    regularidade: categoriasCalculadas.regularidade || perfilAtual?.regularidade || 0
+  };
+
+  await PerfilMembro.findOneAndUpdate(
+    { guildId: interaction.guildId, userId: interaction.user.id },
+    { $set: dadosPerfil },
+    { upsert: true, new: true }
+  );
+
+  fichaEmAndamento.delete(interaction.user.id);
+
+  const games = await getGames(interaction.guildId);
+  const selectCargos = new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId('select_cargos_jogos')
+      .setPlaceholder('Escolha os jogos que quer ser notificado...')
+      .setMinValues(0)
+      .setMaxValues(Math.max(1, games.length))
+      .addOptions(
+        games.map((game) => ({
+          label: game.nome,
+          value: game.roleId,
+          description: game.descricaoCargo
+        }))
+      )
+  );
+
+  return responderFichaNoPainel(interaction, {
+    content: '🎉 **Ficha de Membro Concluída e Salva com Sucesso!**\nAgora escolha abaixo os avisos que você quer receber quando chamarem pro time:',
+    embeds: [],
+    components: [selectCargos]
+  });
 }
 
 async function onAdicionarNickSec(interaction) {
@@ -395,52 +541,23 @@ async function onModalCorrecaoFicha(interaction) {
   const novo = { ...prev, [campoId]: novoValor };
   fichaEmAndamento.set(userId, novo);
 
-  const etapaAtual = Number(novo.etapa) || 0;
-  const validacaoEtapa = await validarCamposEtapa(etapaAtual, novo, userId, PerfilMembro);
-
-  if (!validacaoEtapa.ok) {
-    return responderFichaNoPainel(interaction, {
-      content: validacaoEtapa.mensagem,
-      components: [criarBotaoCorrecao(obterCampoComErro(validacaoEtapa))]
-    });
-  }
-
-  if (etapaAtual === 1) {
-    fichaEmAndamento.set(userId, { ...novo, etapa: 2 });
-    return responderFichaNoPainel(interaction, buildNicksSecundariosView(novo));
-  }
-
-  const proximaEtapa = etapaAtual + 1;
-  if (proximaEtapa < FICHA_MODAL_STEPS.length) {
-    const validacaoProximaEtapa = await validarCamposEtapa(proximaEtapa, novo, userId, PerfilMembro);
-    if (!validacaoProximaEtapa.ok) {
-      fichaEmAndamento.set(userId, { ...novo, etapa: proximaEtapa });
-      return responderFichaNoPainel(interaction, {
-        content: validacaoProximaEtapa.mensagem,
-        components: [criarBotaoCorrecao(obterCampoComErro(validacaoProximaEtapa))]
-      });
-    }
-  }
-
-  fichaEmAndamento.set(userId, { ...novo, etapa: Math.min(proximaEtapa, FICHA_MODAL_STEPS.length - 1) });
   return responderFichaNoPainel(interaction, {
-    content: `✅ Campo corrigido. Clique para continuar na etapa ${Math.min(proximaEtapa + 1, FICHA_MODAL_STEPS.length)}/4.`,
-    components: [criarBotaoContinuarFicha(etapaAtual)]
+    content: `✅ Campo **${campo.label}** corrigido com sucesso!\nContinue preenchendo as etapas abaixo:`,
+    embeds: [],
+    components: compactarLinhasComponentes(buildFichaNavegacao(novo))
   });
 }
 
 async function onVerPerfil(interaction, mensagemFuncionalidade = null) {
   const editarMensagemDoHub = Boolean(mensagemFuncionalidade);
-  const voltarAoHub = editarMensagemDoHub
-    ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('← Voltar ao painel').setStyle(ButtonStyle.Secondary))]
-    : [];
+  const voltarAoHub = [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('← Voltar ao painel').setStyle(ButtonStyle.Secondary))];
   const perfil = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: interaction.user.id });
 
   if (mensagemFuncionalidade) {
     salvarMsgFuncionalidadeGenerica(interaction, mensagemFuncionalidade);
     if (!perfil) {
       await mensagemFuncionalidade.edit({
-        content: '❌ Vc ainda não preencheu sua ficha! Clica em **Editar Ficha** pra cadastrar.',
+        content: '❌ Você ainda não preencheu sua ficha! Clique em **Editar minha ficha** para cadastrar seu perfil.',
         embeds: [],
         components: voltarAoHub
       }).catch(() => null);
@@ -448,8 +565,8 @@ async function onVerPerfil(interaction, mensagemFuncionalidade = null) {
       const embedPerfil = buildPerfilEmbed(perfil, interaction.member, { isPublic: false });
       const adminButtons = hasPermissaoAdmin(interaction.member) ? buildAdminButtons(interaction.user.id) : [];
       const titulosFisicos = getTitulosDoJogador(Array.isArray(perfil.titulosLista) ? perfil.titulosLista : []);
-      const componentsExtras = titulosFisicos.length > 10
-        ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`btn_ver_titulos_${interaction.user.id}`).setLabel(`Ver todos os títulos (${titulosFisicos.length}+)`).setStyle(ButtonStyle.Primary))]
+      const componentsExtras = titulosFisicos.length > 8
+        ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`btn_ver_titulos_${interaction.user.id}`).setLabel(`Ver todos os títulos (${titulosFisicos.length})`).setStyle(ButtonStyle.Primary))]
         : [];
       await mensagemFuncionalidade.edit({
         content: '',
@@ -465,16 +582,19 @@ async function onVerPerfil(interaction, mensagemFuncionalidade = null) {
 
   if (!perfil) {
     return responderFichaNoPainel(interaction, {
-      content: '❌ Vc ainda não preencheu sua ficha! Clica em **Editar Ficha** pra cadastrar.',
+      content: '❌ Você ainda não preencheu sua ficha! Clique em **Editar minha ficha** para cadastrar seu perfil.',
+      embeds: [],
       components: voltarAoHub
     });
   }
+
   const embedPerfil = buildPerfilEmbed(perfil, interaction.member, { isPublic: false });
   const adminButtons = hasPermissaoAdmin(interaction.member) ? buildAdminButtons(interaction.user.id) : [];
   const titulosFisicos = getTitulosDoJogador(Array.isArray(perfil.titulosLista) ? perfil.titulosLista : []);
-  const componentsExtras = titulosFisicos.length > 10
-    ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`btn_ver_titulos_${interaction.user.id}`).setLabel(`Ver todos os títulos (${titulosFisicos.length}+)`).setStyle(ButtonStyle.Primary))]
+  const componentsExtras = titulosFisicos.length > 8
+    ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`btn_ver_titulos_${interaction.user.id}`).setLabel(`Ver todos os títulos (${titulosFisicos.length})`).setStyle(ButtonStyle.Primary))]
     : [];
+
   return responderFichaNoPainel(interaction, {
     content: '',
     embeds: [embedPerfil],
@@ -484,60 +604,31 @@ async function onVerPerfil(interaction, mensagemFuncionalidade = null) {
 
 async function onAbrirSelecionarPerfil(interaction, mensagemFuncionalidade = null) {
   if (!interaction.guild) {
+    const payload = { content: '❌ Essa ação só funciona em servidor.', embeds: [], components: [] };
     if (mensagemFuncionalidade) {
-      await mensagemFuncionalidade.edit({ content: '❌ Essa ação só funciona em servidor.', embeds: [], components: [] }).catch(() => null);
-      if (!interaction.deferred && !interaction.replied) {
-        try { await interaction.deferUpdate(); } catch (_) {}
-      }
+      await mensagemFuncionalidade.edit(payload).catch(() => null);
       return;
     }
-    return responderFichaNoPainel(interaction, { content: '❌ Essa ação só funciona em servidor.', embeds: [], components: [] });
+    return responderFichaNoPainel(interaction, payload);
   }
 
-  const lockKey = `${interaction.guildId}:${interaction.user.id}`;
-  const agora = Date.now();
-  const ultimoClique = lockVerPerfil.get(lockKey) || 0;
-  if (agora - ultimoClique < 800) {
-    if (!interaction.deferred && !interaction.replied) {
-      try { await interaction.deferUpdate(); } catch (_) {}
-    }
-    return;
-  }
-  lockVerPerfil.set(lockKey, agora);
+  const selectUser = new UserSelectMenuBuilder()
+    .setCustomId('select_user_perfil')
+    .setPlaceholder('🔍 Pesquise ou selecione qualquer membro do servidor...')
+    .setMaxValues(1);
 
-  if (!interaction.deferred && !interaction.replied) {
-    try { await interaction.deferUpdate(); } catch (_) {}
-  }
+  const rowSelect = new ActionRowBuilder().addComponents(selectUser);
 
-  let membros = [...interaction.guild.members.cache.values()].filter((m) => !m.user.bot).slice(0, 25);
-  if (membros.length === 0) {
-    try {
-      const fetched = await interaction.guild.members.fetch({ limit: 100 }).catch(() => null);
-      if (fetched) {
-        membros = [...fetched.values()].filter((m) => !m.user.bot).slice(0, 25);
-      }
-    } catch (_) {}
-  }
-
-  const select = new StringSelectMenuBuilder()
-    .setCustomId('select_ver_perfil')
-    .setPlaceholder('Escolha um membro para ver o perfil público')
-    .addOptions(
-      membros.map((membro) => ({
-        label: membro.displayName || membro.user.username,
-        value: membro.user.id,
-        description: `Ver perfil de ${membro.user.username}`.slice(0, 100)
-      }))
-    );
-  const row = new ActionRowBuilder().addComponents(select);
-  const editarFicha = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('btn_iniciar_ficha').setLabel('Editar minha ficha').setStyle(ButtonStyle.Primary).setEmoji('✏️'),
+  const rowAcoes = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('btn_abrir_busca_nick').setLabel('Buscar por Nick / Nome').setStyle(ButtonStyle.Primary).setEmoji('🔎'),
+    new ButtonBuilder().setCustomId('btn_iniciar_ficha').setLabel('Editar minha ficha').setStyle(ButtonStyle.Secondary).setEmoji('✏️'),
     new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('← Voltar ao painel').setStyle(ButtonStyle.Secondary)
   );
+
   const payload = {
-    content: '🔎 Selecione um membro para consultar o perfil ou edite sua própria ficha:',
+    content: '🔍 **Consulta de Perfis Ômega:**\nSelecione qualquer membro no menu abaixo (você pode digitar o nome no campo de busca do Discord) ou pesquise pelo nick registrado:',
     embeds: [],
-    components: compactarLinhasComponentes([row, editarFicha])
+    components: compactarLinhasComponentes([rowSelect, rowAcoes])
   };
 
   if (mensagemFuncionalidade) {
@@ -549,33 +640,115 @@ async function onAbrirSelecionarPerfil(interaction, mensagemFuncionalidade = nul
   return responderFichaNoPainel(interaction, payload);
 }
 
-async function onSelectVerPerfil(interaction) {
+async function onSelectUserPerfil(interaction) {
   const targetId = interaction.values[0];
   const member = await interaction.guild.members.fetch(targetId).catch(() => null);
 
   if (!member) {
-    return interaction.update({ content: '❌ Não foi possível localizar esse membro no servidor.', embeds: [], components: [] });
+    return responderFichaNoPainel(interaction, {
+      content: '❌ Não foi possível localizar esse membro no servidor.',
+      embeds: [],
+      components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('btn_abrir_select_ver_perfil').setLabel('← Voltar à busca').setStyle(ButtonStyle.Secondary))]
+    });
   }
 
   const perfil = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: targetId });
   if (!perfil) {
-    return interaction.update({ content: `❌ ${member.displayName} ainda não completou o perfil.`, embeds: [], components: [] });
+    return responderFichaNoPainel(interaction, {
+      content: `❌ **${member.displayName}** ainda não completou a ficha de perfil no servidor.`,
+      embeds: [],
+      components: [new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('btn_abrir_select_ver_perfil').setLabel('← Buscar outro membro').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('Voltar ao painel').setStyle(ButtonStyle.Secondary)
+      )]
+    });
   }
 
   const embedPerfil = buildPerfilEmbed(perfil, member, { isPublic: true });
   const adminButtons = hasPermissaoAdmin(interaction.member) ? buildAdminButtons(targetId) : [];
   const titulosFisicos = getTitulosDoJogador(Array.isArray(perfil.titulosLista) ? perfil.titulosLista : []);
-  const componentsExtras = titulosFisicos.length > 10
-    ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`btn_ver_titulos_${targetId}`).setLabel(`Ver todos os títulos (${titulosFisicos.length}+)`).setStyle(ButtonStyle.Primary))]
+  const componentsExtras = titulosFisicos.length > 8
+    ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`btn_ver_titulos_${targetId}`).setLabel(`Ver todos os títulos (${titulosFisicos.length})`).setStyle(ButtonStyle.Primary))]
     : [];
 
-  return interaction.update({
+  return responderFichaNoPainel(interaction, {
     content: '',
     embeds: [embedPerfil],
     components: compactarLinhasComponentes([
       ...adminButtons,
       ...componentsExtras,
-      new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('← Voltar ao painel').setStyle(ButtonStyle.Secondary))
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('btn_abrir_select_ver_perfil').setLabel('← Buscar outro membro').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('Voltar ao painel').setStyle(ButtonStyle.Secondary)
+      )
+    ])
+  });
+}
+
+async function onAbrirBuscaNickModal(interaction) {
+  const modal = new ModalBuilder()
+    .setCustomId('modal_buscar_perfil_nick')
+    .setTitle('Buscar Perfil por Nick');
+
+  const inputNick = new TextInputBuilder()
+    .setCustomId('termo_busca_nick')
+    .setLabel('Digite o nick ou nome do jogador:')
+    .setPlaceholder('Ex: Omotzin, Flavio, etc.')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true);
+
+  modal.addComponents(new ActionRowBuilder().addComponents(inputNick));
+  return interaction.showModal(modal);
+}
+
+async function onModalBuscarPerfilNick(interaction) {
+  if (!interaction || !interaction.isModalSubmit) return;
+
+  const termo = interaction.fields.getTextInputValue('termo_busca_nick').trim();
+  if (!termo) {
+    return responderFichaNoPainel(interaction, { content: '❌ Digite um termo para busca.', embeds: [], components: [] });
+  }
+
+  const termoRegex = new RegExp(termo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+  const perfil = await PerfilMembro.findOne({
+    guildId: interaction.guildId,
+    $or: [
+      { nick_principal: termoRegex },
+      { nomeComum: termoRegex },
+      { nicks_secundarios: termoRegex },
+      { nickJogo: termoRegex }
+    ]
+  });
+
+  if (!perfil) {
+    return responderFichaNoPainel(interaction, {
+      content: `❌ Nenhum perfil encontrado para o termo **"${termo}"**.`,
+      embeds: [],
+      components: [new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('btn_abrir_busca_nick').setLabel('Tentar novamente').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('btn_abrir_select_ver_perfil').setLabel('← Voltar à lista').setStyle(ButtonStyle.Secondary)
+      )]
+    });
+  }
+
+  const member = await interaction.guild.members.fetch(perfil.userId).catch(() => null);
+  const embedPerfil = buildPerfilEmbed(perfil, member, { isPublic: true });
+  const adminButtons = hasPermissaoAdmin(interaction.member) ? buildAdminButtons(perfil.userId) : [];
+  const titulosFisicos = getTitulosDoJogador(Array.isArray(perfil.titulosLista) ? perfil.titulosLista : []);
+  const componentsExtras = titulosFisicos.length > 8
+    ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`btn_ver_titulos_${perfil.userId}`).setLabel(`Ver todos os títulos (${titulosFisicos.length})`).setStyle(ButtonStyle.Primary))]
+    : [];
+
+  return responderFichaNoPainel(interaction, {
+    content: `🔍 Resultado encontrado para **"${termo}"**:`,
+    embeds: [embedPerfil],
+    components: compactarLinhasComponentes([
+      ...adminButtons,
+      ...componentsExtras,
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('btn_abrir_select_ver_perfil').setLabel('← Buscar outro membro').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('Voltar ao painel').setStyle(ButtonStyle.Secondary)
+      )
     ])
   });
 }
@@ -592,11 +765,18 @@ async function onVerTodosTitulos(interaction) {
   const titulosLista = Array.isArray(perfil.titulosLista) ? perfil.titulosLista : [];
   const pagina = getPaginaTitulos(titulosLista, 1, 15);
   const embed = new EmbedBuilder()
-    .setTitle(`🏆 Títulos de ${obterNomeExibicao(perfil, member)}`)
+    .setTitle(`🏆 Títulos Oficiais • ${obterNomeExibicao(perfil, member)}`)
     .setDescription(formatarTitulosParaTexto(titulosLista, pagina.paginaAtual, 15))
     .setColor('#FFD700');
 
-  return responderFichaNoPainel(interaction, { content: '', embeds: [embed], components: [buildTitulosButtons(targetId, 1, pagina.totalPaginas)] });
+  return responderFichaNoPainel(interaction, {
+    content: '',
+    embeds: [embed],
+    components: [
+      buildTitulosButtons(targetId, 1, pagina.totalPaginas),
+      new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('← Voltar ao painel').setStyle(ButtonStyle.Secondary))
+    ]
+  });
 }
 
 async function onPaginarTitulos(interaction) {
@@ -616,156 +796,17 @@ async function onPaginarTitulos(interaction) {
   const pagina = getPaginaTitulos(titulosLista, paginaIndex, 15);
   const member = await interaction.guild.members.fetch(targetId).catch(() => null);
   const embed = new EmbedBuilder()
-    .setTitle(`🏆 Títulos de ${obterNomeExibicao(perfil, member)}`)
+    .setTitle(`🏆 Títulos Oficiais • ${obterNomeExibicao(perfil, member)}`)
     .setDescription(formatarTitulosParaTexto(titulosLista, pagina.paginaAtual, 15))
     .setColor('#FFD700');
 
-  return responderFichaNoPainel(interaction, { content: '', embeds: [embed], components: [buildTitulosButtons(targetId, pagina.paginaAtual, pagina.totalPaginas)] });
-}
-
-async function onModalFichaPerfil(interaction) {
-  if (!interaction || !interaction.isModalSubmit) return;
-
-  const match = interaction.customId.match(/^modal_ficha_perfil_(\d+)$/);
-  if (!match) return;
-
-  const etapaAtual = Number(match[1]) - 1;
-  const dadosExistentes = normalizarDadosFicha(fichaEmAndamento.get(interaction.user.id));
-
-  FICHA_MODAL_STEPS[etapaAtual].forEach((campo) => {
-    const valor = interaction.fields.getTextInputValue(campo.id).trim();
-    if (valor !== '') {
-      dadosExistentes[campo.id] = valor;
-    }
-  });
-
-  const validacaoEtapa = await validarCamposEtapa(etapaAtual, dadosExistentes, interaction.user.id, PerfilMembro);
-
-  if (!validacaoEtapa.ok) {
-    const campoComErro = obterCampoComErro(validacaoEtapa);
-    const userId = interaction.user.id;
-    fichaEmAndamento.set(userId, { ...normalizarDadosFicha(fichaEmAndamento.get(userId)), ...dadosExistentes, etapa: etapaAtual });
-
-    return responderFichaNoPainel(interaction, {
-      content: validacaoEtapa.mensagem,
-      components: [criarBotaoCorrecao(campoComErro)]
-    });
-  }
-
-  if (etapaAtual < FICHA_MODAL_STEPS.length - 1) {
-    const dadosAtual = { ...dadosExistentes };
-    const userId = interaction.user.id;
-    const etapaSeguinte = etapaAtual + 1;
-    fichaEmAndamento.set(userId, { ...normalizarDadosFicha(fichaEmAndamento.get(userId)), ...dadosAtual, etapa: etapaSeguinte });
-    const proximaEtapa = etapaAtual + 2;
-
-    return responderFichaNoPainel(interaction, {
-      content: `✅ Etapa ${etapaAtual + 1}/4 salva. Clique para continuar na etapa ${proximaEtapa}/4.`,
-      components: [criarBotaoContinuarFicha(etapaAtual)]
-    });
-  }
-
-  const dados = fichaEmAndamento.get(interaction.user.id) || {};
-
-  const nomeComum = sanitizeTextoLivre(dados.nome_comum_input || interaction.user.username, { maxLength: 60, allowEmpty: false }) || interaction.user.username;
-  const nascimentoValido = validarDataNascimento(dados.data_nascimento_input);
-  if (!nascimentoValido.ok) {
-    return responderFichaNoPainel(interaction, { content: nascimentoValido.error, embeds: [], components: [] });
-  }
-  const dataNascimento = nascimentoValido.value;
-  const estado = sanitizeTextoLivre(dados.estado_input, { maxLength: 60 });
-  const pais = sanitizeTextoLivre(dados.pais_input, { maxLength: 60 });
-  const bio = sanitizeTextoLivre(dados.bio_input, { maxLength: 150 });
-  const claAtual = sanitizeTextoLivre(dados.cla_atual_input, { maxLength: 60 });
-  const clasAnteriores = sanitizeTextoLivre(dados.clas_anteriores_input, { maxLength: 200 });
-  const modoFavorito = sanitizeTextoLivre(dados.modo_favorito_input, { maxLength: 60 });
-  const controleTipo = sanitizeTextoLivre(dados.controle_tipo_input, { maxLength: 100 });
-  const tiktok = sanitizeTextoLivre(dados.tiktok_input, { maxLength: 60 });
-  const instagram = sanitizeTextoLivre(dados.instagram_input, { maxLength: 60 });
-  const nickPrincipal = String(dados.nick_principal_input || dados.nick_principal || '').trim();
-  const nicksSecundarios = [...new Set((Array.isArray(dados.nicks_secundarios) ? dados.nicks_secundarios : [])
-    .map((nick) => String(nick).trim())
-    .filter((nick) => nick && nick !== nickPrincipal))];
-
-  const rankX1 = normalizarOpcaoPermitida(dados.rank_x1 || dados['select_ficha_rank_x1'], VALORES_RANK_PERMITIDOS) || null;
-  const rankX2 = normalizarOpcaoPermitida(dados.rank_x2 || dados['select_ficha_rank_x2'], VALORES_RANK_PERMITIDOS) || null;
-  const picoRank = normalizarOpcaoPermitida(dados.pico_rank || dados['select_ficha_pico_rank'], VALORES_RANK_PERMITIDOS) || null;
-  const input = normalizarOpcaoPermitida(dados.input || dados.select_ficha_input, VALORES_INPUT_PERMITIDOS) || null;
-
-  if (!input || !rankX1 || !rankX2 || !picoRank) {
-    return responderFichaNoPainel(interaction, { content: '❌ Faltou alguma opção fixa da ficha. Refaça a configuração inicial e tente novamente.', embeds: [], components: [] });
-  }
-
-  const idade = calcularIdade(dataNascimento);
-
-  const perfilAtual = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: interaction.user.id });
-  const indicadoresDetalhados = perfilAtual?.indicadoresDetalhados || {};
-  const categoriasCalculadas = calcularCategorias(indicadoresDetalhados);
-  const clasAnterioresArray = clasAnteriores ? clasAnteriores.split(',').map((item) => item.trim()).filter(Boolean) : perfilAtual?.clasAnteriores || [];
-
-  const dadosPerfil = {
-    guildId: interaction.guildId,
-    userId: interaction.user.id,
-    discordId: interaction.user.id,
-    nomeComum,
-    dataNascimento: dataNascimento || perfilAtual?.dataNascimento || null,
-    dataEntradaOmega: perfilAtual?.dataEntradaOmega || null,
-    idade: idade || perfilAtual?.idade || 0,
-    estado: estado || perfilAtual?.estado || null,
-    pais: pais || perfilAtual?.pais || null,
-    bio: bio || perfilAtual?.bio || null,
-    claAtual: claAtual || perfilAtual?.claAtual || null,
-    clasAnteriores: clasAnterioresArray,
-    nick_principal: nickPrincipal,
-    nicks_secundarios: nicksSecundarios,
-    rankX1: rankX1 || perfilAtual?.rankX1 || null,
-    rankX2: rankX2 || perfilAtual?.rankX2 || null,
-    picoRank: picoRank || perfilAtual?.picoRank || null,
-    modoFavorito: modoFavorito || perfilAtual?.modoFavorito || null,
-    input,
-    controleTipo: controleTipo || perfilAtual?.controleTipo || null,
-    tiktok: tiktok || perfilAtual?.tiktok || null,
-    instagram: instagram || perfilAtual?.instagram || null,
-    nickJogo: perfilAtual?.nickJogo || interaction.member.displayName || null,
-    rankSideSwipe: perfilAtual?.rankSideSwipe || 'Unranked',
-    indicadoresDetalhados,
-    inteligenciaLeitura: categoriasCalculadas.inteligencia_leitura || perfilAtual?.inteligenciaLeitura || 0,
-    conhecimentoEvolucao: categoriasCalculadas.conhecimento_evolucao || perfilAtual?.conhecimentoEvolucao || 0,
-    controleMecanica: categoriasCalculadas.controle_mecanica || perfilAtual?.controleMecanica || 0,
-    ataque: categoriasCalculadas.ataque || perfilAtual?.ataque || 0,
-    defesa: categoriasCalculadas.defesa || perfilAtual?.defesa || 0,
-    equipe: categoriasCalculadas.equipe || perfilAtual?.equipe || 0,
-    criatividade: categoriasCalculadas.criatividade || perfilAtual?.criatividade || 0,
-    regularidade: categoriasCalculadas.regularidade || perfilAtual?.regularidade || 0
-  };
-
-  await PerfilMembro.findOneAndUpdate(
-    { guildId: interaction.guildId, userId: interaction.user.id },
-    { $set: dadosPerfil },
-    { upsert: true, new: true }
-  );
-
-  fichaEmAndamento.delete(interaction.user.id);
-
-  const games = await getGames(interaction.guildId);
-  const selectCargos = new ActionRowBuilder().addComponents(
-    new StringSelectMenuBuilder()
-      .setCustomId('select_cargos_jogos')
-      .setPlaceholder('Escolha os jogos que quer ser notificado...')
-      .setMinValues(0)
-      .setMaxValues(Math.max(1, games.length))
-      .addOptions(
-        games.map((game) => ({
-          label: game.nome,
-          value: game.roleId,
-          description: game.descricaoCargo
-        }))
-      )
-  );
-
   return responderFichaNoPainel(interaction, {
-    content: '✅ Perfil salvo! Agora escolha abaixo os avisos que vc quer receber quando chamarem pro time:',
-    components: [selectCargos]
+    content: '',
+    embeds: [embed],
+    components: [
+      buildTitulosButtons(targetId, pagina.paginaAtual, pagina.totalPaginas),
+      new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('← Voltar ao painel').setStyle(ButtonStyle.Secondary))
+    ]
   });
 }
 
@@ -815,17 +856,77 @@ async function onAdminIncrement(interaction) {
     return responderFichaNoPainel(interaction, { content: '❌ Valor numérico inválido.', embeds: [], components: [] });
   }
 
-  const target = await interaction.guild.members.fetch(targetId).catch(() => null);
-  await PerfilMembro.findOneAndUpdate(
+  const perfilAtualizado = await PerfilMembro.findOneAndUpdate(
     { guildId: interaction.guildId, userId: targetId },
     { $inc: { [fieldName]: valor } },
     { upsert: true, new: true }
   );
 
+  const target = await interaction.guild.members.fetch(targetId).catch(() => null);
+  const embedPerfil = buildPerfilEmbed(perfilAtualizado, target, { isPublic: false });
+  const adminButtons = buildAdminButtons(targetId);
+  const titulosFisicos = getTitulosDoJogador(Array.isArray(perfilAtualizado.titulosLista) ? perfilAtualizado.titulosLista : []);
+  const componentsExtras = titulosFisicos.length > 8
+    ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`btn_ver_titulos_${targetId}`).setLabel(`Ver todos os títulos (${titulosFisicos.length})`).setStyle(ButtonStyle.Primary))]
+    : [];
+  const voltarAoHub = [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('← Concluir / Voltar ao painel').setStyle(ButtonStyle.Secondary))];
+
   return responderFichaNoPainel(interaction, {
-    content: `✅ Estatística **${fieldName.toUpperCase()}** atualizada em **${valor}** para ${target ? target.displayName : 'o jogador'}!`,
-    embeds: [],
-    components: []
+    content: `✅ Estatística **${fieldName.toUpperCase()}** alterada em **+${valor}** para **${target ? target.displayName : 'o jogador'}**!`,
+    embeds: [embedPerfil],
+    components: compactarLinhasComponentes([...adminButtons, ...componentsExtras, ...voltarAoHub])
+  });
+}
+
+async function onAbrirModalAdminTitulo(interaction) {
+  if (!hasPermissaoAdmin(interaction.member)) {
+    return responderFichaNoPainel(interaction, { content: '❌ Apenas administradores ou membros de staff podem cadastrar títulos.', embeds: [], components: [] });
+  }
+
+  const targetId = interaction.customId.replace(/^btn_admin_add_titulo_/, '');
+  return interaction.showModal(buildAddTituloModal(targetId));
+}
+
+async function onAdminAddTitulo(interaction) {
+  if (!interaction || !interaction.isModalSubmit) return;
+
+  if (!hasPermissaoAdmin(interaction.member)) {
+    return responderFichaNoPainel(interaction, { content: '❌ Apenas administradores ou membros de staff podem cadastrar títulos.', embeds: [], components: [] });
+  }
+
+  const targetId = interaction.customId.replace(/^modal_admin_add_titulo_/, '');
+  const colocacao = interaction.fields.getTextInputValue('titulo_colocacao_input').trim();
+  const campeonato = interaction.fields.getTextInputValue('titulo_campeonato_input').trim();
+  const edicao = interaction.fields.getTextInputValue('titulo_edicao_input')?.trim() || '';
+  const detalhe = interaction.fields.getTextInputValue('titulo_detalhe_input')?.trim() || '';
+
+  const icone = extrairIconeTitulo(colocacao);
+  let tituloFormatado = `${icone} ${colocacao} - ${campeonato}`;
+  if (edicao) tituloFormatado += ` (${edicao})`;
+  if (detalhe) tituloFormatado += ` [${detalhe}]`;
+
+  const perfilAtualizado = await PerfilMembro.findOneAndUpdate(
+    { guildId: interaction.guildId, userId: targetId },
+    {
+      $push: { titulosLista: tituloFormatado },
+      $inc: { titulos: 1 }
+    },
+    { upsert: true, new: true }
+  );
+
+  const target = await interaction.guild.members.fetch(targetId).catch(() => null);
+  const embedPerfil = buildPerfilEmbed(perfilAtualizado, target, { isPublic: false });
+  const adminButtons = buildAdminButtons(targetId);
+  const titulosFisicos = getTitulosDoJogador(Array.isArray(perfilAtualizado.titulosLista) ? perfilAtualizado.titulosLista : []);
+  const componentsExtras = titulosFisicos.length > 8
+    ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`btn_ver_titulos_${targetId}`).setLabel(`Ver todos os títulos (${titulosFisicos.length})`).setStyle(ButtonStyle.Primary))]
+    : [];
+  const voltarAoHub = [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('← Concluir / Voltar ao painel').setStyle(ButtonStyle.Secondary))];
+
+  return responderFichaNoPainel(interaction, {
+    content: `🏆 Título oficial **"${tituloFormatado}"** cadastrado com sucesso para **${target ? target.displayName : 'o jogador'}**!`,
+    embeds: [embedPerfil],
+    components: compactarLinhasComponentes([...adminButtons, ...componentsExtras, ...voltarAoHub])
   });
 }
 
@@ -844,21 +945,25 @@ async function onSelectCargos(interaction) {
     return responderFichaNoPainel(interaction, {
       content: '⚠️ O perfil foi salvo, mas não consegui atualizar todos os cargos. Verifique as permissões do bot.',
       embeds: [],
-      components: []
+      components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('Ir ao painel').setStyle(ButtonStyle.Primary))]
     });
   }
 
   return responderFichaNoPainel(interaction, {
-    content: '🎉 Ficha concluída! Vc já tá pronto pra jogar com a gente.',
+    content: '🎉 **Ficha de Membro concluída com sucesso!**\nVocê já está pronto para jogar com a galera da Ômega.',
     embeds: [],
-    components: []
+    components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('Ir ao painel principal').setStyle(ButtonStyle.Success))]
   });
 }
 
 function register(registry) {
   registry.button('btn_iniciar_ficha', onIniciarFicha);
-  registry.button('btn_continuar_ficha', onContinuarFicha);
-  registry.button(/^btn_continuar_ficha_\d+$/, onContinuarFichaEtapa);
+  registry.button(/^btn_etapa_\d+$/, onAbrirEtapaFicha);
+  registry.button('btn_nicks_sec_nav', (interaction) => {
+    const dados = normalizarDadosFicha(fichaEmAndamento.get(interaction.user.id));
+    return responderFichaNoPainel(interaction, buildNicksSecundariosView(dados));
+  });
+  registry.button('btn_salvar_concluir_ficha', onSalvarConcluirFicha);
   registry.button('btn_add_nick_sec', onAdicionarNickSec);
   registry.button('btn_remove_nick_sec', onRemoverNickSec);
   registry.button(/^remove_nick_sec_/, onSelecionarNickParaRemover);
@@ -866,15 +971,20 @@ function register(registry) {
   registry.button(/^btn_corrigir_/, onCorrigirFichaCampo);
   registry.button('btn_ver_perfil', onVerPerfil);
   registry.button('btn_abrir_select_ver_perfil', onAbrirSelecionarPerfil);
+  registry.button('btn_abrir_busca_nick', onAbrirBuscaNickModal);
   registry.button(/^btn_ver_titulos_\d+$/, onVerTodosTitulos);
   registry.button(/^btn_titulos_(prev|next)_\d+_\d+$/, onPaginarTitulos);
   registry.button(/^btn_admin_(gol|assist|save|chutes|mvp|pontuacao)_[0-9]+$/, onAbrirModalAdminEstatistica);
+  registry.button(/^btn_admin_add_titulo_[0-9]+$/, onAbrirModalAdminTitulo);
   registry.modal(/^modal_admin_stat_(gol|assist|save|chutes|mvp|pontuacao)_[0-9]+$/, onAdminIncrement);
+  registry.modal(/^modal_admin_add_titulo_[0-9]+$/, onAdminAddTitulo);
+  registry.modal('modal_buscar_perfil_nick', onModalBuscarPerfilNick);
   registry.modal(/^modal_ficha_correcao_/, onModalCorrecaoFicha);
   registry.modal('modal_add_nick_sec', onModalAdicionarNickSec);
   registry.modal(/^modal_ficha_perfil_\d+$/, onModalFichaPerfil);
   registry.select('select_cargos_jogos', onSelectCargos);
-  registry.select('select_ver_perfil', onSelectVerPerfil);
+  registry.select('select_ver_perfil', onSelectUserPerfil);
+  registry.select('select_user_perfil', onSelectUserPerfil);
   registry.select('select_ficha_input', onSelectFichaOpcao);
   registry.select('select_ficha_rank_x1', onSelectFichaOpcao);
   registry.select('select_ficha_rank_x2', onSelectFichaOpcao);
@@ -890,7 +1000,7 @@ module.exports = {
   MAPA_INDICADORES,
   onVerPerfil,
   onAbrirSelecionarPerfil,
-  onSelectVerPerfil,
+  onSelectVerPerfil: onSelectUserPerfil,
   onSelectFichaOpcao,
   onVoltarNicks,
   onIniciarFicha

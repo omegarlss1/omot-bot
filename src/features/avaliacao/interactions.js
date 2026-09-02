@@ -65,10 +65,10 @@ const CATEGORIAS = Object.entries(MAPA_INDICADORES).map(([key, itens]) => ({
   itens: itens.map((itemId) => {
     const indicador = (INDICADORES_POR_CATEGORIA[key] || []).find((item) => item.key === itemId);
     return {
-    id: itemId,
-    label: indicador?.nome || formatarIndicador(itemId),
-    descricao: indicador?.descricao || '',
-    peso: indicador?.peso || 1
+      id: itemId,
+      label: indicador?.nome || formatarIndicador(itemId),
+      descricao: indicador?.descricao || '',
+      peso: indicador?.peso || 1
     };
   })
 }));
@@ -132,9 +132,12 @@ function buildCategoriaComponents(categoriaIndex, respostas, pagina = 0) {
   const inicio = pagina * itensPorPagina;
   const itensPagina = categoria.itens.slice(inicio, inicio + itensPorPagina);
 
+  const marcadosNaCategoria = categoria.itens.filter((item) => respostas[item.id] === true).length;
+  const totalNaCategoria = categoria.itens.length;
+
   const menuIndicadores = new StringSelectMenuBuilder()
     .setCustomId(`avaliar_binario_${categoriaIndex}_${pagina}`)
-    .setPlaceholder('Marque os indicadores aplicáveis')
+    .setPlaceholder(`Selecione os indicadores (${marcadosNaCategoria}/${totalNaCategoria} marcados)`)
     .setMinValues(0)
     .setMaxValues(itensPagina.length)
     .addOptions(itensPagina.map((item) => ({
@@ -225,13 +228,17 @@ async function responderAvaliacao(interaction, payload) {
 function buildCategoriaEmbedReal(categoriaIndex, userId, pagina = 0) {
   const categoria = CATEGORIAS[categoriaIndex];
   const totalAvaliados = totalItensAvaliados(userId);
+  const respostas = getRespostas(userId);
+  const marcadosNaCategoria = categoria.itens.filter((item) => respostas[item.id] === true).length;
+  const totalNaCategoria = categoria.itens.length;
 
   const embed = new EmbedBuilder()
     .setTitle(`${categoria.icone} ${categoria.nome}`)
+    .setDescription(`Marque abaixo os indicadores aplicáveis ao seu estilo de jogo.\n\n📊 **Indicadores selecionados nesta categoria:** \`${marcadosNaCategoria}/${totalNaCategoria}\``)
     .setColor('#00C2FF');
 
   embed.setFooter({
-    text: `Progresso: ${totalAvaliados} / 75 itens avaliados | Categoria ${categoriaIndex + 1} de ${CATEGORIAS.length}`
+    text: `Progresso global: ${totalAvaliados} / 75 itens avaliados | Categoria ${categoriaIndex + 1} de ${CATEGORIAS.length}`
   });
 
   return embed;
@@ -328,16 +335,6 @@ async function iniciarAvaliacao(interaction, mensagemFuncionalidade = null) {
   }
 
   const categoriaIndex = getCategoriaAtual(userId);
-  if (mensagemFuncionalidade) {
-    const respostas = getRespostas(userId);
-    const pagina = paginaAtual.get(userId) || 0;
-    const components = buildCategoriaComponents(categoriaIndex, respostas, pagina);
-    await mensagemFuncionalidade.edit({ content: '', embeds: [], components });
-    if (!interaction.deferred && !interaction.replied) {
-      try { await interaction.deferUpdate(); } catch (_) {}
-    }
-    return;
-  }
   await renderizarCategoria(interaction, categoriaIndex, userId);
 }
 

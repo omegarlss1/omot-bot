@@ -17,26 +17,39 @@
 
 ---
 
-## 🎯 2. Última Atualização Realizada (Objetivo e Alterações)
+## 🎯 2. Histórico das Últimas Atualizações Realizadas
 
-### Objetivo
-Eliminar dívidas técnicas estruturais, remover código morto/legado que gerava confusão de manutenção, desmembrar o arquivo monolítico de perfil (1.374 linhas), corrigir fragilidades na detecção de permissões de moderação e instituir uma suíte de testes unitários automatizados.
-
-### O Que Foi Modificado:
-1. **Limpeza de Código Morto:**
-   * Arquivo legado `events/interactionCreate.js` (raiz) excluído. O bot utiliza exclusivamente [src/bot/events/interactionCreate.js](file:///c:/Users/flavi/OneDrive/Documentos/%C3%94mega/GitHub/omot-bot/src/bot/events/interactionCreate.js).
-2. **Modularização de `src/features/perfil/`:**
-   * O arquivo `src/features/perfil/interactions.js` foi reduzido de **1.374 para 442 linhas**, desacoplando responsabilidades:
-     * `constants.js`: Metadados das etapas do formulário, opções de ranks, inputs permitidos e regex de nicks.
-     * `validation.js`: Funções puras de validação de datas (`DD/MM/AAAA`), sanitização de menções, cálculo de idade e permissão de staff.
-     * `embeds.js`: Construtores visuais de perfil, barras ASCII, links sociais e visualizador de nicks secundários.
-     * `modals.js`: Builders de modais Discord, menus suspensos, botões de paginação e botões de admin.
-     * `interactions.js`: Foco estrito na orquestração de eventos, estado em memória e integração com o Hub. Reexporta 100% da interface anterior para não quebrar dependências externas.
-3. **Reforço na Checagem de Permissões de Staff (`hasPermissaoAdmin`):**
-   * Agora valida permissões nativas do Discord (`Administrator`, `ManageGuild`, `ModerateMembers`) e inclui regex aprimorada para cargos (`moderação`, `moderador`, `staff`, `admin`, `diretoria`, `coordenação`).
-4. **Suíte de Testes Automatizados:**
-   * Criado `tests/perfil.test.js` com **28 testes unitários** rodando via `npm test`.
-   * Cobre: validação de datas (inclusive anos bissextos), cálculo de idades, remoção de menções indesejadas, cálculo ponderado de categorias, sanitização e formatação de nomes de calls.
+### Sessão Atual: Experiência do Usuário (UX), Perfil, Títulos e Avaliação
+1. **Correção e Contador na Avaliação:**
+   * Corrigido bug em `iniciarAvaliacao` onde o título e ícone da categoria não apareciam na abertura inicial (estava passando `embeds: []`).
+   * Adicionado **contador dinâmico em tempo real** de indicadores marcados na categoria (ex: `📊 Indicadores selecionados nesta categoria: 6/10`), refletido tanto na descrição do embed quanto no placeholder do select menu.
+2. **Redesign do Perfil do Membro:**
+   * **Nick Principal em destaque supremo** no cabeçalho e descrição.
+   * Todos os dados preenchidos na ficha agrupados no topo (Nick principal, nicks secundários, bio, redes sociais TikTok/Instagram e origem/idade).
+   * **Horário removido** do perfil conforme solicitado.
+   * Ranks acompanhados de texto instrutivo explicando que representam a média habitual do jogador ao longo das seasons e são usados para o **balanceamento justo de times em campeonatos internos**.
+   * Seção de estatísticas (gols, assists, saves, chutes, mvps, pontos) e títulos com aviso explícito de que correspondem a dados oficiais computados em **campeonatos e torneios internos da Ômega**.
+   * A frase *"Baseado em 75 indicadores avaliados"* posicionada diretamente junto às 8 categorias oficiais.
+3. **Sistema de Cadastro de Títulos por Staff:**
+   * Novo botão no painel admin do perfil: `+ Título` (`btn_admin_add_titulo_[targetId]`).
+   * Modal com: Colocação/Posição (ex: 1º Lugar, Campeão, Vice-campeão, MVP), Nome do Campeonato (ex: Torneio Interno 2v2), Edição/Ano (ex: S4, 2024), e Modo/Detalhes.
+   * Suporte a ícones automáticos com base na colocação (🥇 para 1º/campeão, 🥈 para vice/2º, 🥉 para 3º, 🏅 para mvp, 🏆 default).
+   * Suporte tanto para títulos de catálogo (`titulos.json`) quanto para títulos personalizados registrados dinamicamente no MongoDB.
+4. **Painel Admin sem Sair do Perfil:**
+   * Ao adicionar gols, saves, assistências ou títulos via modal, o bot atualiza o banco e **re-renderiza o perfil na hora com os novos valores**, mantendo os botões de administração e um botão claro de "Concluir / Voltar". O admin nunca mais é expulso do perfil ao editar stats.
+5. **Busca Global de Membros em Servidores Grandes:**
+   * Substituição do menu limitado a 25 membros pelo **`UserSelectMenuBuilder` nativo do Discord**, com barra de busca integrada e autocomplete para qualquer membro do servidor.
+   * Adição do botão **"🔍 Buscar por Nick / Nome"** com busca regex flexível no MongoDB por `nick_principal`, `nomeComum` ou `nicks_secundarios`.
+6. **Navegação Livre da Ficha por Etapas Nomeadas:**
+   * Substituição do botão único de avanço por botões nomeados pelos campos de cada etapa:
+     * `1. Nome / Nasc / Estado`
+     * `2. País / Bio / CLA / Nick`
+     * `3. CLAs / Modo / Controle`
+     * `4. TikTok / Instagram`
+     * `📋 Nicks Secundários`
+     * `💾 Finalizar e Salvar Perfil`
+7. **Suíte de Testes Automatizados:**
+   * 31 testes unitários nativos rodando via `npm test` em ~500ms com 100% de sucesso.
 
 ---
 
@@ -48,7 +61,7 @@ omot-bot/
 ├── index.js                      # Entrada raiz (require('./src'))
 ├── package.json                  # Dependências e scripts ("start", "dev", "test")
 ├── tests/
-│   └── perfil.test.js            # 28 testes unitários nativos (npm test)
+│   └── perfil.test.js            # 31 testes unitários nativos (npm test)
 └── src/
     ├── index.js                  # Inicialização do banco, servidor HTTP e login do bot
     ├── bot/
@@ -62,6 +75,11 @@ omot-bot/
     ├── features/
     │   ├── hub/                  # Hub com mensagem dinâmica reutilizável
     │   ├── perfil/               # Ficha de membro, multi-step modals e stats admin
+    │   │   ├── constants.js      # Ranks, opções permitidas e etapas da ficha
+    │   │   ├── validation.js     # Datas, idades, permissões de staff
+    │   │   ├── embeds.js         # Cards visuais, barras ASCII e formatações
+    │   │   ├── modals.js         # Modais, action rows e botões de navegação
+    │   │   └── interactions.js   # Orquestração de eventos e rotas do Hub
     │   ├── calls/                # Calls temporárias com locks e auto-destruição
     │   ├── lfg/                  # Chamadas para times com mutex e auto-limpeza
     │   ├── avaliacao/            # Avaliação de 75 indicadores competitivos
@@ -77,17 +95,12 @@ omot-bot/
 ## ⚙️ 4. Padrões Técnicos Críticos Que Devem Ser Mantidos
 
 1. **Locks e Concorrência:**
-   * Nunca manipule canais de voz temporários ou vagas de LFG sem adquirir o lock respectivo (`adquirirLockCall` em calls ou `comBloqueioDaChamada` em LFG), pois múltiplos usuários clicam ao mesmo tempo.
+   * Nunca manipule canais de voz temporários ou vagas de LFG sem adquirir o lock respectivo (`adquirirLockCall` em calls ou `comBloqueioDaChamada` em LFG).
 2. **Mensagem Funcionalidade do Hub:**
    * O Hub utiliza apenas **duas mensagens** no canal: a primeira é fixa e a segunda é editada dinamicamente via `obterMensagemFuncionalidade`. Nunca envie mensagens novas no canal para ações do hub; edite a mensagem dinâmica.
 3. **Respostas Efêmeras e Flags:**
    * Use `flags: 64` (ou `deferReply({ flags: 64 })` / `deferUpdate()`) para respostas privadas ou quando a mensagem dinâmica for editada.
 4. **Despacho de Interações:**
    * Todo novo botão, modal ou select deve ser registrado no método `register(registry)` da sua feature correspondente em `src/features/`.
-
----
-
-## 🚀 5. Comandos Úteis
-* **Rodar os testes unitários:** `npm test`
-* **Iniciar o bot em desenvolvimento:** `npm start`
-* **Verificar sintaxe de todos os arquivos:** `node -c src/**/*.js`
+5. **Testes Unitários:**
+   * Execute sempre `npm test` antes de commitar qualquer alteração em regras de negócio.

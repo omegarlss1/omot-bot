@@ -32,7 +32,7 @@ function sanitizeValue(value, fallback = 'Não informado') {
 }
 
 function obterNomeExibicao(perfil, membro) {
-  return perfil?.nomeComum || perfil?.nickJogo || membro?.displayName || membro?.user?.username || 'Jogador';
+  return perfil?.nick_principal || perfil?.nomeComum || perfil?.nickJogo || membro?.displayName || membro?.user?.username || 'Jogador';
 }
 
 function criarLinhaCategoria(categoria, percentual) {
@@ -41,11 +41,13 @@ function criarLinhaCategoria(categoria, percentual) {
 }
 
 function buildPerfilEmbed(perfil, member, { isPublic = false } = {}) {
-  const nomeExibicao = obterNomeExibicao(perfil, member);
+  const nickPrincipal = perfil?.nick_principal || perfil?.nickJogo || member?.displayName || 'Não informado';
+  const nomeComum = perfil?.nomeComum || member?.displayName || member?.user?.username || 'Jogador';
   const idade = Number(perfil?.idade) || calcularIdade(perfil?.dataNascimento);
   const estado = perfil?.estado || 'Não informado';
   const pais = perfil?.pais || 'Não informado';
   const bio = perfil?.bio || 'Sem bio por enquanto.';
+  const claAtual = perfil?.claAtual || 'Nenhum';
 
   const categorias = calcularCategorias(perfil?.indicadoresDetalhados || {});
   const categoriasAtuais = Object.entries(CATEGORIAS_META).reduce((acc, [key]) => {
@@ -59,67 +61,71 @@ function buildPerfilEmbed(perfil, member, { isPublic = false } = {}) {
   const modoFavorito = normalizarValor(perfil?.modoFavorito, 'Não informado');
   const input = normalizarValor(perfil?.input, 'Não informado');
   const controleTipo = normalizarValor(perfil?.controleTipo, 'Não informado');
-  const horarioJoga = normalizarValor(perfil?.horarioJoga, 'Não informado');
   const tiktok = formatarSocial(perfil?.tiktok);
   const instagram = formatarSocial(perfil?.instagram);
 
   const nicksSecundarios = Array.isArray(perfil?.nicks_secundarios) ? perfil.nicks_secundarios.filter(Boolean) : [];
   const titulosLista = Array.isArray(perfil?.titulosLista) ? perfil.titulosLista : [];
   const titulosFisicos = getTitulosDoJogador(titulosLista);
-  const titulosTexto = titulosFisicos.length > 10
-    ? `${titulosFisicos.slice(0, 10).map((titulo) => `${titulo.icone} ${titulo.nome}`).join(' | ')} ...`
-    : titulosFisicos.map((titulo) => `${titulo.icone} ${titulo.nome}`).join(' | ');
 
   const camposSocial = [];
-  if (tiktok) camposSocial.push(`[TikTok](${tiktok})`);
-  if (instagram) camposSocial.push(`[Instagram](${instagram})`);
+  if (tiktok) camposSocial.push(`🎵 TikTok: ${tiktok}`);
+  if (instagram) camposSocial.push(`📸 Instagram: ${instagram}`);
+
+  let topoDescricao = `⭐ **NICK PRINCIPAL:** \`${nickPrincipal.toUpperCase()}\`\n`;
+  topoDescricao += `👤 **Nome:** ${nomeComum}`;
+  if (idade > 0) topoDescricao += ` (${idade} anos)`;
+  topoDescricao += ` • 🌍 ${estado} - ${pais}\n`;
+
+  if (nicksSecundarios.length > 0) {
+    topoDescricao += `📋 **Nicks Secundários:** ${nicksSecundarios.map((n) => `\`${n}\``).join(', ')}\n`;
+  }
+  topoDescricao += `💬 **Bio:** ${bio}\n`;
+  if (camposSocial.length > 0) {
+    topoDescricao += `🔗 ${camposSocial.join(' • ')}\n`;
+  }
+
+  const titulosExibicao = titulosFisicos.length > 0
+    ? (titulosFisicos.length > 8
+      ? `${titulosFisicos.slice(0, 8).map((t) => `${t.icone} ${t.nome}`).join(' • ')} ...`
+      : titulosFisicos.map((t) => `${t.icone} **${t.nome}**`).join('\n'))
+    : 'Ainda não possui títulos conquistados em campeonatos internos.';
 
   const embed = new EmbedBuilder()
-    .setTitle(`👤 ${nomeExibicao}`)
-    .setDescription(`Bio: ${bio}`)
+    .setTitle(`👤 PERFIL OFICIAL • ${nickPrincipal.toUpperCase()}`)
+    .setDescription(topoDescricao)
     .addFields(
       {
-        name: '🏆 Competitivo',
-        value: `Rank X1: **${rankX1}**\nRank X2: **${rankX2}**\nPico: **${picoRank}**\nModo Fav: **${modoFavorito}**`,
+        name: '🎮 Ficha & Setup',
+        value: `Input: **${input}**\nControle: **${controleTipo}**\nCLA Atual: **${claAtual}**\nModo Fav: **${modoFavorito}**`,
         inline: true
       },
       {
-        name: '🎮 Setup',
-        value: `Input: **${input}**\nControle: **${controleTipo}**\nHorário: **${horarioJoga}**`,
+        name: '🏆 Ranks Competitivos',
+        value: `Rank X1: **${rankX1}**\nRank X2: **${rankX2}**\nPico Histórico: **${picoRank}**\n*(Ranks mantidos habitualmente para balanceamento em campeonatos internos)*`,
         inline: true
       },
       {
-        name: '📊 8 categorias oficiais',
+        name: '📊 8 Categorias Oficiais (Baseado em 75 Indicadores Avaliados)',
         value: Object.entries(CATEGORIAS_META)
           .map(([key, meta]) => `${meta.emoji} ${meta.label}: ${formatarBarra(categoriasAtuais[key] || 0)} ${categoriasAtuais[key] || 0}%`)
-          .join('\n'),
+          .join('\n') + '\n*(Índices calculados a partir da avaliação de 75 indicadores)*',
         inline: false
       },
       {
-        name: '📈 Stats ÔMEGA',
-        value: `Gols: **${Number(perfil?.gols || 0)}** | Assist: **${Number(perfil?.assist || 0)}** | Saves: **${Number(perfil?.saves || 0)}** | Chutes: **${Number(perfil?.chutes || 0)}** | MVPs: **${Number(perfil?.mvps || 0)}** | Pontuação: **${Number(perfil?.pontuacao || 0)}** | Edições: **${Number(perfil?.edicoes || 0)}**`,
-        inline: false
-      },
-      ...(camposSocial.length > 0 ? [{
-        name: '🔗 Redes sociais',
-        value: camposSocial.join(' | '),
-        inline: false
-      }] : []),
-      {
-        name: '📋 Nicks',
-        value: nicksSecundarios.length > 0 ? nicksSecundarios.join(', ') : 'Nenhum nick secundário cadastrado.',
+        name: '📈 Estatísticas ÔMEGA (Campeonatos Internos)',
+        value: `⚽ Gols: **${Number(perfil?.gols || 0)}** | 🅰️ Assist: **${Number(perfil?.assist || 0)}** | 🧤 Saves: **${Number(perfil?.saves || 0)}**\n🥅 Chutes: **${Number(perfil?.chutes || 0)}** | 🏅 MVPs: **${Number(perfil?.mvps || 0)}** | 🎯 Pontos: **${Number(perfil?.pontuacao || 0)}**\n*(Dados computados exclusivamente em edições de torneios e campeonatos internos Ômega)*`,
         inline: false
       },
       {
-        name: 'Baseado em 75 indicadores avaliados',
-        value: '🏆 Títulos',
+        name: '🏆 Títulos Conquistados (Campeonatos Internos)',
+        value: `*(Títulos e premiações oficiais obtidos em edições de torneios da Ômega)*\n${titulosExibicao}`,
         inline: false
       }
     )
-    .setFooter({ text: titulosLista.length > 0 ? titulosTexto : 'Ainda não há títulos cadastrados.' })
     .setColor('#00C2FF');
 
-  const nomeHeader = `${nomeExibicao} • ${idade} anos • ${estado} - ${pais}`;
+  const nomeHeader = `${nickPrincipal} • ${nomeComum}`;
   if (member) {
     embed.setAuthor({ name: nomeHeader, iconURL: member.user.displayAvatarURL({ dynamic: true }) });
   } else {
@@ -141,7 +147,7 @@ function buildNicksSecundariosView(dados = {}) {
       .setLabel('+ Adicionar nick secundário')
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
-      .setCustomId('btn_continuar_ficha')
+      .setCustomId('btn_etapa_3')
       .setLabel('Continuar para etapa 3/4')
       .setStyle(ButtonStyle.Success)
   ];
@@ -171,4 +177,3 @@ module.exports = {
   buildPerfilEmbed,
   buildNicksSecundariosView
 };
-

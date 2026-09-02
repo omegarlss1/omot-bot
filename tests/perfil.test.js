@@ -150,3 +150,25 @@ test('calcularNotaCategoria', async (t) => {
   });
 });
 
+test('titulosCustomizados', async (t) => {
+  const { extrairIconeTitulo, getTitulosDoJogador } = require('../src/data/titulos');
+
+  await t.test('deve detectar ícone apropriado para 1º lugar, campeão, vice e mvp', () => {
+    assert.equal(extrairIconeTitulo('1º Lugar'), '🥇');
+    assert.equal(extrairIconeTitulo('Campeão do Torneio'), '🏆');
+    assert.equal(extrairIconeTitulo('Vice-Campeão'), '🥈');
+    assert.equal(extrairIconeTitulo('3º Lugar'), '🥉');
+    assert.equal(extrairIconeTitulo('MVP da Final'), '🏅');
+    assert.equal(extrairIconeTitulo('Participante Destaque'), '🏆');
+  });
+
+  await t.test('deve formatar títulos customizados como objetos válidos', () => {
+    const titulos = getTitulosDoJogador(['🥇 Campeão - Torneio Interno (S4)', 'campeao_omega_s3']);
+    assert.equal(titulos.length, 2);
+    assert.equal(titulos[0].nome, '🥇 Campeão - Torneio Interno (S4)');
+    assert.equal(titulos[0].icone, '🥇');
+    assert.equal(titulos[1].id, 'campeao_omega_s3');
+  });
+});
+
+
