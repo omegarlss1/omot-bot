@@ -1,14 +1,14 @@
 const {
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle,
   ActionRowBuilder,
   StringSelectMenuBuilder,
   EmbedBuilder,
   ButtonBuilder,
   ButtonStyle,
-  PermissionFlagsBits
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle
 } = require('discord.js');
+
 const PerfilMembro = require('../../db/models/perfilMembro');
 const PainelPrincipal = require('../../db/models/painelPrincipal');
 const { getGames } = require('../games/catalog');
@@ -16,16 +16,43 @@ const { MAPA_INDICADORES, calcularCategorias } = require('../../data/mapa_indica
 const { getTitulosDoJogador, getPaginaTitulos, formatarTitulosParaTexto } = require('../../data/titulos');
 const { obterMensagemFuncionalidade } = require('../hub/mensagem');
 
-const CATEGORIAS_META = {
-  inteligencia_leitura: { emoji: '🧠', label: 'Inteligência e leitura de jogo' },
-  conhecimento_evolucao: { emoji: '📚', label: 'Conhecimento e evolução' },
-  controle_mecanica: { emoji: '⚙', label: 'Controle e mecânica' },
-  ataque: { emoji: '⚔', label: 'Ataque' },
-  defesa: { emoji: '🛡', label: 'Defesa' },
-  equipe: { emoji: '🤝', label: 'Jogo em equipe' },
-  criatividade: { emoji: '🎨', label: 'Criatividade e personalidade' },
-  regularidade: { emoji: '📈', label: 'Regularidade e desempenho' }
-};
+const {
+  CATEGORIAS_META,
+  VALORES_INPUT_PERMITIDOS,
+  VALORES_RANK_PERMITIDOS,
+  OBRIGATORIOS,
+  NICK_PATTERN,
+  FICHA_MODAL_STEPS
+} = require('./constants');
+
+const {
+  normalizarOpcaoPermitida,
+  validarDataNascimento,
+  sanitizeTextoLivre,
+  calcularIdade,
+  hasPermissaoAdmin,
+  obterCampoFicha,
+  obterCampoComErro,
+  validarCamposEtapa
+} = require('./validation');
+
+const {
+  buildPerfilEmbed,
+  buildNicksSecundariosView,
+  obterNomeExibicao
+} = require('./embeds');
+
+const {
+  compactarLinhasComponentes,
+  buildAdminButtons,
+  buildAdminStatModal,
+  buildTitulosButtons,
+  buildFichaModalEtapa,
+  buildFichaSelects,
+  criarBotaoCorrecao,
+  criarModalCorrecao,
+  criarBotaoContinuarFicha
+} = require('./modals');
 
 const fichaEmAndamento = new Map();
 const painelFichaPorUsuario = new Map();
@@ -163,354 +190,12 @@ function prepararDadosFichaSalva(perfil) {
   });
 }
 
-const VALORES_INPUT_PERMITIDOS = ['Touch', 'Controle', 'Híbrido'];
-const VALORES_PLATAFORMA_PERMITIDAS = ['Android', 'iOS'];
-const VALORES_RANK_PERMITIDOS = ['Bronze', 'Prata', 'Ouro', 'Platina', 'Diamante', 'Champion', 'Grand Champion'];
-const OBRIGATORIOS = ['input', 'rank_x1', 'rank_x2', 'pico_rank'];
-const NICK_PATTERN = /^[^\p{C}\r\n]+$/u;
-
-const FICHA_MODAL_STEPS = [
-  [
-    { id: 'nome_comum_input', label: 'Nome da comunidade / como quer ser conhecido', style: TextInputStyle.Short, required: true },
-    { id: 'data_nascimento_input', label: 'Data de nascimento', style: TextInputStyle.Short, required: false, placeholder: 'DD/MM/AAAA' },
-    { id: 'estado_input', label: 'Estado', style: TextInputStyle.Short, required: false }
-  ],
-  [
-    { id: 'pais_input', label: 'País', style: TextInputStyle.Short, required: false },
-    { id: 'bio_input', label: 'Bio (máx. 150)', style: TextInputStyle.Paragraph, required: false },
-    { id: 'cla_atual_input', label: 'CLA atual', style: TextInputStyle.Short, required: false },
-    { id: 'nick_principal_input', label: 'Nick principal', style: TextInputStyle.Short, required: true, placeholder: 'Ex: Omotzin' }
-  ],
-  [
-    { id: 'clas_anteriores_input', label: 'CLAs anteriores (separadas por ,)', style: TextInputStyle.Short, required: false },
-    { id: 'modo_favorito_input', label: 'Modo favorito', style: TextInputStyle.Short, required: false },
-    { id: 'controle_tipo_input', label: 'Tipo de controle', style: TextInputStyle.Short, required: false, placeholder: 'Ex: Três dedos, Joystick, Gamepad Bluetooth, controle PS4/Xbox...' }
-  ],
-  [
-    { id: 'tiktok_input', label: 'TikTok (texto ou link)', style: TextInputStyle.Short, required: false },
-    { id: 'instagram_input', label: 'Instagram (texto ou link)', style: TextInputStyle.Short, required: false }
-  ]
-];
-
-function normalizarOpcaoPermitida(valor, opcoesPermitidas) {
-  const texto = String(valor || '').trim();
-  if (!texto) return null;
-  const encontrado = opcoesPermitidas.find((opcao) => opcao.toLowerCase() === texto.toLowerCase());
-  return encontrado || null;
-}
-
-function validarDataNascimento(valor) {
-  const texto = String(valor || '').trim();
-  if (!texto) return { ok: true, value: null };
-  const regex = /^\d{2}\/\d{2}\/\d{4}$/;
-  if (!regex.test(texto)) {
-    return { ok: false, error: '❌ O campo de data de nascimento precisa seguir o formato DD/MM/AAAA.' };
-  }
-
-  const [dia, mes, ano] = texto.split('/').map(Number);
-  const data = new Date(Date.UTC(ano, mes - 1, dia));
-  if (
-    Number.isNaN(data.getTime()) ||
-    data.getUTCFullYear() !== ano ||
-    data.getUTCMonth() !== mes - 1 ||
-    data.getUTCDate() !== dia
-  ) {
-    return { ok: false, error: '❌ A data de nascimento informada é inválida.' };
-  }
-
-  return { ok: true, value: `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}` };
-}
-
-function sanitizeTextoLivre(valor, { maxLength = 120, allowEmpty = true } = {}) {
-  const texto = String(valor ?? '').trim();
-  if (!texto) return allowEmpty ? '' : null;
-  const semMention = texto.replace(/@everyone|@here/gi, '');
-  return semMention.slice(0, maxLength);
-}
-
-function hasPermissaoAdmin(member) {
-  if (!member) return false;
-  if (member.permissions?.has(PermissionFlagsBits.Administrator)) return true;
-  const nomes = (member.roles?.cache?.map((role) => role.name || '') || []).map((nome) => nome.toLowerCase());
-  return nomes.some((nome) => /staff|admin|moderador|coordena(ca|ção)|diretoria/.test(nome));
-}
-
-function compactarLinhasComponentes(rows) {
-  return (rows || [])
-    .map((row) => {
-      if (!row) return null;
-      const componentes = Array.isArray(row.components) ? row.components : [];
-      if (!componentes.length) return null;
-      const linha = new ActionRowBuilder();
-      componentes.forEach((componente) => linha.addComponents(componente));
-      return linha;
-    })
-    .filter((row) => row && row.components && row.components.length > 0 && row.components.length <= 5);
-}
-
-function formatarBarra(valor) {
-  const porcentagem = Math.max(0, Math.min(100, Number(valor) || 0));
-  const preenchidos = Math.round(porcentagem / 10);
-  const vazios = 10 - preenchidos;
-  return `${'█'.repeat(preenchidos)}${'░'.repeat(vazios)}`;
-}
-
-function calcularIdade(dataNascimento) {
-  if (!dataNascimento) return 0;
-
-  const data = new Date(dataNascimento);
-  if (Number.isNaN(data.getTime())) return 0;
-
-  const hoje = new Date();
-  let idade = hoje.getFullYear() - data.getFullYear();
-  const mesAtual = hoje.getMonth();
-  const diaAtual = hoje.getDate();
-  const mesNascimento = data.getMonth();
-  const diaNascimento = data.getDate();
-
-  if (mesAtual < mesNascimento || (mesAtual === mesNascimento && diaAtual < diaNascimento)) {
-    idade -= 1;
-  }
-
-  return idade > 0 ? idade : 0;
-}
-
-function formatarSocial(valor) {
-  const texto = String(valor || '').trim();
-  if (!texto) return null;
-  const urlMatch = texto.match(/^https?:\/\/.+/i);
-  if (urlMatch) {
-    return `[${texto}](${texto})`;
-  }
-  return texto;
-}
-
-function normalizarValor(valor, fallback = 'Não informado') {
-  if (valor === null || valor === undefined || valor === '') return fallback;
-  return String(valor);
-}
-
-function sanitizeValue(value, fallback = 'Não informado') {
-  if (value === null || value === undefined || value === '') return fallback;
-  return String(value);
-}
-
-function obterNomeExibicao(perfil, membro) {
-  return perfil?.nomeComum || perfil?.nickJogo || membro?.displayName || membro?.user?.username || 'Jogador';
-}
-
-function criarLinhaCategoria(categoria, percentual) {
-  const meta = CATEGORIAS_META[categoria] || { emoji: '📊', label: categoria };
-  return `${meta.emoji} ${meta.label}: ${formatarBarra(percentual)} ${percentual}%`;
-}
-
-function buildAdminButtons(targetId) {
-  if (!targetId) return [];
-
-  const row1 = new ActionRowBuilder();
-  row1.addComponents(
-    new ButtonBuilder().setCustomId(`btn_admin_gol_${targetId}`).setLabel('+ Gol').setStyle(ButtonStyle.Success).setEmoji('⚽'),
-    new ButtonBuilder().setCustomId(`btn_admin_assist_${targetId}`).setLabel('+ Assist').setStyle(ButtonStyle.Primary).setEmoji('🅰️'),
-    new ButtonBuilder().setCustomId(`btn_admin_save_${targetId}`).setLabel('+ Save').setStyle(ButtonStyle.Secondary).setEmoji('🧤'),
-    new ButtonBuilder().setCustomId(`btn_admin_chutes_${targetId}`).setLabel('+ Chutes').setStyle(ButtonStyle.Secondary).setEmoji('🥅'),
-    new ButtonBuilder().setCustomId(`btn_admin_mvp_${targetId}`).setLabel('+ MVP').setStyle(ButtonStyle.Danger).setEmoji('🏅')
-  );
-
-  const row2 = new ActionRowBuilder();
-  row2.addComponents(
-    new ButtonBuilder().setCustomId(`btn_admin_pontuacao_${targetId}`).setLabel('+ Pontuação').setStyle(ButtonStyle.Primary).setEmoji('🎯')
-  );
-
-  return [row1, row2];
-}
-
-function buildAdminStatModal(field, targetId) {
-  const labels = {
-    gol: 'Gol',
-    assist: 'Assist',
-    save: 'Save',
-    chutes: 'Chutes',
-    mvp: 'MVP',
-    pontuacao: 'Pontuação'
-  };
-
-  const modal = new ModalBuilder()
-    .setCustomId(`modal_admin_stat_${field}_${targetId}`)
-    .setTitle(`Adicionar ${labels[field] || 'estatística'}`);
-
-  const inputValor = new TextInputBuilder()
-    .setCustomId('admin_stat_valor')
-    .setLabel(`Valor para adicionar em ${labels[field] || 'estatística'}`)
-    .setPlaceholder('Ex: 1, 3, 5')
-    .setStyle(TextInputStyle.Short)
-    .setRequired(true);
-
-  modal.addComponents(new ActionRowBuilder().addComponents(inputValor));
-  return modal;
-}
-
-function buildTitulosButtons(targetId, paginaAtual = 1, totalPaginas = 1) {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`btn_titulos_prev_${targetId}_${paginaAtual}`)
-      .setLabel('◀️')
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(paginaAtual <= 1),
-    new ButtonBuilder()
-      .setCustomId(`btn_titulos_next_${targetId}_${paginaAtual}`)
-      .setLabel('▶️')
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(paginaAtual >= totalPaginas)
-  );
-}
-
-async function onVerTodosTitulos(interaction) {
-  const targetId = interaction.customId.replace(/^btn_ver_titulos_/, '');
-  const perfil = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: targetId });
-  const member = await interaction.guild.members.fetch(targetId).catch(() => null);
-
-  if (!perfil) {
-    return responderFichaNoPainel(interaction, { content: '❌ Esse jogador ainda não possui perfil completo.', embeds: [], components: [] });
-  }
-
-  const titulosLista = Array.isArray(perfil.titulosLista) ? perfil.titulosLista : [];
-  const pagina = getPaginaTitulos(titulosLista, 1, 15);
-  const embed = new EmbedBuilder()
-    .setTitle(`🏆 Títulos de ${obterNomeExibicao(perfil, member)}`)
-    .setDescription(formatarTitulosParaTexto(titulosLista, pagina.paginaAtual, 15))
-    .setColor('#FFD700');
-
-  return responderFichaNoPainel(interaction, { content: '', embeds: [embed], components: [buildTitulosButtons(targetId, 1, pagina.totalPaginas)] });
-}
-
-async function onPaginarTitulos(interaction) {
-  const match = interaction.customId.match(/^btn_titulos_(prev|next)_(\d+)_(\d+)$/);
-  if (!match) return;
-
-  const [, tipo, targetId, paginaAtualStr] = match;
-  const paginaAtual = Number(paginaAtualStr) || 1;
-  const perfil = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: targetId });
-
-  if (!perfil) {
-    return responderFichaNoPainel(interaction, { content: '❌ Perfil não encontrado.', embeds: [], components: [] });
-  }
-
-  const titulosLista = Array.isArray(perfil.titulosLista) ? perfil.titulosLista : [];
-  const paginaIndex = tipo === 'prev' ? paginaAtual - 1 : paginaAtual + 1;
-  const pagina = getPaginaTitulos(titulosLista, paginaIndex, 15);
-  const member = await interaction.guild.members.fetch(targetId).catch(() => null);
-  const embed = new EmbedBuilder()
-    .setTitle(`🏆 Títulos de ${obterNomeExibicao(perfil, member)}`)
-    .setDescription(formatarTitulosParaTexto(titulosLista, pagina.paginaAtual, 15))
-    .setColor('#FFD700');
-
-  return responderFichaNoPainel(interaction, { content: '', embeds: [embed], components: [buildTitulosButtons(targetId, pagina.paginaAtual, pagina.totalPaginas)] });
-}
-
-function buildFichaModalEtapa(stepIndex, valoresPreenchidos = {}, { erro = null, campoErroId = null } = {}) {
-  const campos = FICHA_MODAL_STEPS[stepIndex] || [];
-  const tituloBase = `Ficha ${stepIndex + 1}/${FICHA_MODAL_STEPS.length}`;
-  console.log('[ficha-modal-title]', {
-    stepIndex,
-    titleLength: tituloBase.length,
-    tituloBase,
-    valoresPreenchidos: OBRIGATORIOS.filter((campo) => valoresPreenchidos?.[campo]).length
+function salvarMsgFuncionalidadeGenerica(interaction, mensagem) {
+  if (!mensagem) return;
+  painelFichaPorUsuario.set(chavePainelFicha(interaction), {
+    channelId: mensagem.channelId || mensagem.channel?.id,
+    messageId: mensagem.id
   });
-
-  const modal = new ModalBuilder()
-    .setCustomId(`modal_ficha_perfil_${stepIndex + 1}`)
-    .setTitle(tituloBase);
-
-  campos.forEach((campo) => {
-    const input = new TextInputBuilder()
-      .setCustomId(campo.id)
-      .setLabel(campo.label)
-      .setStyle(campo.style)
-      .setRequired(Boolean(campo.required));
-
-    const valorAtual = valoresPreenchidos?.[campo.id];
-    const ehCampoErro = Boolean(campoErroId && campo.id === campoErroId);
-
-    if (campo.placeholder) {
-      input.setPlaceholder(campo.placeholder);
-    }
-
-    if (ehCampoErro && erro) {
-      input.setPlaceholder('Formato inválido. Use DD/MM/AAAA.');
-      input.setValue('');
-    } else if (valorAtual !== undefined && valorAtual !== null && valorAtual !== '') {
-      input.setValue(String(valorAtual));
-    }
-
-    if (campo.id === 'bio_input') {
-      input.setMaxLength(150);
-    }
-
-    modal.addComponents(new ActionRowBuilder().addComponents(input));
-  });
-
-  return modal;
-}
-
-function buildFichaSelects(dados = {}) {
-  const rows = [];
-  const selectInput = new StringSelectMenuBuilder()
-    .setCustomId('select_ficha_input')
-    .setPlaceholder(dados.input || 'Selecione o Input')
-    .addOptions(VALORES_INPUT_PERMITIDOS.map((valor) => ({ label: valor, value: valor })));
-  rows.push(new ActionRowBuilder().addComponents(selectInput));
-
-  const selectRanks = new StringSelectMenuBuilder()
-    .setCustomId('select_ficha_rank_x1')
-    .setPlaceholder(dados.rank_x1 || 'Selecione o Rank X1')
-    .addOptions(VALORES_RANK_PERMITIDOS.map((valor) => ({ label: valor, value: valor })));
-  rows.push(new ActionRowBuilder().addComponents(selectRanks));
-
-  const selectRanksX2 = new StringSelectMenuBuilder()
-    .setCustomId('select_ficha_rank_x2')
-    .setPlaceholder(dados.rank_x2 || 'Selecione o Rank X2')
-    .addOptions(VALORES_RANK_PERMITIDOS.map((valor) => ({ label: valor, value: valor })));
-  rows.push(new ActionRowBuilder().addComponents(selectRanksX2));
-
-  const selectPico = new StringSelectMenuBuilder()
-    .setCustomId('select_ficha_pico_rank')
-    .setPlaceholder(dados.pico_rank || 'Selecione o Pico Rank')
-    .addOptions(VALORES_RANK_PERMITIDOS.map((valor) => ({ label: valor, value: valor })));
-  rows.push(new ActionRowBuilder().addComponents(selectPico));
-
-  return rows;
-}
-
-function buildNicksSecundariosView(dados = {}) {
-  const principal = dados.nick_principal_input || dados.nick_principal || 'Não informado';
-  const secundarios = Array.isArray(dados.nicks_secundarios) ? dados.nicks_secundarios : [];
-  const resumo = secundarios.length
-    ? secundarios.join(', ')
-    : 'Nenhum nick secundário cadastrado.';
-  const botoes = [
-    new ButtonBuilder()
-      .setCustomId('btn_add_nick_sec')
-      .setLabel('+ Adicionar nick secundário')
-      .setStyle(ButtonStyle.Primary),
-    new ButtonBuilder()
-      .setCustomId('btn_continuar_ficha')
-      .setLabel('Continuar para etapa 3/4')
-      .setStyle(ButtonStyle.Success)
-  ];
-
-  if (secundarios.length > 0) {
-    botoes.splice(1, 0, new ButtonBuilder()
-      .setCustomId('btn_remove_nick_sec')
-      .setLabel('Remover')
-      .setStyle(ButtonStyle.Danger));
-  }
-
-  return {
-    embeds: [new EmbedBuilder()
-      .setTitle('Nicks da ficha')
-      .setDescription(`Nick principal: **${principal}**\nSecundários (${secundarios.length}): ${resumo}`)],
-    components: [new ActionRowBuilder().addComponents(botoes)]
-  };
 }
 
 async function onIniciarFicha(interaction, mensagemFuncionalidade = null) {
@@ -571,15 +256,6 @@ async function onSelectFichaOpcao(interaction) {
   const novo = { ...prev, [chave]: valor };
   fichaEmAndamento.set(userId, novo);
   const faltando = OBRIGATORIOS.filter((campo) => !novo[campo]).length;
-
-  console.log('[ficha-select]', {
-    userId,
-    customId: interaction.customId,
-    chave,
-    valor,
-    dadosAtual: { ...novo },
-    faltando
-  });
 
   const ehUltimaEscolha = interaction.customId === 'select_ficha_pico_rank';
   if (!ehUltimaEscolha) {
@@ -699,93 +375,6 @@ async function onVoltarNicks(interaction) {
   return responderFichaNoPainel(interaction, buildNicksSecundariosView(dados));
 }
 
-function buildPerfilEmbed(perfil, member, { isPublic = false } = {}) {
-  const nomeExibicao = obterNomeExibicao(perfil, member);
-  const idade = Number(perfil?.idade) || calcularIdade(perfil?.dataNascimento);
-  const estado = perfil?.estado || 'Não informado';
-  const pais = perfil?.pais || 'Não informado';
-  const bio = perfil?.bio || 'Sem bio por enquanto.';
-
-  const categorias = calcularCategorias(perfil?.indicadoresDetalhados || {});
-  const categoriasAtuais = Object.entries(CATEGORIAS_META).reduce((acc, [key]) => {
-    acc[key] = Number(perfil?.[key]) || categorias[key] || 0;
-    return acc;
-  }, {});
-
-  const rankX1 = normalizarValor(perfil?.rankX1, 'Não informado');
-  const rankX2 = normalizarValor(perfil?.rankX2, 'Não informado');
-  const picoRank = normalizarValor(perfil?.picoRank, 'Não informado');
-  const modoFavorito = normalizarValor(perfil?.modoFavorito, 'Não informado');
-  const input = normalizarValor(perfil?.input, 'Não informado');
-  const controleTipo = normalizarValor(perfil?.controleTipo, 'Não informado');
-  const horarioJoga = normalizarValor(perfil?.horarioJoga, 'Não informado');
-  const tiktok = formatarSocial(perfil?.tiktok);
-  const instagram = formatarSocial(perfil?.instagram);
-
-  const nicksSecundarios = Array.isArray(perfil?.nicks_secundarios) ? perfil.nicks_secundarios.filter(Boolean) : [];
-  const titulosLista = Array.isArray(perfil?.titulosLista) ? perfil.titulosLista : [];
-  const titulosFisicos = getTitulosDoJogador(titulosLista);
-  const titulosTexto = titulosFisicos.length > 10 ? `${titulosFisicos.slice(0, 10).map((titulo) => `${titulo.icone} ${titulo.nome}`).join(' | ')} ...` : titulosFisicos.map((titulo) => `${titulo.icone} ${titulo.nome}`).join(' | ');
-
-  const camposSocial = [];
-  if (tiktok) camposSocial.push(`[TikTok](${tiktok})`);
-  if (instagram) camposSocial.push(`[Instagram](${instagram})`);
-
-  const embed = new EmbedBuilder()
-    .setTitle(`👤 ${nomeExibicao}`)
-    .setDescription(`Bio: ${bio}`)
-    .addFields(
-      {
-        name: '🏆 Competitivo',
-        value: `Rank X1: **${rankX1}**\nRank X2: **${rankX2}**\nPico: **${picoRank}**\nModo Fav: **${modoFavorito}**`,
-        inline: true
-      },
-      {
-        name: '🎮 Setup',
-        value: `Input: **${input}**\nControle: **${controleTipo}**\nHorário: **${horarioJoga}**`,
-        inline: true
-      },
-      {
-        name: '📊 8 categorias oficiais',
-        value: Object.entries(CATEGORIAS_META)
-          .map(([key, meta]) => `${meta.emoji} ${meta.label}: ${formatarBarra(categoriasAtuais[key] || 0)} ${categoriasAtuais[key] || 0}%`)
-          .join('\n'),
-        inline: false
-      },
-      {
-        name: '📈 Stats ÔMEGA',
-        value: `Gols: **${Number(perfil?.gols || 0)}** | Assist: **${Number(perfil?.assist || 0)}** | Saves: **${Number(perfil?.saves || 0)}** | Chutes: **${Number(perfil?.chutes || 0)}** | MVPs: **${Number(perfil?.mvps || 0)}** | Pontuação: **${Number(perfil?.pontuacao || 0)}** | Edições: **${Number(perfil?.edicoes || 0)}**`,
-        inline: false
-      },
-      ...(camposSocial.length > 0 ? [{
-        name: '🔗 Redes sociais',
-        value: camposSocial.join(' | '),
-        inline: false
-      }] : []),
-      {
-        name: '📋 Nicks',
-        value: nicksSecundarios.length > 0 ? nicksSecundarios.join(', ') : 'Nenhum nick secundário cadastrado.',
-        inline: false
-      },
-      {
-        name: 'Baseado em 75 indicadores avaliados',
-        value: '🏆 Títulos',
-        inline: false
-      }
-    )
-    .setFooter({ text: titulosLista.length > 0 ? titulosTexto : 'Ainda não há títulos cadastrados.' })
-    .setColor('#00C2FF');
-
-  const nomeHeader = `${nomeExibicao} • ${idade} anos • ${estado} - ${pais}`;
-  if (member) {
-    embed.setAuthor({ name: nomeHeader, iconURL: member.user.displayAvatarURL({ dynamic: true }) });
-  } else {
-    embed.setAuthor({ name: nomeHeader });
-  }
-
-  return embed;
-}
-
 async function onCorrigirFichaCampo(interaction) {
   const campoId = interaction.customId.replace(/^btn_corrigir_/, '');
   const dados = normalizarDadosFicha(fichaEmAndamento.get(interaction.user.id));
@@ -802,21 +391,12 @@ async function onModalCorrecaoFicha(interaction) {
 
   const userId = interaction.user.id;
   const prev = normalizarDadosFicha(fichaEmAndamento.get(userId));
-  const valorAntigo = prev[campoId];
   const novoValor = interaction.fields.getTextInputValue(campoId).trim();
   const novo = { ...prev, [campoId]: novoValor };
   fichaEmAndamento.set(userId, novo);
 
-  console.log('[ficha-correcao]', { campo: campoId, valorAntigo, novoValor });
-
   const etapaAtual = Number(novo.etapa) || 0;
-  const validacaoEtapa = await validarCamposEtapa(etapaAtual, novo, userId);
-  console.log('[ficha-modal-validacao]', {
-    etapaAtual,
-    customId: interaction.customId,
-    validacaoEtapa,
-    dadosAtual: { ...novo }
-  });
+  const validacaoEtapa = await validarCamposEtapa(etapaAtual, novo, userId, PerfilMembro);
 
   if (!validacaoEtapa.ok) {
     return responderFichaNoPainel(interaction, {
@@ -832,7 +412,7 @@ async function onModalCorrecaoFicha(interaction) {
 
   const proximaEtapa = etapaAtual + 1;
   if (proximaEtapa < FICHA_MODAL_STEPS.length) {
-    const validacaoProximaEtapa = await validarCamposEtapa(proximaEtapa, novo, userId);
+    const validacaoProximaEtapa = await validarCamposEtapa(proximaEtapa, novo, userId, PerfilMembro);
     if (!validacaoProximaEtapa.ok) {
       fichaEmAndamento.set(userId, { ...novo, etapa: proximaEtapa });
       return responderFichaNoPainel(interaction, {
@@ -903,7 +483,6 @@ async function onVerPerfil(interaction, mensagemFuncionalidade = null) {
 }
 
 async function onAbrirSelecionarPerfil(interaction, mensagemFuncionalidade = null) {
-  console.log('[ver_outros] clique', Date.now());
   if (!interaction.guild) {
     if (mensagemFuncionalidade) {
       await mensagemFuncionalidade.edit({ content: '❌ Essa ação só funciona em servidor.', embeds: [], components: [] }).catch(() => null);
@@ -963,21 +542,11 @@ async function onAbrirSelecionarPerfil(interaction, mensagemFuncionalidade = nul
 
   if (mensagemFuncionalidade) {
     salvarMsgFuncionalidadeGenerica(interaction, mensagemFuncionalidade);
-    console.log('[ver_outros] antes edit msg2', Date.now());
     await mensagemFuncionalidade.edit(payload).catch(() => null);
-    console.log('[ver_outros] depois edit msg2', Date.now());
     return;
   }
 
   return responderFichaNoPainel(interaction, payload);
-}
-
-function salvarMsgFuncionalidadeGenerica(interaction, mensagem) {
-  if (!mensagem) return;
-  painelFichaPorUsuario.set(chavePainelFicha(interaction), {
-    channelId: mensagem.channelId || mensagem.channel?.id,
-    messageId: mensagem.id
-  });
 }
 
 async function onSelectVerPerfil(interaction) {
@@ -1011,102 +580,51 @@ async function onSelectVerPerfil(interaction) {
   });
 }
 
-async function validarCamposEtapa(stepIndex, dadosEtapa, userId = null) {
-  const campos = FICHA_MODAL_STEPS[stepIndex] || [];
+async function onVerTodosTitulos(interaction) {
+  const targetId = interaction.customId.replace(/^btn_ver_titulos_/, '');
+  const perfil = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: targetId });
+  const member = await interaction.guild.members.fetch(targetId).catch(() => null);
 
-  for (const campo of campos) {
-    if (campo.id === 'nick_principal_input') {
-      const nick = String(dadosEtapa[campo.id] || '').trim().toLowerCase();
-      if (!nick || nick.length < 3 || nick.length > 20 || !NICK_PATTERN.test(nick)) {
-        return { ok: false, campo: campo.id, mensagem: 'Nick inválido. Use 3-20 caracteres sem quebras de linha ou caracteres de controle.' };
-      }
-      if (userId) {
-        const existente = await PerfilMembro.findOne({ nick_principal: nick, userId: { $ne: userId } }).select('_id').lean();
-        if (existente) {
-          return { ok: false, campo: campo.id, mensagem: 'Esse nick principal já está em uso.' };
-        }
-      }
-      continue;
-    }
-
-    if (campo.id !== 'data_nascimento_input') continue;
-
-    const resultado = validarDataNascimento(dadosEtapa[campo.id]);
-    if (!resultado.ok) {
-      return { ok: false, campo: campo.id, mensagem: resultado.error };
-    }
+  if (!perfil) {
+    return responderFichaNoPainel(interaction, { content: '❌ Esse jogador ainda não possui perfil completo.', embeds: [], components: [] });
   }
 
-  return { ok: true };
+  const titulosLista = Array.isArray(perfil.titulosLista) ? perfil.titulosLista : [];
+  const pagina = getPaginaTitulos(titulosLista, 1, 15);
+  const embed = new EmbedBuilder()
+    .setTitle(`🏆 Títulos de ${obterNomeExibicao(perfil, member)}`)
+    .setDescription(formatarTitulosParaTexto(titulosLista, pagina.paginaAtual, 15))
+    .setColor('#FFD700');
+
+  return responderFichaNoPainel(interaction, { content: '', embeds: [embed], components: [buildTitulosButtons(targetId, 1, pagina.totalPaginas)] });
 }
 
-function obterCampoFicha(campoId) {
-  return FICHA_MODAL_STEPS.flat().find((campo) => campo.id === campoId) || null;
-}
+async function onPaginarTitulos(interaction) {
+  const match = interaction.customId.match(/^btn_titulos_(prev|next)_(\d+)_(\d+)$/);
+  if (!match) return;
 
-function criarBotaoCorrecao(campoId, labelPrefixo = 'Corrigir') {
-  const campo = obterCampoFicha(campoId);
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`btn_corrigir_${campoId}`)
-      .setLabel(`${labelPrefixo} ${campo?.label || campoId}`.slice(0, 80))
-      .setStyle(ButtonStyle.Primary)
-  );
-}
+  const [, tipo, targetId, paginaAtualStr] = match;
+  const paginaAtual = Number(paginaAtualStr) || 1;
+  const perfil = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: targetId });
 
-function obterCampoComErro(validacao) {
-  return validacao.campo || validacao.campoId;
-}
-
-function criarModalCorrecao(campoId, dados) {
-  const campo = obterCampoFicha(campoId);
-  if (!campo) return null;
-
-  const input = new TextInputBuilder()
-    .setCustomId(campo.id)
-    .setLabel(campo.label)
-    .setStyle(campo.style)
-    .setRequired(Boolean(campo.required));
-
-  if (campo.placeholder) input.setPlaceholder(campo.placeholder);
-  const valorAtual = dados?.[campo.id];
-  if (valorAtual !== undefined && valorAtual !== null && valorAtual !== '') {
-    input.setValue(String(valorAtual));
+  if (!perfil) {
+    return responderFichaNoPainel(interaction, { content: '❌ Perfil não encontrado.', embeds: [], components: [] });
   }
 
-  return new ModalBuilder()
-    .setCustomId(`modal_ficha_correcao_${campo.id}`)
-    .setTitle(`Corrigir ${campo.label}`.slice(0, 45))
-    .addComponents(new ActionRowBuilder().addComponents(input));
-}
+  const titulosLista = Array.isArray(perfil.titulosLista) ? perfil.titulosLista : [];
+  const paginaIndex = tipo === 'prev' ? paginaAtual - 1 : paginaAtual + 1;
+  const pagina = getPaginaTitulos(titulosLista, paginaIndex, 15);
+  const member = await interaction.guild.members.fetch(targetId).catch(() => null);
+  const embed = new EmbedBuilder()
+    .setTitle(`🏆 Títulos de ${obterNomeExibicao(perfil, member)}`)
+    .setDescription(formatarTitulosParaTexto(titulosLista, pagina.paginaAtual, 15))
+    .setColor('#FFD700');
 
-function criarBotaoContinuarFicha(etapa) {
-  const proximaEtapa = etapa + 1;
-  const numeroProximaEtapa = proximaEtapa + 1;
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`btn_continuar_ficha_${numeroProximaEtapa}`)
-      .setLabel(`Abrir ficha ${numeroProximaEtapa}/4`)
-      .setStyle(ButtonStyle.Primary)
-  );
+  return responderFichaNoPainel(interaction, { content: '', embeds: [embed], components: [buildTitulosButtons(targetId, pagina.paginaAtual, pagina.totalPaginas)] });
 }
 
 async function onModalFichaPerfil(interaction) {
-  console.log('[ficha-modal-submit]', {
-    customId: interaction?.customId,
-    interactionType: interaction?.type,
-    timestamp: Date.now()
-  });
-
-  if (!interaction || !interaction.isModalSubmit) {
-    console.log('[ficha-modal-submit-ignored]', {
-      hasInteraction: !!interaction,
-      isModalSubmit: interaction?.isModalSubmit,
-      customId: interaction?.customId,
-      type: interaction?.type
-    });
-    return;
-  }
+  if (!interaction || !interaction.isModalSubmit) return;
 
   const match = interaction.customId.match(/^modal_ficha_perfil_(\d+)$/);
   if (!match) return;
@@ -1121,13 +639,7 @@ async function onModalFichaPerfil(interaction) {
     }
   });
 
-  const validacaoEtapa = await validarCamposEtapa(etapaAtual, dadosExistentes, interaction.user.id);
-  console.log('[ficha-modal-validacao]', {
-    etapaAtual,
-    customId: interaction.customId,
-    validacaoEtapa,
-    dadosAtual: { ...dadosExistentes }
-  });
+  const validacaoEtapa = await validarCamposEtapa(etapaAtual, dadosExistentes, interaction.user.id, PerfilMembro);
 
   if (!validacaoEtapa.ok) {
     const campoComErro = obterCampoComErro(validacaoEtapa);
@@ -1370,4 +882,16 @@ function register(registry) {
   registry.select('select_remove_nick_sec', onSelecionarNickParaRemover);
 }
 
-module.exports = { register, buildPerfilEmbed, calcularIdade, calcularCategorias, MAPA_INDICADORES, onVerPerfil, onAbrirSelecionarPerfil, onSelectVerPerfil, onSelectFichaOpcao, onVoltarNicks, onIniciarFicha };
+module.exports = {
+  register,
+  buildPerfilEmbed,
+  calcularIdade,
+  calcularCategorias,
+  MAPA_INDICADORES,
+  onVerPerfil,
+  onAbrirSelecionarPerfil,
+  onSelectVerPerfil,
+  onSelectFichaOpcao,
+  onVoltarNicks,
+  onIniciarFicha
+};
