@@ -187,8 +187,8 @@ const FICHA_MODAL_STEPS = [
     { id: 'controle_tipo_input', label: 'Tipo de controle', style: TextInputStyle.Short, required: false, placeholder: 'Ex: Três dedos, Joystick, Gamepad Bluetooth, controle PS4/Xbox...' }
   ],
   [
-    { id: 'tiktok_input', label: 'TikTok', style: TextInputStyle.Short, required: false },
-    { id: 'instagram_input', label: 'Instagram', style: TextInputStyle.Short, required: false }
+    { id: 'tiktok_input', label: 'TikTok (texto ou link)', style: TextInputStyle.Short, required: false },
+    { id: 'instagram_input', label: 'Instagram (texto ou link)', style: TextInputStyle.Short, required: false }
   ]
 ];
 
@@ -273,6 +273,16 @@ function calcularIdade(dataNascimento) {
   }
 
   return idade > 0 ? idade : 0;
+}
+
+function formatarSocial(valor) {
+  const texto = String(valor || '').trim();
+  if (!texto) return null;
+  const urlMatch = texto.match(/^https?:\/\/.+/i);
+  if (urlMatch) {
+    return `[${texto}](${texto})`;
+  }
+  return texto;
 }
 
 function normalizarValor(valor, fallback = 'Não informado') {
@@ -708,12 +718,18 @@ function buildPerfilEmbed(perfil, member, { isPublic = false } = {}) {
   const modoFavorito = normalizarValor(perfil?.modoFavorito, 'Não informado');
   const input = normalizarValor(perfil?.input, 'Não informado');
   const controleTipo = normalizarValor(perfil?.controleTipo, 'Não informado');
-  const plataforma = normalizarValor(perfil?.plataforma, 'Não informado');
   const horarioJoga = normalizarValor(perfil?.horarioJoga, 'Não informado');
+  const tiktok = formatarSocial(perfil?.tiktok);
+  const instagram = formatarSocial(perfil?.instagram);
 
+  const nicksSecundarios = Array.isArray(perfil?.nicks_secundarios) ? perfil.nicks_secundarios.filter(Boolean) : [];
   const titulosLista = Array.isArray(perfil?.titulosLista) ? perfil.titulosLista : [];
   const titulosFisicos = getTitulosDoJogador(titulosLista);
   const titulosTexto = titulosFisicos.length > 10 ? `${titulosFisicos.slice(0, 10).map((titulo) => `${titulo.icone} ${titulo.nome}`).join(' | ')} ...` : titulosFisicos.map((titulo) => `${titulo.icone} ${titulo.nome}`).join(' | ');
+
+  const camposSocial = [];
+  if (tiktok) camposSocial.push(`[TikTok](${tiktok})`);
+  if (instagram) camposSocial.push(`[Instagram](${instagram})`);
 
   const embed = new EmbedBuilder()
     .setTitle(`👤 ${nomeExibicao}`)
@@ -726,7 +742,7 @@ function buildPerfilEmbed(perfil, member, { isPublic = false } = {}) {
       },
       {
         name: '🎮 Setup',
-        value: `Input: **${input}**\nControle: **${controleTipo}**\nPlataforma: **${plataforma}**\nHorário: **${horarioJoga}**`,
+        value: `Input: **${input}**\nControle: **${controleTipo}**\nHorário: **${horarioJoga}**`,
         inline: true
       },
       {
@@ -741,13 +757,23 @@ function buildPerfilEmbed(perfil, member, { isPublic = false } = {}) {
         value: `Gols: **${Number(perfil?.gols || 0)}** | Assist: **${Number(perfil?.assist || 0)}** | Saves: **${Number(perfil?.saves || 0)}** | Chutes: **${Number(perfil?.chutes || 0)}** | MVPs: **${Number(perfil?.mvps || 0)}** | Pontuação: **${Number(perfil?.pontuacao || 0)}** | Edições: **${Number(perfil?.edicoes || 0)}**`,
         inline: false
       },
+      ...(camposSocial.length > 0 ? [{
+        name: '🔗 Redes sociais',
+        value: camposSocial.join(' | '),
+        inline: false
+      }] : []),
       {
-        name: '🏆 Títulos',
-        value: titulosLista.length > 0 ? titulosTexto : 'Ainda não há títulos cadastrados.',
+        name: '📋 Nicks',
+        value: nicksSecundarios.length > 0 ? nicksSecundarios.join(', ') : 'Nenhum nick secundário cadastrado.',
+        inline: false
+      },
+      {
+        name: 'Baseado em 75 indicadores avaliados',
+        value: '🏆 Títulos',
         inline: false
       }
     )
-    .setFooter({ text: 'Baseado em 75 indicadores avaliados' })
+    .setFooter({ text: titulosLista.length > 0 ? titulosTexto : 'Ainda não há títulos cadastrados.' })
     .setColor('#00C2FF');
 
   const nomeHeader = `${nomeExibicao} • ${idade} anos • ${estado} - ${pais}`;
@@ -821,76 +847,6 @@ async function onModalCorrecaoFicha(interaction) {
     content: `✅ Campo corrigido. Clique para continuar na etapa ${Math.min(proximaEtapa + 1, FICHA_MODAL_STEPS.length)}/4.`,
     components: [criarBotaoContinuarFicha(etapaAtual)]
   });
-}
-
-async function onCorrigirFichaCampo(interaction) {
-  const nomeExibicao = obterNomeExibicao(perfil, member);
-  const idade = Number(perfil?.idade) || calcularIdade(perfil?.dataNascimento);
-  const estado = perfil?.estado || 'Não informado';
-  const pais = perfil?.pais || 'Não informado';
-  const bio = perfil?.bio || 'Sem bio por enquanto.';
-
-  const categorias = calcularCategorias(perfil?.indicadoresDetalhados || {});
-  const categoriasAtuais = Object.entries(CATEGORIAS_META).reduce((acc, [key]) => {
-    acc[key] = Number(perfil?.[key]) || categorias[key] || 0;
-    return acc;
-  }, {});
-
-  const rankX1 = normalizarValor(perfil?.rankX1, 'Não informado');
-  const rankX2 = normalizarValor(perfil?.rankX2, 'Não informado');
-  const picoRank = normalizarValor(perfil?.picoRank, 'Não informado');
-  const modoFavorito = normalizarValor(perfil?.modoFavorito, 'Não informado');
-  const input = normalizarValor(perfil?.input, 'Não informado');
-  const controleTipo = normalizarValor(perfil?.controleTipo, 'Não informado');
-  const plataforma = normalizarValor(perfil?.plataforma, 'Não informado');
-
-  const titulosLista = Array.isArray(perfil?.titulosLista) ? perfil.titulosLista : [];
-  const titulosFisicos = getTitulosDoJogador(titulosLista);
-  const titulosTexto = titulosFisicos.length > 10 ? `${titulosFisicos.slice(0, 10).map((titulo) => `${titulo.icone} ${titulo.nome}`).join(' | ')} ...` : titulosFisicos.map((titulo) => `${titulo.icone} ${titulo.nome}`).join(' | ');
-
-  const embed = new EmbedBuilder()
-    .setTitle(`👤 ${nomeExibicao}`)
-    .setDescription(`Bio: ${bio}`)
-    .addFields(
-      {
-        name: '🏆 Competitivo',
-        value: `Rank X1: **${rankX1}**\nRank X2: **${rankX2}**\nPico: **${picoRank}**\nModo Fav: **${modoFavorito}**`,
-        inline: true
-      },
-      {
-        name: '🎮 Setup',
-        value: `Input: **${input}**\nControle: **${controleTipo}**\nPlataforma: **${plataforma}**`,
-        inline: true
-      },
-      {
-        name: '📊 8 categorias oficiais',
-        value: Object.entries(CATEGORIAS_META)
-          .map(([key, meta]) => `${meta.emoji} ${meta.label}: ${formatarBarra(categoriasAtuais[key] || 0)} ${categoriasAtuais[key] || 0}%`)
-          .join('\n'),
-        inline: false
-      },
-      {
-        name: '📈 Stats ÔMEGA',
-        value: `Gols: **${Number(perfil?.gols || 0)}** | Assist: **${Number(perfil?.assist || 0)}** | Saves: **${Number(perfil?.saves || 0)}** | Chutes: **${Number(perfil?.chutes || 0)}** | MVPs: **${Number(perfil?.mvps || 0)}** | Pontuação: **${Number(perfil?.pontuacao || 0)}**`,
-        inline: false
-      },
-      {
-        name: '🏆 Títulos',
-        value: titulosLista.length > 0 ? titulosTexto : 'Ainda não há títulos cadastrados.',
-        inline: false
-      }
-    )
-    .setFooter({ text: 'Baseado em 75 indicadores avaliados' })
-    .setColor('#00C2FF');
-
-  const nomeHeader = `${nomeExibicao} • ${idade} anos • ${estado} - ${pais}`;
-  if (member) {
-    embed.setAuthor({ name: nomeHeader, iconURL: member.user.displayAvatarURL({ dynamic: true }) });
-  } else {
-    embed.setAuthor({ name: nomeHeader });
-  }
-
-  return embed;
 }
 
 async function onVerPerfil(interaction, mensagemFuncionalidade = null) {
@@ -1189,9 +1145,6 @@ async function onModalFichaPerfil(interaction) {
     const userId = interaction.user.id;
     const etapaSeguinte = etapaAtual + 1;
     fichaEmAndamento.set(userId, { ...normalizarDadosFicha(fichaEmAndamento.get(userId)), ...dadosAtual, etapa: etapaSeguinte });
-    if (etapaAtual === 1) {
-      return responderFichaNoPainel(interaction, buildNicksSecundariosView(fichaEmAndamento.get(userId)));
-    }
     const proximaEtapa = etapaAtual + 2;
 
     return responderFichaNoPainel(interaction, {
@@ -1217,16 +1170,15 @@ async function onModalFichaPerfil(interaction) {
   const controleTipo = sanitizeTextoLivre(dados.controle_tipo_input, { maxLength: 100 });
   const tiktok = sanitizeTextoLivre(dados.tiktok_input, { maxLength: 60 });
   const instagram = sanitizeTextoLivre(dados.instagram_input, { maxLength: 60 });
-  const nickPrincipal = String(dados.nick_principal_input || dados.nick_principal || '').trim().toLowerCase();
+  const nickPrincipal = String(dados.nick_principal_input || dados.nick_principal || '').trim();
   const nicksSecundarios = [...new Set((Array.isArray(dados.nicks_secundarios) ? dados.nicks_secundarios : [])
-    .map((nick) => String(nick).trim().toLowerCase())
+    .map((nick) => String(nick).trim())
     .filter((nick) => nick && nick !== nickPrincipal))];
 
   const rankX1 = normalizarOpcaoPermitida(dados.rank_x1 || dados['select_ficha_rank_x1'], VALORES_RANK_PERMITIDOS) || null;
   const rankX2 = normalizarOpcaoPermitida(dados.rank_x2 || dados['select_ficha_rank_x2'], VALORES_RANK_PERMITIDOS) || null;
   const picoRank = normalizarOpcaoPermitida(dados.pico_rank || dados['select_ficha_pico_rank'], VALORES_RANK_PERMITIDOS) || null;
   const input = normalizarOpcaoPermitida(dados.input || dados.select_ficha_input, VALORES_INPUT_PERMITIDOS) || null;
-  const plataforma = normalizarOpcaoPermitida(dados.plataforma || dados.select_ficha_plataforma, VALORES_PLATAFORMA_PERMITIDAS) || 'Mobile';
 
   if (!input || !rankX1 || !rankX2 || !picoRank) {
     return responderFichaNoPainel(interaction, { content: '❌ Faltou alguma opção fixa da ficha. Refaça a configuração inicial e tente novamente.', embeds: [], components: [] });
@@ -1260,7 +1212,6 @@ async function onModalFichaPerfil(interaction) {
     modoFavorito: modoFavorito || perfilAtual?.modoFavorito || null,
     input,
     controleTipo: controleTipo || perfilAtual?.controleTipo || null,
-    plataforma,
     tiktok: tiktok || perfilAtual?.tiktok || null,
     instagram: instagram || perfilAtual?.instagram || null,
     nickJogo: perfilAtual?.nickJogo || interaction.member.displayName || null,
