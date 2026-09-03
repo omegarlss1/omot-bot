@@ -39,88 +39,82 @@ function criarLinhaCategoria(categoria, percentual) {
   return `${meta.emoji} ${meta.label}: ${formatarBarra(percentual)} ${percentual}%`;
 }
 
-// ─── Quadro de Medalhas ────────────────────────────────────────────────────────
-
-function calcularQuadroMedalhas(titulosDetalhados = []) {
-  const resultado = {
-    omega: { ouro: 0, prata: 0, bronze: 0 },
-    comunidade: { ouro: 0, prata: 0, bronze: 0 }
-  };
-
-  for (const titulo of titulosDetalhados) {
-    const grupo = titulo.tipo === 'comunidade' ? resultado.comunidade : resultado.omega;
-    if (titulo.colocacao === 1) grupo.ouro++;
-    else if (titulo.colocacao === 2) grupo.prata++;
-    else if (titulo.colocacao === 3) grupo.bronze++;
-  }
-
-  return resultado;
-}
-
-function formatarQuadroMedalhas(quadro) {
-  const linhas = [];
-
-  const total = quadro.omega.ouro + quadro.omega.prata + quadro.omega.bronze
-    + quadro.comunidade.ouro + quadro.comunidade.prata + quadro.comunidade.bronze;
-
-  if (total === 0) return '*(Nenhum título registrado ainda)*';
-
-  if (quadro.omega.ouro + quadro.omega.prata + quadro.omega.bronze > 0) {
-    linhas.push(`🏆 **Campeonatos Oficiais ÔMEGA**`);
-    linhas.push(`🥇 ${quadro.omega.ouro} Ouro(s) | 🥈 ${quadro.omega.prata} Prata(s) | 🥉 ${quadro.omega.bronze} Bronze(s)`);
-  }
-
-  if (quadro.comunidade.ouro + quadro.comunidade.prata + quadro.comunidade.bronze > 0) {
-    if (linhas.length > 0) linhas.push('');
-    linhas.push(`👥 **Torneios da Comunidade**`);
-    linhas.push(`🥇 ${quadro.comunidade.ouro} Ouro(s) | 🥈 ${quadro.comunidade.prata} Prata(s) | 🥉 ${quadro.comunidade.bronze} Bronze(s)`);
-  }
-
-  return linhas.join('\n');
-}
-
-// ─── Formatação de Título Detalhado ───────────────────────────────────────────
+// ─── Quadro de Medalhas & Títulos Detalhados ──────────────────────────────────
 
 const ICONE_COLOCACAO = { 1: '🥇', 2: '🥈', 3: '🥉' };
-const LABEL_TIPO = { omega: 'ÔMEGA Oficial', comunidade: 'Comunidade' };
+const COLOCACAO_NOME = { 1: 'ouro', 2: 'prata', 3: 'bronze' };
+const GRUPOS_TITULO = {
+  omega: { emoji: '🏆', label: 'Campeonatos Oficiais ÔMEGA' },
+  comunidade: { emoji: '👥', label: 'Torneios da Comunidade' }
+};
 
-function formatarTituloDetalhado(titulo, indice = 0) {
+function calcularQuadroMedalhas(titulosDetalhados = []) {
+  const zero = { ouro: 0, prata: 0, bronze: 0 };
+  const quadro = { omega: { ...zero }, comunidade: { ...zero } };
+  for (const t of titulosDetalhados) {
+    const grupo = quadro[t.tipo] || quadro.omega;
+    const campo = COLOCACAO_NOME[t.colocacao];
+    if (campo) grupo[campo]++;
+  }
+  return quadro;
+}
+
+function medalhasTotal(q) { return q.ouro + q.prata + q.bronze; }
+function medalhasLinha(q) { return `🥇 ${q.ouro} Ouro(s) | 🥈 ${q.prata} Prata(s) | 🥉 ${q.bronze} Bronze(s)`; }
+
+function formatarQuadroMedalhas(quadro) {
+  const grupos = Object.entries(GRUPOS_TITULO)
+    .filter(([k]) => medalhasTotal(quadro[k]) > 0);
+  if (grupos.length === 0) return '*(Nenhum título registrado ainda)*';
+  return grupos.map(([k, { emoji, label }], i) => `${i ? '\n' : ''}${emoji} **${label}**\n${medalhasLinha(quadro[k])}`).join('');
+}
+
+function formatarLinhaTime(prefixo, time, idx) {
+  if (!time || (!time.nome && !time.jogadores)) return null;
+  return `${prefixo}${idx}: ${time.nome || `Time ${idx}`} — ${time.jogadores || '—'}`;
+}
+
+function normalizarTime(t) {
+  return t ? { nome: t.time1Nome || t.time2Nome || null, jogadores: t.time1Jogadores || t.time2Jogadores || null } : null;
+}
+
+function formatarParTimes(prefixo, timeObj) {
+  if (!timeObj) return null;
+  const t1 = normalizarTime({ time1Nome: timeObj.time1Nome, time1Jogadores: timeObj.time1Jogadores });
+  const t2 = normalizarTime({ time2Nome: timeObj.time2Nome, time2Jogadores: timeObj.time2Jogadores });
+  const linhas = [formatarLinhaTime('  • Time ', t1, 1), formatarLinhaTime('  • Time ', t2, 2)].filter(Boolean);
+  return `${prefixo}\n${linhas.join('\n')}`;
+}
+
+function formatarTituloDetalhado(titulo) {
   const icone = ICONE_COLOCACAO[titulo.colocacao] || '🏆';
-  const tipo = LABEL_TIPO[titulo.tipo] || titulo.tipo;
+  const tipo = GRUPOS_TITULO[titulo.tipo]?.label || titulo.tipo || '—';
   const edicao = titulo.edicao ? ` (${titulo.edicao})` : '';
-
   const linhas = [`**${icone} ${titulo.campeonato}${edicao}** — *${tipo}*`];
 
   if (titulo.formato === 'eliminatoria') {
     if (titulo.finais) {
-      linhas.push('⚔️ **Final:**');
-      if (titulo.finais.time1Nome || titulo.finais.time1Jogadores) {
-        linhas.push(`  • ${titulo.finais.time1Nome || 'Time 1'}: ${titulo.finais.time1Jogadores || '—'}`);
-      }
-      if (titulo.finais.time2Nome || titulo.finais.time2Jogadores) {
-        linhas.push(`  • ${titulo.finais.time2Nome || 'Time 2'}: ${titulo.finais.time2Jogadores || '—'}`);
-      }
+      linhas.push(formatarParTimes('⚔️ **Final:**', titulo.finais));
       if (titulo.finais.modo) linhas.push(`  📋 Modo: ${titulo.finais.modo}`);
     }
     if (titulo.semifinais) {
-      linhas.push('🔹 **Semifinais:**');
-      if (titulo.semifinais.time1Nome || titulo.semifinais.time1Jogadores) {
-        linhas.push(`  • ${titulo.semifinais.time1Nome || 'Time 1'}: ${titulo.semifinais.time1Jogadores || '—'}`);
-      }
-      if (titulo.semifinais.time2Nome || titulo.semifinais.time2Jogadores) {
-        linhas.push(`  • ${titulo.semifinais.time2Nome || 'Time 2'}: ${titulo.semifinais.time2Jogadores || '—'}`);
-      }
+      linhas.push(formatarParTimes('🔹 **Semifinais:**', titulo.semifinais));
     }
   } else if (titulo.formato === 'colocacao' && titulo.colocacoesTabela) {
     const tab = titulo.colocacoesTabela;
+    const colocacoes = [
+      ['🥇', 'primeiro', '1º'],
+      ['🥈', 'segundo', '2º'],
+      ['🥉', 'terceiro', '3º'],
+      ['4️⃣', 'quarto', '4º']
+    ];
     linhas.push('📊 **Classificação:**');
-    if (tab.primeiro) linhas.push(`  🥇 1º: ${tab.primeiro}`);
-    if (tab.segundo) linhas.push(`  🥈 2º: ${tab.segundo}`);
-    if (tab.terceiro) linhas.push(`  🥉 3º: ${tab.terceiro}`);
-    if (tab.quarto) linhas.push(`  4️⃣ 4º: ${tab.quarto}`);
+    colocacoes.forEach(([emoji, key, label]) => {
+      if (tab[key]) linhas.push(`  ${emoji} ${label}: ${tab[key]}`);
+    });
   }
 
-  return linhas.join('\n');
+  return linhas.filter(Boolean).join('\n');
 }
 
 // ─── Barra de Navegação entre Nichos ─────────────────────────────────────────
@@ -258,20 +252,16 @@ function buildEmbedStatsMedalhas(perfil, member) {
   const quadro = calcularQuadroMedalhas(titulosDetalhados);
   const textoMedalhas = formatarQuadroMedalhas(quadro);
 
-  // Histórico detalhado (máx. 5 mais recentes)
-  let textoHistorico = '';
+  // Histórico detalhado (máx. 5 mais recentes) com fallback para títulos legados
+  let textoHistorico = '*(Nenhum título registrado ainda)*';
   if (titulosDetalhados.length > 0) {
     const recentes = [...titulosDetalhados].reverse().slice(0, 5);
-    textoHistorico = recentes.map((t, i) => formatarTituloDetalhado(t, i)).join('\n\n');
+    textoHistorico = recentes.map(formatarTituloDetalhado).join('\n\n');
     if (titulosDetalhados.length > 5) {
       textoHistorico += `\n\n*...e mais ${titulosDetalhados.length - 5} título(s). Veja tudo no histórico completo.*`;
     }
   } else if (titulosLista.length > 0) {
-    // fallback para títulos legados (string)
-    const legados = getTitulosDoJogador(titulosLista);
-    textoHistorico = legados.slice(0, 8).map((t) => `${t.icone} **${t.nome}**`).join('\n');
-  } else {
-    textoHistorico = '*(Nenhum título registrado ainda)*';
+    textoHistorico = getTitulosDoJogador(titulosLista).slice(0, 8).map((t) => `${t.icone} **${t.nome}**`).join('\n');
   }
 
   const embed = new EmbedBuilder()
