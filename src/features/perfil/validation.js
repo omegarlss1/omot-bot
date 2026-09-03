@@ -79,12 +79,13 @@ async function validarCamposEtapa(stepIndex, dadosEtapa, userId = null, PerfilMe
 
   for (const campo of campos) {
     if (campo.id === 'nick_principal_input') {
-      const nick = String(dadosEtapa[campo.id] || '').trim().toLowerCase();
+      const nick = String(dadosEtapa[campo.id] || '').trim();
       if (!nick || nick.length < 3 || nick.length > 20 || !NICK_PATTERN.test(nick)) {
         return { ok: false, campo: campo.id, mensagem: 'Nick inválido. Use 3-20 caracteres sem quebras de linha ou caracteres de controle.' };
       }
       if (userId && PerfilMembro) {
-        const existente = await PerfilMembro.findOne({ nick_principal: nick, userId: { $ne: userId } }).select('_id').lean();
+        const escape = String(nick).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const existente = await PerfilMembro.findOne({ nick_principal: { $regex: `^${escape}$`, $options: 'i' }, userId: { $ne: userId } }).select('_id').lean();
         if (existente) {
           return { ok: false, campo: campo.id, mensagem: 'Esse nick principal já está em uso.' };
         }

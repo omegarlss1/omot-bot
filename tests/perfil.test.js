@@ -203,3 +203,14 @@ test('calcularQuadroMedalhas', async (t) => {
     assert.equal(quadro.omega.ouro + quadro.omega.prata + quadro.omega.bronze, 0);
   });
 });
+
+test('escapeRegex para busca de nick duplicado', async (t) => {
+  function escapeRegex(texto) {
+    return String(texto).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+  await t.test('deve escapar caracteres especiais de regex', () => {
+    assert.equal(escapeRegex('Omotzin.ss'), 'Omotzin\\.ss');
+    assert.equal(escapeRegex('a+b*c'), 'a\\+b\\*c');
+    assert.equal(escapeRegex('(teste)'), '\\(teste\\)');
+  });
+});

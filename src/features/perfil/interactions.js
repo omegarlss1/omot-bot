@@ -70,6 +70,10 @@ const painelFichaPorUsuario = new Map();
 // Estado temporário entre modal de semis e modal de finais
 const tituloEmCadastro = new Map();
 
+function escapeRegex(texto) {
+  return String(texto).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function chavePainelFicha(interaction) {
   return `${interaction.guildId || interaction.guild?.id || 'dm'}:${interaction.user.id}`;
 }
@@ -350,7 +354,7 @@ async function onSalvarConcluirFicha(interaction) {
     });
   }
 
-  const existente = await PerfilMembro.findOne({ nick_principal: nickPrincipal.toLowerCase(), userId: { $ne: interaction.user.id } }).select('_id').lean();
+  const existente = await PerfilMembro.findOne({ nick_principal: { $regex: `^${escapeRegex(nickPrincipal)}$`, $options: 'i' }, userId: { $ne: interaction.user.id } }).select('_id').lean();
   if (existente) {
     return responderFichaNoPainel(interaction, {
       content: `❌ O nick principal **${nickPrincipal}** já está em uso por outro membro.`,
@@ -385,7 +389,7 @@ async function onSalvarConcluirFicha(interaction) {
     idade: idade || perfilAtual?.idade || 0, estado: estado || perfilAtual?.estado || null,
     pais: pais || perfilAtual?.pais || null, bio: bio || perfilAtual?.bio || null,
     claAtual: claAtual || perfilAtual?.claAtual || null, clasAnteriores: clasAnterioresArray,
-    nick_principal: nickPrincipal.toLowerCase(), nicks_secundarios: nicksSecundarios,
+    nick_principal: nickPrincipal, nicks_secundarios: nicksSecundarios,
     rankX1, rankX2, picoRank, modoFavorito: modoFavorito || perfilAtual?.modoFavorito || null,
     input, controleTipo: controleTipo || perfilAtual?.controleTipo || null,
     tiktok: tiktok || perfilAtual?.tiktok || null, instagram: instagram || perfilAtual?.instagram || null,
