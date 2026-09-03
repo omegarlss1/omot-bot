@@ -15,6 +15,8 @@ const {
 } = require('./constants');
 const { obterCampoFicha } = require('./validation');
 
+// ─── Utilitário ───────────────────────────────────────────────────────────────
+
 function compactarLinhasComponentes(rows) {
   return (rows || [])
     .map((row) => {
@@ -27,6 +29,8 @@ function compactarLinhasComponentes(rows) {
     })
     .filter((row) => row && row.components && row.components.length > 0 && row.components.length <= 5);
 }
+
+// ─── Botões Admin do Perfil ───────────────────────────────────────────────────
 
 function buildAdminButtons(targetId) {
   if (!targetId) return [];
@@ -49,6 +53,8 @@ function buildAdminButtons(targetId) {
   return [row1, row2];
 }
 
+// ─── Modal de Stat Admin ──────────────────────────────────────────────────────
+
 function buildAdminStatModal(field, targetId) {
   const labels = {
     gol: 'Gol',
@@ -65,7 +71,7 @@ function buildAdminStatModal(field, targetId) {
 
   const inputValor = new TextInputBuilder()
     .setCustomId('admin_stat_valor')
-    .setLabel(`Valor para adicionar em ${labels[field] || 'estatística'}`)
+    .setLabel(`Quantidade a adicionar em ${labels[field] || 'estatística'}`)
     .setPlaceholder('Ex: 1, 3, 5')
     .setStyle(TextInputStyle.Short)
     .setRequired(true);
@@ -74,48 +80,202 @@ function buildAdminStatModal(field, targetId) {
   return modal;
 }
 
-function buildAddTituloModal(targetId) {
-  const modal = new ModalBuilder()
-    .setCustomId(`modal_admin_add_titulo_${targetId}`)
-    .setTitle('Cadastrar Título em Campeonato');
+// ─── FLUXO DE CADASTRO DE TÍTULOS ────────────────────────────────────────────
 
-  const inputColocacao = new TextInputBuilder()
-    .setCustomId('titulo_colocacao_input')
-    .setLabel('Colocação / Posição no Torneio:')
-    .setPlaceholder('Ex: 1º Lugar, Campeão, Vice-campeão, MVP, Artilheiro')
-    .setStyle(TextInputStyle.Short)
-    .setRequired(true);
+// Etapa 1: Botões de Colocação e Tipo (Ômega vs Comunidade)
+function buildEscolhaTituloBotoes(targetId) {
+  const rowOmega = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`btn_escolha_titulo_omega_1_${targetId}`)
+      .setLabel('🥇 1º Lugar ÔMEGA')
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`btn_escolha_titulo_omega_2_${targetId}`)
+      .setLabel('🥈 2º Lugar ÔMEGA')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(`btn_escolha_titulo_omega_3_${targetId}`)
+      .setLabel('🥉 3º Lugar ÔMEGA')
+      .setStyle(ButtonStyle.Secondary)
+  );
+
+  const rowComunidade = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`btn_escolha_titulo_comunidade_1_${targetId}`)
+      .setLabel('🥇 1º Comunidade')
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`btn_escolha_titulo_comunidade_2_${targetId}`)
+      .setLabel('🥈 2º Comunidade')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(`btn_escolha_titulo_comunidade_3_${targetId}`)
+      .setLabel('🥉 3º Comunidade')
+      .setStyle(ButtonStyle.Secondary)
+  );
+
+  const rowVoltar = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`btn_aba_perfil_stats_${targetId}`)
+      .setLabel('← Voltar ao Perfil')
+      .setStyle(ButtonStyle.Secondary)
+  );
+
+  return [rowOmega, rowComunidade, rowVoltar];
+}
+
+// Etapa 2: Botões de Formato (Eliminatórias vs Colocação)
+function buildEscolhaFormatoTorneio(tipo, colocacao, targetId) {
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`btn_formato_elim_${tipo}_${colocacao}_${targetId}`)
+      .setLabel('⚔️ Eliminatórias (Semifinais + Final)')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(`btn_formato_coloc_${tipo}_${colocacao}_${targetId}`)
+      .setLabel('📊 Colocação Direta (1º ao 4º lugar)')
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`btn_admin_add_titulo_${targetId}`)
+      .setLabel('← Voltar')
+      .setStyle(ButtonStyle.Secondary)
+  );
+  return [row];
+}
+
+// Etapa 3A - Modal 1: Semifinais (Eliminatórias)
+function buildModalSemifinais(tipo, colocacao, targetId) {
+  const modal = new ModalBuilder()
+    .setCustomId(`modal_titulo_semis_${tipo}_${colocacao}_${targetId}`)
+    .setTitle('Semifinais do Torneio (1 de 2)');
 
   const inputCampeonato = new TextInputBuilder()
-    .setCustomId('titulo_campeonato_input')
+    .setCustomId('semis_campeonato')
     .setLabel('Nome do Campeonato / Torneio:')
-    .setPlaceholder('Ex: Copa Ômega 2v2, Torneio de Verão, Private X1')
+    .setPlaceholder('Ex: Copa Ômega 2v2, Torneio de Verão')
     .setStyle(TextInputStyle.Short)
     .setRequired(true);
 
   const inputEdicao = new TextInputBuilder()
-    .setCustomId('titulo_edicao_input')
-    .setLabel('Temporada / Edição / Ano (opcional):')
-    .setPlaceholder('Ex: S4, Edição 2, 2024')
+    .setCustomId('semis_edicao')
+    .setLabel('Edição / Temporada / Ano (opcional):')
+    .setPlaceholder('Ex: S4, 2024, 3ª Edição')
     .setStyle(TextInputStyle.Short)
     .setRequired(false);
 
-  const inputDetalhe = new TextInputBuilder()
-    .setCustomId('titulo_detalhe_input')
-    .setLabel('Modo / Detalhe extra (opcional):')
-    .setPlaceholder('Ex: 2v2, 3v3, X1, Série A')
+  const inputTime1 = new TextInputBuilder()
+    .setCustomId('semis_time1')
+    .setLabel('Time 1 — Nome + Jogadores:')
+    .setPlaceholder('Ex: Los Bandidos — Nick1 + Nick2')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false);
+
+  const inputTime2 = new TextInputBuilder()
+    .setCustomId('semis_time2')
+    .setLabel('Time 2 — Nome + Jogadores:')
+    .setPlaceholder('Ex: Ômega FC — Nick3 + Nick4')
     .setStyle(TextInputStyle.Short)
     .setRequired(false);
 
   modal.addComponents(
-    new ActionRowBuilder().addComponents(inputColocacao),
     new ActionRowBuilder().addComponents(inputCampeonato),
     new ActionRowBuilder().addComponents(inputEdicao),
-    new ActionRowBuilder().addComponents(inputDetalhe)
+    new ActionRowBuilder().addComponents(inputTime1),
+    new ActionRowBuilder().addComponents(inputTime2)
   );
 
   return modal;
 }
+
+// Etapa 3A - Modal 2: Finais (Eliminatórias)
+function buildModalFinais(tipo, colocacao, targetId) {
+  const modal = new ModalBuilder()
+    .setCustomId(`modal_titulo_finais_${tipo}_${colocacao}_${targetId}`)
+    .setTitle('Final do Torneio (2 de 2)');
+
+  const inputFinalista1 = new TextInputBuilder()
+    .setCustomId('finais_time1')
+    .setLabel('Finalista 1 — Nome + Jogadores:')
+    .setPlaceholder('Ex: Los Bandidos — Nick1 + Nick2')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false);
+
+  const inputFinalista2 = new TextInputBuilder()
+    .setCustomId('finais_time2')
+    .setLabel('Finalista 2 — Nome + Jogadores:')
+    .setPlaceholder('Ex: Ômega FC — Nick3 + Nick4')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false);
+
+  const inputModo = new TextInputBuilder()
+    .setCustomId('finais_modo')
+    .setLabel('Modo de Jogo (opcional):')
+    .setPlaceholder('Ex: 2v2, 3v3, X1, 1v1')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false);
+
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(inputFinalista1),
+    new ActionRowBuilder().addComponents(inputFinalista2),
+    new ActionRowBuilder().addComponents(inputModo)
+  );
+
+  return modal;
+}
+
+// Etapa 3B - Modal Único: Colocação Direta
+function buildModalTabelaColocacao(tipo, colocacao, targetId) {
+  const modal = new ModalBuilder()
+    .setCustomId(`modal_titulo_tabela_${tipo}_${colocacao}_${targetId}`)
+    .setTitle('Classificação do Torneio');
+
+  const inputCampeonato = new TextInputBuilder()
+    .setCustomId('tabela_campeonato')
+    .setLabel('Campeonato / Edição / Ano:')
+    .setPlaceholder('Ex: Copa Ômega S4 — 2024')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true);
+
+  const inputPrimeiro = new TextInputBuilder()
+    .setCustomId('tabela_primeiro')
+    .setLabel('🥇 1º Lugar — Time + Jogadores:')
+    .setPlaceholder('Ex: Los Bandidos — Nick1 + Nick2')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false);
+
+  const inputSegundo = new TextInputBuilder()
+    .setCustomId('tabela_segundo')
+    .setLabel('🥈 2º Lugar — Time + Jogadores:')
+    .setPlaceholder('Ex: Ômega FC — Nick3 + Nick4')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false);
+
+  const inputTerceiro = new TextInputBuilder()
+    .setCustomId('tabela_terceiro')
+    .setLabel('🥉 3º Lugar — Time + Jogadores:')
+    .setPlaceholder('Ex: Phoenix — Nick5 + Nick6')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false);
+
+  const inputQuarto = new TextInputBuilder()
+    .setCustomId('tabela_quarto')
+    .setLabel('4º Lugar — Time + Jogadores (opcional):')
+    .setPlaceholder('Ex: Rebels — Nick7 + Nick8')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false);
+
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(inputCampeonato),
+    new ActionRowBuilder().addComponents(inputPrimeiro),
+    new ActionRowBuilder().addComponents(inputSegundo),
+    new ActionRowBuilder().addComponents(inputTerceiro),
+    new ActionRowBuilder().addComponents(inputQuarto)
+  );
+
+  return modal;
+}
+
+// ─── Paginação de Títulos ─────────────────────────────────────────────────────
 
 function buildTitulosButtons(targetId, paginaAtual = 1, totalPaginas = 1) {
   return new ActionRowBuilder().addComponents(
@@ -131,6 +291,8 @@ function buildTitulosButtons(targetId, paginaAtual = 1, totalPaginas = 1) {
       .setDisabled(paginaAtual >= totalPaginas)
   );
 }
+
+// ─── Ficha Modal e Navegação ──────────────────────────────────────────────────
 
 function buildFichaModalEtapa(stepIndex, valoresPreenchidos = {}, { erro = null, campoErroId = null } = {}) {
   const campos = FICHA_MODAL_STEPS[stepIndex] || [];
@@ -156,9 +318,7 @@ function buildFichaModalEtapa(stepIndex, valoresPreenchidos = {}, { erro = null,
     const valorAtual = valoresPreenchidos?.[campo.id];
     const ehCampoErro = Boolean(campoErroId && campo.id === campoErroId);
 
-    if (campo.placeholder) {
-      input.setPlaceholder(campo.placeholder);
-    }
+    if (campo.placeholder) input.setPlaceholder(campo.placeholder);
 
     if (ehCampoErro && erro) {
       input.setPlaceholder('Formato inválido. Use DD/MM/AAAA.');
@@ -167,9 +327,7 @@ function buildFichaModalEtapa(stepIndex, valoresPreenchidos = {}, { erro = null,
       input.setValue(String(valorAtual));
     }
 
-    if (campo.id === 'bio_input') {
-      input.setMaxLength(150);
-    }
+    if (campo.id === 'bio_input') input.setMaxLength(150);
 
     modal.addComponents(new ActionRowBuilder().addComponents(input));
   });
@@ -179,17 +337,18 @@ function buildFichaModalEtapa(stepIndex, valoresPreenchidos = {}, { erro = null,
 
 function buildFichaSelects(dados = {}) {
   const rows = [];
+
   const selectInput = new StringSelectMenuBuilder()
     .setCustomId('select_ficha_input')
     .setPlaceholder(dados.input ? `Input: ${dados.input}` : '1. Selecione seu Input (Touch, Controle, Híbrido)')
     .addOptions(VALORES_INPUT_PERMITIDOS.map((valor) => ({ label: valor, value: valor })));
   rows.push(new ActionRowBuilder().addComponents(selectInput));
 
-  const selectRanks = new StringSelectMenuBuilder()
+  const selectRanksX1 = new StringSelectMenuBuilder()
     .setCustomId('select_ficha_rank_x1')
     .setPlaceholder(dados.rank_x1 ? `Rank X1: ${dados.rank_x1}` : '2. Selecione seu Rank Habitual de X1')
     .addOptions(VALORES_RANK_PERMITIDOS.map((valor) => ({ label: valor, value: valor })));
-  rows.push(new ActionRowBuilder().addComponents(selectRanks));
+  rows.push(new ActionRowBuilder().addComponents(selectRanksX1));
 
   const selectRanksX2 = new StringSelectMenuBuilder()
     .setCustomId('select_ficha_rank_x2')
@@ -308,7 +467,11 @@ module.exports = {
   compactarLinhasComponentes,
   buildAdminButtons,
   buildAdminStatModal,
-  buildAddTituloModal,
+  buildEscolhaTituloBotoes,
+  buildEscolhaFormatoTorneio,
+  buildModalSemifinais,
+  buildModalFinais,
+  buildModalTabelaColocacao,
   buildTitulosButtons,
   buildFichaModalEtapa,
   buildFichaSelects,

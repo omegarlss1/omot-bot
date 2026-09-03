@@ -2,6 +2,40 @@ const mongoose = require('mongoose');
 
 const NICK_PATTERN = /^[^\p{C}\r\n]+$/u;
 
+const semifinaisSchema = new mongoose.Schema({
+  time1Nome: { type: String, default: null },
+  time1Jogadores: { type: String, default: null },
+  time2Nome: { type: String, default: null },
+  time2Jogadores: { type: String, default: null }
+}, { _id: false });
+
+const finaisSchema = new mongoose.Schema({
+  time1Nome: { type: String, default: null },
+  time1Jogadores: { type: String, default: null },
+  time2Nome: { type: String, default: null },
+  time2Jogadores: { type: String, default: null },
+  modo: { type: String, default: null }
+}, { _id: false });
+
+const colocacoesSchema = new mongoose.Schema({
+  primeiro: { type: String, default: null },
+  segundo: { type: String, default: null },
+  terceiro: { type: String, default: null },
+  quarto: { type: String, default: null }
+}, { _id: false });
+
+const tituloDetalhadoSchema = new mongoose.Schema({
+  tipo: { type: String, enum: ['omega', 'comunidade'], default: 'omega' },
+  colocacao: { type: Number, enum: [1, 2, 3], required: true },
+  formato: { type: String, enum: ['eliminatoria', 'colocacao'], default: 'eliminatoria' },
+  campeonato: { type: String, required: true },
+  edicao: { type: String, default: null },
+  semifinais: { type: semifinaisSchema, default: null },
+  finais: { type: finaisSchema, default: null },
+  colocacoesTabela: { type: colocacoesSchema, default: null },
+  cadastradoEm: { type: Date, default: Date.now }
+}, { _id: true });
+
 const perfilMembroSchema = new mongoose.Schema({
   guildId: { type: String, required: true },
   userId: { type: String, required: true },
@@ -87,6 +121,7 @@ const perfilMembroSchema = new mongoose.Schema({
   regularidade: { type: Number, default: 0 },
 
   titulosLista: { type: [String], default: [] },
+  titulosDetalhados: { type: [tituloDetalhadoSchema], default: [] },
   selos: { type: [String], default: [] }
 }, { timestamps: true });
 

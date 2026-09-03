@@ -171,4 +171,35 @@ test('titulosCustomizados', async (t) => {
   });
 });
 
+test('calcularQuadroMedalhas', async (t) => {
+  const { calcularQuadroMedalhas } = require('../src/features/perfil/embeds');
 
+  await t.test('deve contar medalhas separadas por tipo (omega e comunidade)', () => {
+    const titulos = [
+      { tipo: 'omega', colocacao: 1 },
+      { tipo: 'omega', colocacao: 1 },
+      { tipo: 'omega', colocacao: 2 },
+      { tipo: 'omega', colocacao: 3 },
+      { tipo: 'comunidade', colocacao: 1 },
+      { tipo: 'comunidade', colocacao: 3 }
+    ];
+    const quadro = calcularQuadroMedalhas(titulos);
+    assert.equal(quadro.omega.ouro, 2);
+    assert.equal(quadro.omega.prata, 1);
+    assert.equal(quadro.omega.bronze, 1);
+    assert.equal(quadro.comunidade.ouro, 1);
+    assert.equal(quadro.comunidade.prata, 0);
+    assert.equal(quadro.comunidade.bronze, 1);
+  });
+
+  await t.test('deve retornar zerado quando não há títulos', () => {
+    const quadro = calcularQuadroMedalhas([]);
+    assert.equal(quadro.omega.ouro, 0);
+    assert.equal(quadro.comunidade.ouro, 0);
+  });
+
+  await t.test('deve ignorar colocações inválidas', () => {
+    const quadro = calcularQuadroMedalhas([{ tipo: 'omega', colocacao: 5 }, { tipo: 'omega', colocacao: null }]);
+    assert.equal(quadro.omega.ouro + quadro.omega.prata + quadro.omega.bronze, 0);
+  });
+});

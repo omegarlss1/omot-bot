@@ -38,8 +38,12 @@ const {
 } = require('./validation');
 
 const {
+  buildEmbedFicha,
+  buildEmbedAvaliacao,
+  buildEmbedStatsMedalhas,
   buildPerfilEmbed,
   buildNicksSecundariosView,
+  buildNavegacaoNichosPerfil,
   obterNomeExibicao
 } = require('./embeds');
 
@@ -47,7 +51,11 @@ const {
   compactarLinhasComponentes,
   buildAdminButtons,
   buildAdminStatModal,
-  buildAddTituloModal,
+  buildEscolhaTituloBotoes,
+  buildEscolhaFormatoTorneio,
+  buildModalSemifinais,
+  buildModalFinais,
+  buildModalTabelaColocacao,
   buildTitulosButtons,
   buildFichaModalEtapa,
   buildFichaSelects,
@@ -59,7 +67,8 @@ const {
 
 const fichaEmAndamento = new Map();
 const painelFichaPorUsuario = new Map();
-const lockVerPerfil = new Map();
+// Estado temporário entre modal de semis e modal de finais
+const tituloEmCadastro = new Map();
 
 function chavePainelFicha(interaction) {
   return `${interaction.guildId || interaction.guild?.id || 'dm'}:${interaction.user.id}`;
@@ -138,29 +147,22 @@ async function responderFichaNoPainel(interaction, payload) {
 }
 
 function normalizarDadosFicha(dados = {}) {
-  const objetoNormalizado = {};
-
+  const obj = {};
   for (const [chave, valor] of Object.entries(dados || {})) {
     if (valor === undefined || valor === null) continue;
     if (typeof valor === 'function') continue;
-    if (Array.isArray(valor)) {
-      objetoNormalizado[chave] = valor.filter((item) => typeof item === 'string');
-      continue;
-    }
+    if (Array.isArray(valor)) { obj[chave] = valor.filter((item) => typeof item === 'string'); continue; }
     if (typeof valor === 'object') continue;
-    objetoNormalizado[chave] = valor;
+    obj[chave] = valor;
   }
-
-  return objetoNormalizado;
+  return obj;
 }
 
 function prepararDadosFichaSalva(perfil) {
   if (!perfil) return {};
-
   const dataNascimento = perfil.dataNascimento && /^\d{4}-\d{2}-\d{2}$/.test(perfil.dataNascimento)
     ? `${perfil.dataNascimento.slice(8, 10)}/${perfil.dataNascimento.slice(5, 7)}/${perfil.dataNascimento.slice(0, 4)}`
     : perfil.dataNascimento;
-
   return normalizarDadosFicha({
     nome_comum_input: perfil.nomeComum,
     data_nascimento_input: dataNascimento,
@@ -190,6 +192,33 @@ function salvarMsgFuncionalidadeGenerica(interaction, mensagem) {
   });
 }
 
+// ─── Helper: renderizar aba de stats com botões admin ────────────────────────
+
+async function renderizarAbaStats(interaction, targetId, perfil = null, member = null) {
+  const perfilAlvo = perfil || await PerfilMembro.findOne({ guildId: interaction.guildId, userId: targetId });
+  const membroAlvo = member || await interaction.guild.members.fetch(targetId).catch(() => null);
+
+  if (!perfilAlvo) {
+    return responderFichaNoPainel(interaction, {
+      content: '❌ Perfil não encontrado.',
+      embeds: [],
+      components: compactarLinhasComponentes(buildNavegacaoNichosPerfil(targetId, 'stats'))
+    });
+  }
+
+  const embed = buildEmbedStatsMedalhas(perfilAlvo, membroAlvo);
+  const adminButtons = hasPermissaoAdmin(interaction.member) ? buildAdminButtons(targetId) : [];
+  const navButtons = buildNavegacaoNichosPerfil(targetId, 'stats');
+
+  return responderFichaNoPainel(interaction, {
+    content: '',
+    embeds: [embed],
+    components: compactarLinhasComponentes([...adminButtons, ...navButtons])
+  });
+}
+
+// ─── INSTRUÇÃO INICIAL FICHA ─────────────────────────────────────────────────
+
 const INSTRUCOES_RANKS = 'ℹ️ **Atenção aos Ranks (X1 e X2):**\nSelecione o rank que você normalmente conquista e mantém com frequência durante as seasons. Esse dado será utilizado pela staff para balanceamento e equilíbrio justo das equipes em campeonatos internos!';
 
 async function onIniciarFicha(interaction, mensagemFuncionalidade = null) {
@@ -200,23 +229,18 @@ async function onIniciarFicha(interaction, mensagemFuncionalidade = null) {
   fichaEmAndamento.set(interaction.user.id, dadosSalvos);
 
   const selecoesCompletas = OBRIGATORIOS.every((campo) => dadosSalvos[campo]);
-
   let componentes = [];
   let content = '';
 
   if (selecoesCompletas) {
     componentes = buildFichaNavegacao(dadosSalvos);
-    content = `${INSTRUCOES_RANKS}\n\n📋 **Painel da Ficha de Membro:**\nClique em qualquer etapa abaixo para preencher ou editar as informações do seu perfil:`;
+    content = `${INSTRUCOES_RANKS}\n\n📋 **Painel da Ficha de Membro:**\nClique em qualquer etapa abaixo para preencher ou editar:`;
   } else {
     componentes = buildFichaSelects(dadosSalvos);
     content = `${INSTRUCOES_RANKS}\n\nEscolha as opções fixas abaixo para liberar os formulários:`;
   }
 
-  const payload = {
-    content,
-    embeds: [],
-    components: compactarLinhasComponentes(componentes)
-  };
+  const payload = { content, embeds: [], components: compactarLinhasComponentes(componentes) };
 
   if (mensagemFuncionalidade) {
     await registrarPainelFichaComMensagem(interaction, mensagemFuncionalidade);
@@ -238,10 +262,8 @@ async function onSelectFichaOpcao(interaction) {
     select_ficha_rank_x2: 'rank_x2',
     select_ficha_pico_rank: 'pico_rank'
   };
-
   const chave = mapa[interaction.customId];
   if (!chave) return;
-
   const valor = interaction.values[0];
   const userId = interaction.user.id;
   const prev = fichaEmAndamento.get(userId) || {};
@@ -267,7 +289,6 @@ async function onSelectFichaOpcao(interaction) {
 async function onAbrirEtapaFicha(interaction) {
   const match = interaction.customId.match(/^btn_etapa_(\d+)$/);
   if (!match) return;
-
   const stepIndex = Number(match[1]) - 1;
   const dados = normalizarDadosFicha(fichaEmAndamento.get(interaction.user.id));
   return interaction.showModal(buildFichaModalEtapa(stepIndex, dados));
@@ -275,7 +296,6 @@ async function onAbrirEtapaFicha(interaction) {
 
 async function onModalFichaPerfil(interaction) {
   if (!interaction || !interaction.isModalSubmit) return;
-
   const match = interaction.customId.match(/^modal_ficha_perfil_(\d+)$/);
   if (!match) return;
 
@@ -284,18 +304,13 @@ async function onModalFichaPerfil(interaction) {
 
   FICHA_MODAL_STEPS[etapaAtual].forEach((campo) => {
     const valor = interaction.fields.getTextInputValue(campo.id).trim();
-    if (valor !== '') {
-      dadosExistentes[campo.id] = valor;
-    }
+    if (valor !== '') dadosExistentes[campo.id] = valor;
   });
 
   const validacaoEtapa = await validarCamposEtapa(etapaAtual, dadosExistentes, interaction.user.id, PerfilMembro);
-
   if (!validacaoEtapa.ok) {
     const campoComErro = obterCampoComErro(validacaoEtapa);
-    const userId = interaction.user.id;
-    fichaEmAndamento.set(userId, { ...dadosExistentes });
-
+    fichaEmAndamento.set(interaction.user.id, { ...dadosExistentes });
     return responderFichaNoPainel(interaction, {
       content: validacaoEtapa.mensagem,
       embeds: [],
@@ -304,17 +319,9 @@ async function onModalFichaPerfil(interaction) {
   }
 
   fichaEmAndamento.set(interaction.user.id, dadosExistentes);
-
-  const titulosEtapas = [
-    '1. Nome / Nasc / Estado',
-    '2. País / Bio / CLA / Nick',
-    '3. CLAs / Modo / Controle',
-    '4. TikTok / Instagram'
-  ];
-  const etapaNome = titulosEtapas[etapaAtual] || `Etapa ${etapaAtual + 1}`;
-
+  const titulosEtapas = ['1. Nome / Nasc / Estado', '2. País / Bio / CLA / Nick', '3. CLAs / Modo / Controle', '4. TikTok / Instagram'];
   return responderFichaNoPainel(interaction, {
-    content: `✅ Dados salvos da etapa **${etapaNome}**!\nContinue navegando pelas outras etapas ou clique em **Finalizar e Salvar Perfil**:`,
+    content: `✅ Dados salvos da etapa **${titulosEtapas[etapaAtual] || `Etapa ${etapaAtual + 1}`}**!\nContinue ou clique em **Finalizar e Salvar Perfil**:`,
     embeds: [],
     components: compactarLinhasComponentes(buildFichaNavegacao(dadosExistentes))
   });
@@ -322,7 +329,6 @@ async function onModalFichaPerfil(interaction) {
 
 async function onSalvarConcluirFicha(interaction) {
   const dados = normalizarDadosFicha(fichaEmAndamento.get(interaction.user.id));
-
   const input = normalizarOpcaoPermitida(dados.input, VALORES_INPUT_PERMITIDOS);
   const rankX1 = normalizarOpcaoPermitida(dados.rank_x1, VALORES_RANK_PERMITIDOS);
   const rankX2 = normalizarOpcaoPermitida(dados.rank_x2, VALORES_RANK_PERMITIDOS);
@@ -331,12 +337,11 @@ async function onSalvarConcluirFicha(interaction) {
 
   if (!input || !rankX1 || !rankX2 || !picoRank) {
     return responderFichaNoPainel(interaction, {
-      content: '❌ Faltam as opções fixas obrigatórias (Input, Rank X1, Rank X2 ou Pico). Configure-as abaixo:',
+      content: '❌ Faltam as opções fixas obrigatórias. Configure-as abaixo:',
       embeds: [],
       components: compactarLinhasComponentes(buildFichaSelects(dados))
     });
   }
-
   if (!nickPrincipal || nickPrincipal.length < 3 || nickPrincipal.length > 20 || !NICK_PATTERN.test(nickPrincipal)) {
     return responderFichaNoPainel(interaction, {
       content: '❌ O **Nick Principal** é obrigatório e precisa ter de 3 a 20 caracteres. Clique na etapa 2 para preenchê-lo:',
@@ -348,7 +353,7 @@ async function onSalvarConcluirFicha(interaction) {
   const existente = await PerfilMembro.findOne({ nick_principal: nickPrincipal.toLowerCase(), userId: { $ne: interaction.user.id } }).select('_id').lean();
   if (existente) {
     return responderFichaNoPainel(interaction, {
-      content: `❌ O nick principal **${nickPrincipal}** já está em uso por outro membro. Altere-o na etapa 2:`,
+      content: `❌ O nick principal **${nickPrincipal}** já está em uso por outro membro.`,
       embeds: [],
       components: compactarLinhasComponentes(buildFichaNavegacao(dados))
     });
@@ -358,7 +363,6 @@ async function onSalvarConcluirFicha(interaction) {
   const nascimentoValido = validarDataNascimento(dados.data_nascimento_input);
   const dataNascimento = nascimentoValido.ok ? nascimentoValido.value : null;
   const idade = calcularIdade(dataNascimento);
-
   const estado = sanitizeTextoLivre(dados.estado_input, { maxLength: 60 });
   const pais = sanitizeTextoLivre(dados.pais_input, { maxLength: 60 });
   const bio = sanitizeTextoLivre(dados.bio_input, { maxLength: 150 });
@@ -368,78 +372,48 @@ async function onSalvarConcluirFicha(interaction) {
   const controleTipo = sanitizeTextoLivre(dados.controle_tipo_input, { maxLength: 100 });
   const tiktok = sanitizeTextoLivre(dados.tiktok_input, { maxLength: 60 });
   const instagram = sanitizeTextoLivre(dados.instagram_input, { maxLength: 60 });
-
-  const nicksSecundarios = [...new Set((Array.isArray(dados.nicks_secundarios) ? dados.nicks_secundarios : [])
-    .map((nick) => String(nick).trim())
-    .filter((nick) => nick && nick.toLowerCase() !== nickPrincipal.toLowerCase()))];
-
+  const nicksSecundarios = [...new Set((Array.isArray(dados.nicks_secundarios) ? dados.nicks_secundarios : []).map((n) => String(n).trim()).filter((n) => n && n.toLowerCase() !== nickPrincipal.toLowerCase()))];
   const perfilAtual = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: interaction.user.id });
   const indicadoresDetalhados = perfilAtual?.indicadoresDetalhados || {};
   const categoriasCalculadas = calcularCategorias(indicadoresDetalhados);
   const clasAnterioresArray = clasAnteriores ? clasAnteriores.split(',').map((item) => item.trim()).filter(Boolean) : perfilAtual?.clasAnteriores || [];
 
   const dadosPerfil = {
-    guildId: interaction.guildId,
-    userId: interaction.user.id,
-    discordId: interaction.user.id,
-    nomeComum,
-    dataNascimento: dataNascimento || perfilAtual?.dataNascimento || null,
+    guildId: interaction.guildId, userId: interaction.user.id, discordId: interaction.user.id,
+    nomeComum, dataNascimento: dataNascimento || perfilAtual?.dataNascimento || null,
     dataEntradaOmega: perfilAtual?.dataEntradaOmega || null,
-    idade: idade || perfilAtual?.idade || 0,
-    estado: estado || perfilAtual?.estado || null,
-    pais: pais || perfilAtual?.pais || null,
-    bio: bio || perfilAtual?.bio || null,
-    claAtual: claAtual || perfilAtual?.claAtual || null,
-    clasAnteriores: clasAnterioresArray,
-    nick_principal: nickPrincipal.toLowerCase(),
-    nicks_secundarios: nicksSecundarios,
-    rankX1,
-    rankX2,
-    picoRank,
-    modoFavorito: modoFavorito || perfilAtual?.modoFavorito || null,
-    input,
-    controleTipo: controleTipo || perfilAtual?.controleTipo || null,
-    tiktok: tiktok || perfilAtual?.tiktok || null,
-    instagram: instagram || perfilAtual?.instagram || null,
-    nickJogo: nickPrincipal,
-    rankSideSwipe: perfilAtual?.rankSideSwipe || 'Unranked',
+    idade: idade || perfilAtual?.idade || 0, estado: estado || perfilAtual?.estado || null,
+    pais: pais || perfilAtual?.pais || null, bio: bio || perfilAtual?.bio || null,
+    claAtual: claAtual || perfilAtual?.claAtual || null, clasAnteriores: clasAnterioresArray,
+    nick_principal: nickPrincipal.toLowerCase(), nicks_secundarios: nicksSecundarios,
+    rankX1, rankX2, picoRank, modoFavorito: modoFavorito || perfilAtual?.modoFavorito || null,
+    input, controleTipo: controleTipo || perfilAtual?.controleTipo || null,
+    tiktok: tiktok || perfilAtual?.tiktok || null, instagram: instagram || perfilAtual?.instagram || null,
+    nickJogo: nickPrincipal, rankSideSwipe: perfilAtual?.rankSideSwipe || 'Unranked',
     indicadoresDetalhados,
     inteligenciaLeitura: categoriasCalculadas.inteligencia_leitura || perfilAtual?.inteligenciaLeitura || 0,
     conhecimentoEvolucao: categoriasCalculadas.conhecimento_evolucao || perfilAtual?.conhecimentoEvolucao || 0,
     controleMecanica: categoriasCalculadas.controle_mecanica || perfilAtual?.controleMecanica || 0,
-    ataque: categoriasCalculadas.ataque || perfilAtual?.ataque || 0,
-    defesa: categoriasCalculadas.defesa || perfilAtual?.defesa || 0,
-    equipe: categoriasCalculadas.equipe || perfilAtual?.equipe || 0,
-    criatividade: categoriasCalculadas.criatividade || perfilAtual?.criatividade || 0,
+    ataque: categoriasCalculadas.ataque || perfilAtual?.ataque || 0, defesa: categoriasCalculadas.defesa || perfilAtual?.defesa || 0,
+    equipe: categoriasCalculadas.equipe || perfilAtual?.equipe || 0, criatividade: categoriasCalculadas.criatividade || perfilAtual?.criatividade || 0,
     regularidade: categoriasCalculadas.regularidade || perfilAtual?.regularidade || 0
   };
 
-  await PerfilMembro.findOneAndUpdate(
-    { guildId: interaction.guildId, userId: interaction.user.id },
-    { $set: dadosPerfil },
-    { upsert: true, new: true }
-  );
-
+  await PerfilMembro.findOneAndUpdate({ guildId: interaction.guildId, userId: interaction.user.id }, { $set: dadosPerfil }, { upsert: true, new: true });
   fichaEmAndamento.delete(interaction.user.id);
 
   const games = await getGames(interaction.guildId);
   const selectCargos = new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder()
       .setCustomId('select_cargos_jogos')
-      .setPlaceholder('Escolha os jogos que quer ser notificado...')
+      .setPlaceholder('Escolha os jogos para notificações...')
       .setMinValues(0)
       .setMaxValues(Math.max(1, games.length))
-      .addOptions(
-        games.map((game) => ({
-          label: game.nome,
-          value: game.roleId,
-          description: game.descricaoCargo
-        }))
-      )
+      .addOptions(games.map((game) => ({ label: game.nome, value: game.roleId, description: game.descricaoCargo })))
   );
 
   return responderFichaNoPainel(interaction, {
-    content: '🎉 **Ficha de Membro Concluída e Salva com Sucesso!**\nAgora escolha abaixo os avisos que você quer receber quando chamarem pro time:',
+    content: '🎉 **Ficha de Membro Concluída!**\nEscolha abaixo os avisos que quer receber quando chamarem pro time:',
     embeds: [],
     components: [selectCargos]
   });
@@ -447,17 +421,9 @@ async function onSalvarConcluirFicha(interaction) {
 
 async function onAdicionarNickSec(interaction) {
   const input = new TextInputBuilder()
-    .setCustomId('novo_nick_sec')
-    .setLabel('Novo nick secundário')
-    .setPlaceholder('Ex: Omotzin_alt')
-    .setStyle(TextInputStyle.Short)
-    .setRequired(true)
-    .setMaxLength(20);
-  const modal = new ModalBuilder()
-    .setCustomId('modal_add_nick_sec')
-    .setTitle('Adicionar nick secundário')
-    .addComponents(new ActionRowBuilder().addComponents(input));
-  return interaction.showModal(modal);
+    .setCustomId('novo_nick_sec').setLabel('Novo nick secundário').setPlaceholder('Ex: Omotzin_alt')
+    .setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(20);
+  return interaction.showModal(new ModalBuilder().setCustomId('modal_add_nick_sec').setTitle('Adicionar nick secundário').addComponents(new ActionRowBuilder().addComponents(input)));
 }
 
 async function onModalAdicionarNickSec(interaction) {
@@ -466,14 +432,12 @@ async function onModalAdicionarNickSec(interaction) {
   const novoNick = interaction.fields.getTextInputValue('novo_nick_sec').trim().toLowerCase();
   const secundarios = Array.isArray(prev.nicks_secundarios) ? [...prev.nicks_secundarios] : [];
   const principal = String(prev.nick_principal_input || prev.nick_principal || '').trim().toLowerCase();
-
   if (!novoNick || novoNick.length < 3 || novoNick.length > 20 || !NICK_PATTERN.test(novoNick)) {
-    return responderFichaNoPainel(interaction, { content: 'Nick inválido. Use 3-20 caracteres sem quebras de linha ou caracteres de controle.', flags: 64 });
+    return responderFichaNoPainel(interaction, { content: 'Nick inválido. Use 3-20 caracteres.', flags: 64 });
   }
   if (novoNick === principal || secundarios.includes(novoNick)) {
     return responderFichaNoPainel(interaction, { content: 'Esse nick já está em uso na sua ficha.', flags: 64 });
   }
-
   secundarios.push(novoNick);
   const novo = { ...prev, nicks_secundarios: secundarios };
   fichaEmAndamento.set(userId, novo);
@@ -484,24 +448,11 @@ async function onRemoverNickSec(interaction) {
   const dados = normalizarDadosFicha(fichaEmAndamento.get(interaction.user.id));
   const secundarios = Array.isArray(dados.nicks_secundarios) ? dados.nicks_secundarios : [];
   const row = new ActionRowBuilder();
-  secundarios.forEach((nick) => {
-    row.addComponents(
-      new ButtonBuilder()
-        .setCustomId(`remove_nick_sec_${nick}`)
-        .setLabel(nick)
-        .setStyle(ButtonStyle.Danger)
-    );
-  });
-  row.addComponents(
-    new ButtonBuilder()
-      .setCustomId('btn_voltar_nicks')
-      .setLabel('Voltar')
-      .setStyle(ButtonStyle.Secondary)
-  );
+  secundarios.forEach((nick) => row.addComponents(new ButtonBuilder().setCustomId(`remove_nick_sec_${nick}`).setLabel(nick).setStyle(ButtonStyle.Danger)));
+  row.addComponents(new ButtonBuilder().setCustomId('btn_voltar_nicks').setLabel('Voltar').setStyle(ButtonStyle.Secondary));
   return responderFichaNoPainel(interaction, {
-    content: secundarios.length > 0 ? 'Clique no nick que deseja remover:' : 'Nenhum nick secundário cadastrado.',
-    embeds: [],
-    components: [row]
+    content: secundarios.length > 0 ? 'Clique no nick que deseja remover:' : 'Nenhum nick cadastrado.',
+    embeds: [], components: [row]
   });
 }
 
@@ -516,9 +467,7 @@ async function onSelecionarNickParaRemover(interaction) {
 }
 
 async function onVoltarNicks(interaction) {
-  const userId = interaction.user.id;
-  const dados = normalizarDadosFicha(fichaEmAndamento.get(userId));
-  return responderFichaNoPainel(interaction, buildNicksSecundariosView(dados));
+  return responderFichaNoPainel(interaction, buildNicksSecundariosView(normalizarDadosFicha(fichaEmAndamento.get(interaction.user.id))));
 }
 
 async function onCorrigirFichaCampo(interaction) {
@@ -526,7 +475,6 @@ async function onCorrigirFichaCampo(interaction) {
   const dados = normalizarDadosFicha(fichaEmAndamento.get(interaction.user.id));
   const modal = criarModalCorrecao(campoId, dados);
   if (!modal) return;
-
   return interaction.showModal(modal);
 }
 
@@ -534,45 +482,33 @@ async function onModalCorrecaoFicha(interaction) {
   const campoId = interaction.customId.replace(/^modal_ficha_correcao_/, '');
   const campo = obterCampoFicha(campoId);
   if (!campo) return;
-
   const userId = interaction.user.id;
   const prev = normalizarDadosFicha(fichaEmAndamento.get(userId));
   const novoValor = interaction.fields.getTextInputValue(campoId).trim();
   const novo = { ...prev, [campoId]: novoValor };
   fichaEmAndamento.set(userId, novo);
-
   return responderFichaNoPainel(interaction, {
-    content: `✅ Campo **${campo.label}** corrigido com sucesso!\nContinue preenchendo as etapas abaixo:`,
+    content: `✅ Campo **${campo.label}** corrigido!\nContinue preenchendo as etapas abaixo:`,
     embeds: [],
     components: compactarLinhasComponentes(buildFichaNavegacao(novo))
   });
 }
 
+// ─── VISUALIZAÇÃO DE PERFIL (ABAS) ───────────────────────────────────────────
+
 async function onVerPerfil(interaction, mensagemFuncionalidade = null) {
-  const editarMensagemDoHub = Boolean(mensagemFuncionalidade);
+  const userId = interaction.user.id;
+  const perfil = await PerfilMembro.findOne({ guildId: interaction.guildId, userId });
   const voltarAoHub = [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('← Voltar ao painel').setStyle(ButtonStyle.Secondary))];
-  const perfil = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: interaction.user.id });
 
   if (mensagemFuncionalidade) {
     salvarMsgFuncionalidadeGenerica(interaction, mensagemFuncionalidade);
     if (!perfil) {
-      await mensagemFuncionalidade.edit({
-        content: '❌ Você ainda não preencheu sua ficha! Clique em **Editar minha ficha** para cadastrar seu perfil.',
-        embeds: [],
-        components: voltarAoHub
-      }).catch(() => null);
+      await mensagemFuncionalidade.edit({ content: '❌ Você ainda não preencheu sua ficha!', embeds: [], components: voltarAoHub }).catch(() => null);
     } else {
-      const embedPerfil = buildPerfilEmbed(perfil, interaction.member, { isPublic: false });
-      const adminButtons = hasPermissaoAdmin(interaction.member) ? buildAdminButtons(interaction.user.id) : [];
-      const titulosFisicos = getTitulosDoJogador(Array.isArray(perfil.titulosLista) ? perfil.titulosLista : []);
-      const componentsExtras = titulosFisicos.length > 8
-        ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`btn_ver_titulos_${interaction.user.id}`).setLabel(`Ver todos os títulos (${titulosFisicos.length})`).setStyle(ButtonStyle.Primary))]
-        : [];
-      await mensagemFuncionalidade.edit({
-        content: '',
-        embeds: [embedPerfil],
-        components: compactarLinhasComponentes([...adminButtons, ...componentsExtras, ...voltarAoHub])
-      }).catch(() => null);
+      const embed = buildEmbedFicha(perfil, interaction.member);
+      const navButtons = buildNavegacaoNichosPerfil(userId, 'ficha');
+      await mensagemFuncionalidade.edit({ content: '', embeds: [embed], components: compactarLinhasComponentes(navButtons) }).catch(() => null);
     }
     if (!interaction.deferred && !interaction.replied) {
       try { await interaction.deferUpdate(); } catch (_) {}
@@ -581,34 +517,48 @@ async function onVerPerfil(interaction, mensagemFuncionalidade = null) {
   }
 
   if (!perfil) {
-    return responderFichaNoPainel(interaction, {
-      content: '❌ Você ainda não preencheu sua ficha! Clique em **Editar minha ficha** para cadastrar seu perfil.',
-      embeds: [],
-      components: voltarAoHub
-    });
+    return responderFichaNoPainel(interaction, { content: '❌ Você ainda não preencheu sua ficha!', embeds: [], components: voltarAoHub });
   }
 
-  const embedPerfil = buildPerfilEmbed(perfil, interaction.member, { isPublic: false });
-  const adminButtons = hasPermissaoAdmin(interaction.member) ? buildAdminButtons(interaction.user.id) : [];
-  const titulosFisicos = getTitulosDoJogador(Array.isArray(perfil.titulosLista) ? perfil.titulosLista : []);
-  const componentsExtras = titulosFisicos.length > 8
-    ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`btn_ver_titulos_${interaction.user.id}`).setLabel(`Ver todos os títulos (${titulosFisicos.length})`).setStyle(ButtonStyle.Primary))]
-    : [];
-
-  return responderFichaNoPainel(interaction, {
-    content: '',
-    embeds: [embedPerfil],
-    components: compactarLinhasComponentes([...adminButtons, ...componentsExtras, ...voltarAoHub])
-  });
+  const embed = buildEmbedFicha(perfil, interaction.member);
+  const navButtons = buildNavegacaoNichosPerfil(userId, 'ficha');
+  return responderFichaNoPainel(interaction, { content: '', embeds: [embed], components: compactarLinhasComponentes(navButtons) });
 }
+
+// Navegação entre abas: Ficha
+async function onAbaFicha(interaction) {
+  const targetId = interaction.customId.replace(/^btn_aba_perfil_ficha_/, '');
+  const perfil = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: targetId });
+  const member = await interaction.guild.members.fetch(targetId).catch(() => null);
+  if (!perfil) return responderFichaNoPainel(interaction, { content: '❌ Perfil não encontrado.', embeds: [], components: [] });
+  const embed = buildEmbedFicha(perfil, member);
+  const nav = buildNavegacaoNichosPerfil(targetId, 'ficha');
+  return responderFichaNoPainel(interaction, { content: '', embeds: [embed], components: compactarLinhasComponentes(nav) });
+}
+
+// Navegação entre abas: Avaliação
+async function onAbaAvaliacao(interaction) {
+  const targetId = interaction.customId.replace(/^btn_aba_perfil_avaliacao_/, '');
+  const perfil = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: targetId });
+  const member = await interaction.guild.members.fetch(targetId).catch(() => null);
+  if (!perfil) return responderFichaNoPainel(interaction, { content: '❌ Perfil não encontrado.', embeds: [], components: [] });
+  const embed = buildEmbedAvaliacao(perfil, member);
+  const nav = buildNavegacaoNichosPerfil(targetId, 'avaliacao');
+  return responderFichaNoPainel(interaction, { content: '', embeds: [embed], components: compactarLinhasComponentes(nav) });
+}
+
+// Navegação entre abas: Stats & Medalhas
+async function onAbaStats(interaction) {
+  const targetId = interaction.customId.replace(/^btn_aba_perfil_stats_/, '');
+  return renderizarAbaStats(interaction, targetId);
+}
+
+// ─── SELEÇÃO DE PERFIL (BUSCA) ────────────────────────────────────────────────
 
 async function onAbrirSelecionarPerfil(interaction, mensagemFuncionalidade = null) {
   if (!interaction.guild) {
     const payload = { content: '❌ Essa ação só funciona em servidor.', embeds: [], components: [] };
-    if (mensagemFuncionalidade) {
-      await mensagemFuncionalidade.edit(payload).catch(() => null);
-      return;
-    }
+    if (mensagemFuncionalidade) { await mensagemFuncionalidade.edit(payload).catch(() => null); return; }
     return responderFichaNoPainel(interaction, payload);
   }
 
@@ -618,7 +568,6 @@ async function onAbrirSelecionarPerfil(interaction, mensagemFuncionalidade = nul
     .setMaxValues(1);
 
   const rowSelect = new ActionRowBuilder().addComponents(selectUser);
-
   const rowAcoes = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('btn_abrir_busca_nick').setLabel('Buscar por Nick / Nome').setStyle(ButtonStyle.Primary).setEmoji('🔎'),
     new ButtonBuilder().setCustomId('btn_iniciar_ficha').setLabel('Editar minha ficha').setStyle(ButtonStyle.Secondary).setEmoji('✏️'),
@@ -626,7 +575,7 @@ async function onAbrirSelecionarPerfil(interaction, mensagemFuncionalidade = nul
   );
 
   const payload = {
-    content: '🔍 **Consulta de Perfis Ômega:**\nSelecione qualquer membro no menu abaixo (você pode digitar o nome no campo de busca do Discord) ou pesquise pelo nick registrado:',
+    content: '🔍 **Consulta de Perfis Ômega:**\nSelecione um membro ou busque pelo nick registrado:',
     embeds: [],
     components: compactarLinhasComponentes([rowSelect, rowAcoes])
   };
@@ -643,10 +592,9 @@ async function onAbrirSelecionarPerfil(interaction, mensagemFuncionalidade = nul
 async function onSelectUserPerfil(interaction) {
   const targetId = interaction.values[0];
   const member = await interaction.guild.members.fetch(targetId).catch(() => null);
-
   if (!member) {
     return responderFichaNoPainel(interaction, {
-      content: '❌ Não foi possível localizar esse membro no servidor.',
+      content: '❌ Não foi possível localizar esse membro.',
       embeds: [],
       components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('btn_abrir_select_ver_perfil').setLabel('← Voltar à busca').setStyle(ButtonStyle.Secondary))]
     });
@@ -655,7 +603,7 @@ async function onSelectUserPerfil(interaction) {
   const perfil = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: targetId });
   if (!perfil) {
     return responderFichaNoPainel(interaction, {
-      content: `❌ **${member.displayName}** ainda não completou a ficha de perfil no servidor.`,
+      content: `❌ **${member.displayName}** ainda não completou a ficha.`,
       embeds: [],
       components: [new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('btn_abrir_select_ver_perfil').setLabel('← Buscar outro membro').setStyle(ButtonStyle.Primary),
@@ -664,65 +612,31 @@ async function onSelectUserPerfil(interaction) {
     });
   }
 
-  const embedPerfil = buildPerfilEmbed(perfil, member, { isPublic: true });
-  const adminButtons = hasPermissaoAdmin(interaction.member) ? buildAdminButtons(targetId) : [];
-  const titulosFisicos = getTitulosDoJogador(Array.isArray(perfil.titulosLista) ? perfil.titulosLista : []);
-  const componentsExtras = titulosFisicos.length > 8
-    ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`btn_ver_titulos_${targetId}`).setLabel(`Ver todos os títulos (${titulosFisicos.length})`).setStyle(ButtonStyle.Primary))]
-    : [];
-
-  return responderFichaNoPainel(interaction, {
-    content: '',
-    embeds: [embedPerfil],
-    components: compactarLinhasComponentes([
-      ...adminButtons,
-      ...componentsExtras,
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('btn_abrir_select_ver_perfil').setLabel('← Buscar outro membro').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('Voltar ao painel').setStyle(ButtonStyle.Secondary)
-      )
-    ])
-  });
+  const embed = buildEmbedFicha(perfil, member);
+  const nav = buildNavegacaoNichosPerfil(targetId, 'ficha');
+  return responderFichaNoPainel(interaction, { content: '', embeds: [embed], components: compactarLinhasComponentes(nav) });
 }
 
 async function onAbrirBuscaNickModal(interaction) {
-  const modal = new ModalBuilder()
-    .setCustomId('modal_buscar_perfil_nick')
-    .setTitle('Buscar Perfil por Nick');
-
-  const inputNick = new TextInputBuilder()
-    .setCustomId('termo_busca_nick')
-    .setLabel('Digite o nick ou nome do jogador:')
-    .setPlaceholder('Ex: Omotzin, Flavio, etc.')
-    .setStyle(TextInputStyle.Short)
-    .setRequired(true);
-
+  const modal = new ModalBuilder().setCustomId('modal_buscar_perfil_nick').setTitle('Buscar Perfil por Nick');
+  const inputNick = new TextInputBuilder().setCustomId('termo_busca_nick').setLabel('Digite o nick ou nome do jogador:').setPlaceholder('Ex: Omotzin, Flavio').setStyle(TextInputStyle.Short).setRequired(true);
   modal.addComponents(new ActionRowBuilder().addComponents(inputNick));
   return interaction.showModal(modal);
 }
 
 async function onModalBuscarPerfilNick(interaction) {
   if (!interaction || !interaction.isModalSubmit) return;
-
   const termo = interaction.fields.getTextInputValue('termo_busca_nick').trim();
-  if (!termo) {
-    return responderFichaNoPainel(interaction, { content: '❌ Digite um termo para busca.', embeds: [], components: [] });
-  }
-
+  if (!termo) return responderFichaNoPainel(interaction, { content: '❌ Digite um termo para busca.', embeds: [], components: [] });
   const termoRegex = new RegExp(termo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
   const perfil = await PerfilMembro.findOne({
     guildId: interaction.guildId,
-    $or: [
-      { nick_principal: termoRegex },
-      { nomeComum: termoRegex },
-      { nicks_secundarios: termoRegex },
-      { nickJogo: termoRegex }
-    ]
+    $or: [{ nick_principal: termoRegex }, { nomeComum: termoRegex }, { nicks_secundarios: termoRegex }, { nickJogo: termoRegex }]
   });
 
   if (!perfil) {
     return responderFichaNoPainel(interaction, {
-      content: `❌ Nenhum perfil encontrado para o termo **"${termo}"**.`,
+      content: `❌ Nenhum perfil encontrado para **"${termo}"**.`,
       embeds: [],
       components: [new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('btn_abrir_busca_nick').setLabel('Tentar novamente').setStyle(ButtonStyle.Primary),
@@ -732,129 +646,41 @@ async function onModalBuscarPerfilNick(interaction) {
   }
 
   const member = await interaction.guild.members.fetch(perfil.userId).catch(() => null);
-  const embedPerfil = buildPerfilEmbed(perfil, member, { isPublic: true });
-  const adminButtons = hasPermissaoAdmin(interaction.member) ? buildAdminButtons(perfil.userId) : [];
-  const titulosFisicos = getTitulosDoJogador(Array.isArray(perfil.titulosLista) ? perfil.titulosLista : []);
-  const componentsExtras = titulosFisicos.length > 8
-    ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`btn_ver_titulos_${perfil.userId}`).setLabel(`Ver todos os títulos (${titulosFisicos.length})`).setStyle(ButtonStyle.Primary))]
-    : [];
-
-  return responderFichaNoPainel(interaction, {
-    content: `🔍 Resultado encontrado para **"${termo}"**:`,
-    embeds: [embedPerfil],
-    components: compactarLinhasComponentes([
-      ...adminButtons,
-      ...componentsExtras,
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('btn_abrir_select_ver_perfil').setLabel('← Buscar outro membro').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('Voltar ao painel').setStyle(ButtonStyle.Secondary)
-      )
-    ])
-  });
+  const embed = buildEmbedFicha(perfil, member);
+  const nav = buildNavegacaoNichosPerfil(perfil.userId, 'ficha');
+  return responderFichaNoPainel(interaction, { content: `🔍 Resultado para **"${termo}"**:`, embeds: [embed], components: compactarLinhasComponentes(nav) });
 }
 
-async function onVerTodosTitulos(interaction) {
-  const targetId = interaction.customId.replace(/^btn_ver_titulos_/, '');
-  const perfil = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: targetId });
-  const member = await interaction.guild.members.fetch(targetId).catch(() => null);
-
-  if (!perfil) {
-    return responderFichaNoPainel(interaction, { content: '❌ Esse jogador ainda não possui perfil completo.', embeds: [], components: [] });
-  }
-
-  const titulosLista = Array.isArray(perfil.titulosLista) ? perfil.titulosLista : [];
-  const pagina = getPaginaTitulos(titulosLista, 1, 15);
-  const embed = new EmbedBuilder()
-    .setTitle(`🏆 Títulos Oficiais • ${obterNomeExibicao(perfil, member)}`)
-    .setDescription(formatarTitulosParaTexto(titulosLista, pagina.paginaAtual, 15))
-    .setColor('#FFD700');
-
-  return responderFichaNoPainel(interaction, {
-    content: '',
-    embeds: [embed],
-    components: [
-      buildTitulosButtons(targetId, 1, pagina.totalPaginas),
-      new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('← Voltar ao painel').setStyle(ButtonStyle.Secondary))
-    ]
-  });
-}
-
-async function onPaginarTitulos(interaction) {
-  const match = interaction.customId.match(/^btn_titulos_(prev|next)_(\d+)_(\d+)$/);
-  if (!match) return;
-
-  const [, tipo, targetId, paginaAtualStr] = match;
-  const paginaAtual = Number(paginaAtualStr) || 1;
-  const perfil = await PerfilMembro.findOne({ guildId: interaction.guildId, userId: targetId });
-
-  if (!perfil) {
-    return responderFichaNoPainel(interaction, { content: '❌ Perfil não encontrado.', embeds: [], components: [] });
-  }
-
-  const titulosLista = Array.isArray(perfil.titulosLista) ? perfil.titulosLista : [];
-  const paginaIndex = tipo === 'prev' ? paginaAtual - 1 : paginaAtual + 1;
-  const pagina = getPaginaTitulos(titulosLista, paginaIndex, 15);
-  const member = await interaction.guild.members.fetch(targetId).catch(() => null);
-  const embed = new EmbedBuilder()
-    .setTitle(`🏆 Títulos Oficiais • ${obterNomeExibicao(perfil, member)}`)
-    .setDescription(formatarTitulosParaTexto(titulosLista, pagina.paginaAtual, 15))
-    .setColor('#FFD700');
-
-  return responderFichaNoPainel(interaction, {
-    content: '',
-    embeds: [embed],
-    components: [
-      buildTitulosButtons(targetId, pagina.paginaAtual, pagina.totalPaginas),
-      new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('← Voltar ao painel').setStyle(ButtonStyle.Secondary))
-    ]
-  });
-}
+// ─── ADMIN: STATS ─────────────────────────────────────────────────────────────
 
 async function onAbrirModalAdminEstatistica(interaction) {
   if (!hasPermissaoAdmin(interaction.member)) {
     return responderFichaNoPainel(interaction, { content: '❌ Apenas administradores ou membros de staff podem alterar essas estatísticas.', embeds: [], components: [] });
   }
-
   const [, campo, targetId] = interaction.customId.match(/^btn_admin_(gol|assist|save|chutes|mvp|pontuacao)_(.+)$/) || [];
-  if (!campo || !targetId) {
-    return responderFichaNoPainel(interaction, { content: '❌ Comando de administração inválido.', embeds: [], components: [] });
-  }
-
+  if (!campo || !targetId) return;
   return interaction.showModal(buildAdminStatModal(campo, targetId));
 }
 
 async function onAdminIncrement(interaction) {
   if (!interaction || !interaction.isModalSubmit) return;
-
   if (!hasPermissaoAdmin(interaction.member)) {
     return responderFichaNoPainel(interaction, { content: '❌ Apenas administradores ou membros de staff podem alterar essas estatísticas.', embeds: [], components: [] });
   }
 
   const match = interaction.customId.match(/^modal_admin_stat_(gol|assist|save|chutes|mvp|pontuacao)_(.+)$/);
   if (!match) return;
-
   const [, campo, targetId] = match;
   const valorTexto = interaction.fields.getTextInputValue('admin_stat_valor').trim();
   if (!/^-?\d+(?:[.,]\d+)?$/.test(valorTexto.replace(/\s/g, ''))) {
-    return responderFichaNoPainel(interaction, { content: '❌ Digite apenas números no campo de valor, sem letras ou caracteres extras.', embeds: [], components: [] });
+    return responderFichaNoPainel(interaction, { content: '❌ Digite apenas números no campo de valor.', embeds: [], components: [] });
   }
 
-  const camposMap = {
-    gol: 'gols',
-    assist: 'assist',
-    save: 'saves',
-    chutes: 'chutes',
-    mvp: 'mvps',
-    pontuacao: 'pontuacao'
-  };
-
+  const camposMap = { gol: 'gols', assist: 'assist', save: 'saves', chutes: 'chutes', mvp: 'mvps', pontuacao: 'pontuacao' };
   const fieldName = camposMap[campo];
-  if (!fieldName) return responderFichaNoPainel(interaction, { content: '❌ Campo de stats inválido.', embeds: [], components: [] });
-
+  if (!fieldName) return;
   const valor = Number(valorTexto.replace(',', '.'));
-  if (!Number.isFinite(valor)) {
-    return responderFichaNoPainel(interaction, { content: '❌ Valor numérico inválido.', embeds: [], components: [] });
-  }
+  if (!Number.isFinite(valor)) return;
 
   const perfilAtualizado = await PerfilMembro.findOneAndUpdate(
     { guildId: interaction.guildId, userId: targetId },
@@ -863,72 +689,239 @@ async function onAdminIncrement(interaction) {
   );
 
   const target = await interaction.guild.members.fetch(targetId).catch(() => null);
-  const embedPerfil = buildPerfilEmbed(perfilAtualizado, target, { isPublic: false });
-  const adminButtons = buildAdminButtons(targetId);
-  const titulosFisicos = getTitulosDoJogador(Array.isArray(perfilAtualizado.titulosLista) ? perfilAtualizado.titulosLista : []);
-  const componentsExtras = titulosFisicos.length > 8
-    ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`btn_ver_titulos_${targetId}`).setLabel(`Ver todos os títulos (${titulosFisicos.length})`).setStyle(ButtonStyle.Primary))]
-    : [];
-  const voltarAoHub = [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('← Concluir / Voltar ao painel').setStyle(ButtonStyle.Secondary))];
+  return renderizarAbaStats(interaction, targetId, perfilAtualizado, target);
+}
 
+// ─── ADMIN: CADASTRO DE TÍTULOS (FLUXO POR ETAPAS) ──────────────────────────
+
+// Etapa 1: Abrir escolha de colocação/tipo
+async function onAbrirEscolhaTitulo(interaction) {
+  if (!hasPermissaoAdmin(interaction.member)) {
+    return responderFichaNoPainel(interaction, { content: '❌ Apenas administradores ou membros de staff podem cadastrar títulos.', embeds: [], components: [] });
+  }
+  const targetId = interaction.customId.replace(/^btn_admin_add_titulo_/, '');
   return responderFichaNoPainel(interaction, {
-    content: `✅ Estatística **${fieldName.toUpperCase()}** alterada em **+${valor}** para **${target ? target.displayName : 'o jogador'}**!`,
-    embeds: [embedPerfil],
-    components: compactarLinhasComponentes([...adminButtons, ...componentsExtras, ...voltarAoHub])
+    content: '🏆 **Cadastrar Título de Campeonato**\nEscolha a colocação e a categoria do título conquistado:',
+    embeds: [],
+    components: compactarLinhasComponentes(buildEscolhaTituloBotoes(targetId))
   });
 }
 
-async function onAbrirModalAdminTitulo(interaction) {
+// Etapa 2: Após escolha de colocação/tipo → escolher formato de campeonato
+async function onEscolherColocacaoTitulo(interaction) {
   if (!hasPermissaoAdmin(interaction.member)) {
-    return responderFichaNoPainel(interaction, { content: '❌ Apenas administradores ou membros de staff podem cadastrar títulos.', embeds: [], components: [] });
+    return responderFichaNoPainel(interaction, { content: '❌ Sem permissão.', embeds: [], components: [] });
   }
+  const match = interaction.customId.match(/^btn_escolha_titulo_(omega|comunidade)_([123])_(.+)$/);
+  if (!match) return;
+  const [, tipo, colocacaoStr, targetId] = match;
+  const colocacao = Number(colocacaoStr);
+  const icones = { 1: '🥇', 2: '🥈', 3: '🥉' };
+  const labelTipo = tipo === 'omega' ? 'ÔMEGA Oficial' : 'Comunidade';
 
-  const targetId = interaction.customId.replace(/^btn_admin_add_titulo_/, '');
-  return interaction.showModal(buildAddTituloModal(targetId));
+  return responderFichaNoPainel(interaction, {
+    content: `${icones[colocacao]} **${colocacao}º Lugar — ${labelTipo}**\nAgora escolha o formato do campeonato:`,
+    embeds: [],
+    components: compactarLinhasComponentes(buildEscolhaFormatoTorneio(tipo, colocacao, targetId))
+  });
 }
 
-async function onAdminAddTitulo(interaction) {
-  if (!interaction || !interaction.isModalSubmit) return;
+// Etapa 3A: Formato Eliminatórias → abrir Modal Semifinais
+async function onFormatoEliminatoria(interaction) {
+  if (!hasPermissaoAdmin(interaction.member)) return;
+  const match = interaction.customId.match(/^btn_formato_elim_(omega|comunidade)_([123])_(.+)$/);
+  if (!match) return;
+  const [, tipo, colocacaoStr, targetId] = match;
+  return interaction.showModal(buildModalSemifinais(tipo, colocacaoStr, targetId));
+}
 
-  if (!hasPermissaoAdmin(interaction.member)) {
-    return responderFichaNoPainel(interaction, { content: '❌ Apenas administradores ou membros de staff podem cadastrar títulos.', embeds: [], components: [] });
+// Etapa 3B: Formato Colocação → abrir Modal Tabela
+async function onFormatoColocacao(interaction) {
+  if (!hasPermissaoAdmin(interaction.member)) return;
+  const match = interaction.customId.match(/^btn_formato_coloc_(omega|comunidade)_([123])_(.+)$/);
+  if (!match) return;
+  const [, tipo, colocacaoStr, targetId] = match;
+  return interaction.showModal(buildModalTabelaColocacao(tipo, colocacaoStr, targetId));
+}
+
+// Etapa 3A submit: Semis preenchidas → mostrar botão para abrir modal de Finais
+async function onSubmitSemifinais(interaction) {
+  if (!interaction || !interaction.isModalSubmit) return;
+  if (!hasPermissaoAdmin(interaction.member)) return;
+
+  const match = interaction.customId.match(/^modal_titulo_semis_(omega|comunidade)_([123])_(.+)$/);
+  if (!match) return;
+  const [, tipo, colocacaoStr, targetId] = match;
+
+  const campeonato = interaction.fields.getTextInputValue('semis_campeonato').trim();
+  const edicao = interaction.fields.getTextInputValue('semis_edicao').trim() || null;
+  const time1Raw = interaction.fields.getTextInputValue('semis_time1').trim() || null;
+  const time2Raw = interaction.fields.getTextInputValue('semis_time2').trim() || null;
+
+  // Parseia "Nome do Time — Nick1 + Nick2" separando nome de jogadores pelo "—" ou por ":"
+  function parsearTime(texto) {
+    if (!texto) return { nome: null, jogadores: null };
+    const sep = texto.includes('—') ? '—' : (texto.includes(':') ? ':' : null);
+    if (sep) {
+      const [nome, ...resto] = texto.split(sep);
+      return { nome: nome.trim(), jogadores: resto.join(sep).trim() };
+    }
+    return { nome: null, jogadores: texto.trim() };
   }
 
-  const targetId = interaction.customId.replace(/^modal_admin_add_titulo_/, '');
-  const colocacao = interaction.fields.getTextInputValue('titulo_colocacao_input').trim();
-  const campeonato = interaction.fields.getTextInputValue('titulo_campeonato_input').trim();
-  const edicao = interaction.fields.getTextInputValue('titulo_edicao_input')?.trim() || '';
-  const detalhe = interaction.fields.getTextInputValue('titulo_detalhe_input')?.trim() || '';
+  const t1 = parsearTime(time1Raw);
+  const t2 = parsearTime(time2Raw);
 
-  const icone = extrairIconeTitulo(colocacao);
-  let tituloFormatado = `${icone} ${colocacao} - ${campeonato}`;
-  if (edicao) tituloFormatado += ` (${edicao})`;
-  if (detalhe) tituloFormatado += ` [${detalhe}]`;
+  const estadoParcial = {
+    tipo, colocacao: Number(colocacaoStr), campeonato, edicao,
+    semifinais: { time1Nome: t1.nome, time1Jogadores: t1.jogadores, time2Nome: t2.nome, time2Jogadores: t2.jogadores }
+  };
+  tituloEmCadastro.set(`${interaction.user.id}:${targetId}`, estadoParcial);
+
+  // Mostrar botão para prosseguir com o Modal de Finais
+  const rowProximo = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`btn_abrir_finais_${tipo}_${colocacaoStr}_${targetId}`)
+      .setLabel('Preencher a Final →')
+      .setStyle(ButtonStyle.Primary).setEmoji('⚔️'),
+    new ButtonBuilder()
+      .setCustomId(`btn_admin_add_titulo_${targetId}`)
+      .setLabel('← Recomeçar')
+      .setStyle(ButtonStyle.Secondary)
+  );
+
+  const resumoSemis = [
+    `📋 **Campeonato:** ${campeonato}${edicao ? ` (${edicao})` : ''}`,
+    `🔹 **Semifinalistas:**`,
+    time1Raw ? `  • Time 1: ${time1Raw}` : null,
+    time2Raw ? `  • Time 2: ${time2Raw}` : null
+  ].filter(Boolean).join('\n');
+
+  return responderFichaNoPainel(interaction, {
+    content: `✅ **Semifinais registradas!**\n\n${resumoSemis}\n\nAgora preencha os dados da **Final** para concluir o cadastro:`,
+    embeds: [],
+    components: compactarLinhasComponentes([rowProximo])
+  });
+}
+
+// Botão: abrir modal de finais (após semis)
+async function onAbrirModalFinais(interaction) {
+  if (!hasPermissaoAdmin(interaction.member)) return;
+  const match = interaction.customId.match(/^btn_abrir_finais_(omega|comunidade)_([123])_(.+)$/);
+  if (!match) return;
+  const [, tipo, colocacaoStr, targetId] = match;
+  return interaction.showModal(buildModalFinais(tipo, colocacaoStr, targetId));
+}
+
+// Etapa Final submit: Salvar título completo (eliminatórias)
+async function onSubmitFinais(interaction) {
+  if (!interaction || !interaction.isModalSubmit) return;
+  if (!hasPermissaoAdmin(interaction.member)) return;
+
+  const match = interaction.customId.match(/^modal_titulo_finais_(omega|comunidade)_([123])_(.+)$/);
+  if (!match) return;
+  const [, tipo, colocacaoStr, targetId] = match;
+
+  const estadoParcial = tituloEmCadastro.get(`${interaction.user.id}:${targetId}`);
+  if (!estadoParcial) {
+    return responderFichaNoPainel(interaction, { content: '❌ Sessão de cadastro expirou. Comece novamente.', embeds: [], components: [] });
+  }
+
+  const finais1Raw = interaction.fields.getTextInputValue('finais_time1').trim() || null;
+  const finais2Raw = interaction.fields.getTextInputValue('finais_time2').trim() || null;
+  const modo = interaction.fields.getTextInputValue('finais_modo').trim() || null;
+
+  function parsearTime(texto) {
+    if (!texto) return { nome: null, jogadores: null };
+    const sep = texto.includes('—') ? '—' : (texto.includes(':') ? ':' : null);
+    if (sep) {
+      const [nome, ...resto] = texto.split(sep);
+      return { nome: nome.trim(), jogadores: resto.join(sep).trim() };
+    }
+    return { nome: null, jogadores: texto.trim() };
+  }
+
+  const f1 = parsearTime(finais1Raw);
+  const f2 = parsearTime(finais2Raw);
+
+  const tituloCompleto = {
+    tipo: estadoParcial.tipo,
+    colocacao: estadoParcial.colocacao,
+    formato: 'eliminatoria',
+    campeonato: estadoParcial.campeonato,
+    edicao: estadoParcial.edicao || null,
+    semifinais: estadoParcial.semifinais || null,
+    finais: { time1Nome: f1.nome, time1Jogadores: f1.jogadores, time2Nome: f2.nome, time2Jogadores: f2.jogadores, modo },
+    colocacoesTabela: null,
+    cadastradoEm: new Date()
+  };
+
+  const icone = { 1: '🥇', 2: '🥈', 3: '🥉' }[tituloCompleto.colocacao] || '🏆';
+  const tituloString = `${icone} ${tituloCompleto.colocacao}º - ${tituloCompleto.campeonato}${tituloCompleto.edicao ? ` (${tituloCompleto.edicao})` : ''}`;
 
   const perfilAtualizado = await PerfilMembro.findOneAndUpdate(
     { guildId: interaction.guildId, userId: targetId },
-    {
-      $push: { titulosLista: tituloFormatado },
-      $inc: { titulos: 1 }
-    },
+    { $push: { titulosDetalhados: tituloCompleto, titulosLista: tituloString }, $inc: { titulos: 1 } },
+    { upsert: true, new: true }
+  );
+
+  tituloEmCadastro.delete(`${interaction.user.id}:${targetId}`);
+
+  const target = await interaction.guild.members.fetch(targetId).catch(() => null);
+  await renderizarAbaStats(interaction, targetId, perfilAtualizado, target);
+}
+
+// Submit: Formato Colocação Direta
+async function onSubmitTabelaColocacao(interaction) {
+  if (!interaction || !interaction.isModalSubmit) return;
+  if (!hasPermissaoAdmin(interaction.member)) return;
+
+  const match = interaction.customId.match(/^modal_titulo_tabela_(omega|comunidade)_([123])_(.+)$/);
+  if (!match) return;
+  const [, tipo, colocacaoStr, targetId] = match;
+
+  const campeonatoRaw = interaction.fields.getTextInputValue('tabela_campeonato').trim();
+  const primeiro = interaction.fields.getTextInputValue('tabela_primeiro').trim() || null;
+  const segundo = interaction.fields.getTextInputValue('tabela_segundo').trim() || null;
+  const terceiro = interaction.fields.getTextInputValue('tabela_terceiro').trim() || null;
+  const quarto = interaction.fields.getTextInputValue('tabela_quarto').trim() || null;
+
+  // Campeonato pode ter edição separada por "--" ou "—"
+  let campeonato = campeonatoRaw;
+  let edicao = null;
+  const sepIdx = campeonatoRaw.search(/\s*[—\-]{1,2}\s*/);
+  if (sepIdx > 0) {
+    campeonato = campeonatoRaw.slice(0, sepIdx).trim();
+    edicao = campeonatoRaw.slice(sepIdx).replace(/^[\s—\-]+/, '').trim() || null;
+  }
+
+  const colocacao = Number(colocacaoStr);
+  const icone = { 1: '🥇', 2: '🥈', 3: '🥉' }[colocacao] || '🏆';
+  const tituloString = `${icone} ${colocacao}º - ${campeonato}${edicao ? ` (${edicao})` : ''}`;
+
+  const tituloCompleto = {
+    tipo,
+    colocacao,
+    formato: 'colocacao',
+    campeonato,
+    edicao,
+    semifinais: null,
+    finais: null,
+    colocacoesTabela: { primeiro, segundo, terceiro, quarto },
+    cadastradoEm: new Date()
+  };
+
+  const perfilAtualizado = await PerfilMembro.findOneAndUpdate(
+    { guildId: interaction.guildId, userId: targetId },
+    { $push: { titulosDetalhados: tituloCompleto, titulosLista: tituloString }, $inc: { titulos: 1 } },
     { upsert: true, new: true }
   );
 
   const target = await interaction.guild.members.fetch(targetId).catch(() => null);
-  const embedPerfil = buildPerfilEmbed(perfilAtualizado, target, { isPublic: false });
-  const adminButtons = buildAdminButtons(targetId);
-  const titulosFisicos = getTitulosDoJogador(Array.isArray(perfilAtualizado.titulosLista) ? perfilAtualizado.titulosLista : []);
-  const componentsExtras = titulosFisicos.length > 8
-    ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`btn_ver_titulos_${targetId}`).setLabel(`Ver todos os títulos (${titulosFisicos.length})`).setStyle(ButtonStyle.Primary))]
-    : [];
-  const voltarAoHub = [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('← Concluir / Voltar ao painel').setStyle(ButtonStyle.Secondary))];
-
-  return responderFichaNoPainel(interaction, {
-    content: `🏆 Título oficial **"${tituloFormatado}"** cadastrado com sucesso para **${target ? target.displayName : 'o jogador'}**!`,
-    embeds: [embedPerfil],
-    components: compactarLinhasComponentes([...adminButtons, ...componentsExtras, ...voltarAoHub])
-  });
+  await renderizarAbaStats(interaction, targetId, perfilAtualizado, target);
 }
+
+// ─── CARGOS DE JOGOS ─────────────────────────────────────────────────────────
 
 async function onSelectCargos(interaction) {
   const games = await getGames(interaction.guildId);
@@ -941,9 +934,9 @@ async function onSelectCargos(interaction) {
     remover.length ? interaction.member.roles.remove(remover) : Promise.resolve()
   ]);
 
-  if (resultados.some((resultado) => resultado.status === 'rejected')) {
+  if (resultados.some((r) => r.status === 'rejected')) {
     return responderFichaNoPainel(interaction, {
-      content: '⚠️ O perfil foi salvo, mas não consegui atualizar todos os cargos. Verifique as permissões do bot.',
+      content: '⚠️ Perfil salvo, mas não consegui atualizar todos os cargos. Verifique as permissões do bot.',
       embeds: [],
       components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('hub_voltar_principal').setLabel('Ir ao painel').setStyle(ButtonStyle.Primary))]
     });
@@ -956,32 +949,51 @@ async function onSelectCargos(interaction) {
   });
 }
 
+// ─── REGISTRO DE HANDLERS ─────────────────────────────────────────────────────
+
 function register(registry) {
+  // Ficha
   registry.button('btn_iniciar_ficha', onIniciarFicha);
   registry.button(/^btn_etapa_\d+$/, onAbrirEtapaFicha);
-  registry.button('btn_nicks_sec_nav', (interaction) => {
-    const dados = normalizarDadosFicha(fichaEmAndamento.get(interaction.user.id));
-    return responderFichaNoPainel(interaction, buildNicksSecundariosView(dados));
-  });
+  registry.button('btn_nicks_sec_nav', (interaction) => responderFichaNoPainel(interaction, buildNicksSecundariosView(normalizarDadosFicha(fichaEmAndamento.get(interaction.user.id)))));
   registry.button('btn_salvar_concluir_ficha', onSalvarConcluirFicha);
   registry.button('btn_add_nick_sec', onAdicionarNickSec);
   registry.button('btn_remove_nick_sec', onRemoverNickSec);
   registry.button(/^remove_nick_sec_/, onSelecionarNickParaRemover);
   registry.button('btn_voltar_nicks', onVoltarNicks);
   registry.button(/^btn_corrigir_/, onCorrigirFichaCampo);
+
+  // Visualização de perfil por abas
   registry.button('btn_ver_perfil', onVerPerfil);
+  registry.button(/^btn_aba_perfil_ficha_/, onAbaFicha);
+  registry.button(/^btn_aba_perfil_avaliacao_/, onAbaAvaliacao);
+  registry.button(/^btn_aba_perfil_stats_/, onAbaStats);
+
+  // Busca de membros
   registry.button('btn_abrir_select_ver_perfil', onAbrirSelecionarPerfil);
   registry.button('btn_abrir_busca_nick', onAbrirBuscaNickModal);
-  registry.button(/^btn_ver_titulos_\d+$/, onVerTodosTitulos);
-  registry.button(/^btn_titulos_(prev|next)_\d+_\d+$/, onPaginarTitulos);
+
+  // Admin: stats
   registry.button(/^btn_admin_(gol|assist|save|chutes|mvp|pontuacao)_[0-9]+$/, onAbrirModalAdminEstatistica);
-  registry.button(/^btn_admin_add_titulo_[0-9]+$/, onAbrirModalAdminTitulo);
+
+  // Admin: fluxo de títulos
+  registry.button(/^btn_admin_add_titulo_[0-9]+$/, onAbrirEscolhaTitulo);
+  registry.button(/^btn_escolha_titulo_(omega|comunidade)_[123]_[0-9]+$/, onEscolherColocacaoTitulo);
+  registry.button(/^btn_formato_elim_(omega|comunidade)_[123]_[0-9]+$/, onFormatoEliminatoria);
+  registry.button(/^btn_formato_coloc_(omega|comunidade)_[123]_[0-9]+$/, onFormatoColocacao);
+  registry.button(/^btn_abrir_finais_(omega|comunidade)_[123]_[0-9]+$/, onAbrirModalFinais);
+
+  // Modals
   registry.modal(/^modal_admin_stat_(gol|assist|save|chutes|mvp|pontuacao)_[0-9]+$/, onAdminIncrement);
-  registry.modal(/^modal_admin_add_titulo_[0-9]+$/, onAdminAddTitulo);
+  registry.modal(/^modal_titulo_semis_(omega|comunidade)_[123]_[0-9]+$/, onSubmitSemifinais);
+  registry.modal(/^modal_titulo_finais_(omega|comunidade)_[123]_[0-9]+$/, onSubmitFinais);
+  registry.modal(/^modal_titulo_tabela_(omega|comunidade)_[123]_[0-9]+$/, onSubmitTabelaColocacao);
   registry.modal('modal_buscar_perfil_nick', onModalBuscarPerfilNick);
   registry.modal(/^modal_ficha_correcao_/, onModalCorrecaoFicha);
   registry.modal('modal_add_nick_sec', onModalAdicionarNickSec);
   registry.modal(/^modal_ficha_perfil_\d+$/, onModalFichaPerfil);
+
+  // Selects
   registry.select('select_cargos_jogos', onSelectCargos);
   registry.select('select_ver_perfil', onSelectUserPerfil);
   registry.select('select_user_perfil', onSelectUserPerfil);
