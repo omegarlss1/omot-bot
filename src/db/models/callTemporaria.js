@@ -8,7 +8,8 @@ const callTemporariaSchema = new mongoose.Schema({
   tipo: { type: String, required: true },
   jogo: { type: String, default: null },
   hidden: { type: Boolean, default: false },
-  bannedUserIds: { type: [String], default: [] }
+  bannedUserIds: { type: [String], default: [] },
+  panelMessageId: { type: String, default: null }
 });
 
 module.exports = mongoose.models.CallTemporaria || mongoose.model('CallTemporaria', callTemporariaSchema);

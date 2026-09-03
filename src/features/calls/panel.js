@@ -1,9 +1,13 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 
-function montarPainelCall(member) {
+function montarPainelCall(member, status = null) {
+  const descricao = status
+    ? `Opa, e aí, ${member}! ${status}`
+    : `Opa, e aí, ${member}! Sala criada. Usa os botões aí embaixo pra configurar tudo do teu jeito.`;
+
   const embed = new EmbedBuilder()
     .setTitle('Painel de Controle da Call')
-    .setDescription(`Opa, e aí, ${member}! Sala criada. Usa os botões aí embaixo pra configurar tudo do teu jeito.`)
+    .setDescription(descricao)
     .setColor('#FF6B00');
 
   const linha1 = new ActionRowBuilder().addComponents(

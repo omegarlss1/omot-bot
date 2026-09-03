@@ -16,6 +16,51 @@ const mensagens = require('./messages');
 
 const TEMPO_ESPERA_CALL = 30000;
 
+// ─── Helper: editar o painel (não cria nova mensagem) ────────────────────────
+
+async function obterPainel(interaction) {
+  const panelMessageId = interaction.client.stores.calls.getPanelMessageId(interaction.channelId);
+  if (!panelMessageId) return null;
+  return interaction.channel.messages.fetch(panelMessageId).catch(() => null);
+}
+
+async function responderNoPainel(interaction, { content, embeds, components, ephemeralError = null }) {
+  const ack = async (cb) => {
+    if (interaction.deferred || interaction.replied) return cb();
+    try { await interaction.deferUpdate(); return cb(); } catch (_) { return cb(); }
+  };
+  const painel = await obterPainel(interaction);
+
+  if (painel) {
+    const payload = {};
+    if (embeds) payload.embeds = embeds;
+    if (components) payload.components = components;
+    await ack(() => painel.edit(payload).catch(() => null));
+    if (ephemeralError) {
+      try { await interaction.followUp({ content: ephemeralError, flags: 64 }); } catch (_) {}
+    }
+    return;
+  }
+
+  // Fallback: sem painel conhecido, usa resposta efêmera
+  if (interaction.deferred || interaction.replied) {
+    return interaction.editReply({ content: content || '✅', embeds, components }).catch(() => null);
+  }
+  return interaction.update({ content: content || '✅', embeds, components }).catch(() => null);
+}
+
+async function confirmarNoPainel(interaction, status) {
+  await interaction.deferUpdate();
+  const painel = await obterPainel(interaction);
+  if (!painel) return;
+  const dadosCall = interaction.client.stores.calls.get(interaction.channelId);
+  const membro = interaction.guild.members.cache.get(dadosCall?.donoId) || interaction.member;
+  const { montarPainelCall } = require('./panel');
+  await painel.edit(montarPainelCall(membro, status)).catch(() => null);
+}
+
+// ─── Lock & Guards ───────────────────────────────────────────────────────────
+
 async function exigirCallDoLider(interaction) {
   const client = interaction.client;
   interaction.liberarLockCall = await comTimeout((estaAtivo) => adquirirLockCall(interaction.channelId, estaAtivo), TEMPO_ESPERA_CALL);
@@ -54,21 +99,24 @@ async function onLimitModal(interaction) {
 }
 
 async function onLock(interaction) {
-  await interaction.deferReply({ flags: 64 });
+  await interaction.deferUpdate();
   const check = await exigirCallDoLider(interaction);
-  if (!check.ok) return interaction.editReply(check.reply);
+  if (!check.ok) {
+    return responderNoPainel(interaction, { ephemeralError: check.reply.content || check.reply });
+  }
 
   const { canal } = check;
   const estaTrancado = !canal.permissionsFor(interaction.guild.roles.everyone).has(PermissionFlagsBits.Connect);
   await comTimeout(() => canal.permissionOverwrites.edit(interaction.guild.roles.everyone, { Connect: estaTrancado ? null : false }), TEMPO_ESPERA_CALL);
-  return interaction.editReply({ content: estaTrancado ? mensagens.callLiberada : mensagens.callTrancada });
+  return confirmarNoPainel(interaction, estaTrancado ? '🔒 Call trancada.' : '🔓 Call liberada.');
 }
 
 async function onHide(interaction) {
   await interaction.deferUpdate();
-  await interaction.editReply({});
   const check = await exigirCallDoLider(interaction);
-  if (!check.ok) return interaction.followUp({ ...check.reply, flags: 64 });
+  if (!check.ok) {
+    return responderNoPainel(interaction, { ephemeralError: check.reply.content || check.reply });
+  }
 
   const { canal } = check;
   const estaVisivel = canal.permissionsFor(interaction.guild.roles.everyone).has(PermissionFlagsBits.ViewChannel);
@@ -78,7 +126,7 @@ async function onHide(interaction) {
     comTimeout(() => interaction.client.stores.calls.atualizar(canal.id, { hidden: ocultar }))
   ]);
   try {
-    await atualizarPainel(canal, interaction.client);
+    await atualizarPainel(canal, interaction.client, ocultar ? '👁️ Call oculta.' : '👁️ Call visível.');
   } catch (error) {
     console.error(`Erro ao atualizar painel da call ${canal.id}:`, {
       message: error?.message,
@@ -86,56 +134,51 @@ async function onHide(interaction) {
       stack: error?.stack
     });
   }
-  return interaction.followUp({ content: ocultar ? mensagens.callOculta : mensagens.callVisivel, flags: 64 });
 }
 
 async function onTransfer(interaction) {
-  await interaction.deferReply({ flags: 64 });
+  await interaction.deferUpdate();
   const check = await exigirCallDoLider(interaction);
-  if (!check.ok) return interaction.editReply(check.reply);
+  if (!check.ok) {
+    return responderNoPainel(interaction, { ephemeralError: check.reply.content || check.reply });
+  }
 
   const membrosNaCall = obterMembrosAcao(check.canal, interaction.member.id);
   if (membrosNaCall.length === 0) {
-    return interaction.editReply({ content: mensagens.semMembrosParaTransferir });
+    return confirmarNoPainel(interaction, mensagens.semMembrosParaTransferir);
   }
-
-  return interaction.editReply(paginacaoMembros('transfer', 0, membrosNaCall, mensagens.selecioneLider));
+  return responderNoPainel(interaction, paginacaoMembros('transfer', 0, membrosNaCall, mensagens.selecioneLider));
 }
 
 async function onClose(interaction) {
-  await interaction.deferReply({ flags: 64 });
+  await interaction.deferUpdate();
   const check = await exigirCallDoLider(interaction);
-  if (!check.ok) return interaction.editReply(check.reply);
-
-  await interaction.editReply({ content: mensagens.callFechando });
+  if (!check.ok) {
+    return responderNoPainel(interaction, { ephemeralError: check.reply.content || check.reply });
+  }
   return encerrarCall(check.canal, check.client);
 }
 
 async function onModalRename(interaction) {
-  await interaction.deferReply({ flags: 64 });
+  await interaction.deferUpdate();
   const check = await exigirCallDoLider(interaction);
-  if (!check.ok) return interaction.editReply(check.reply);
+  if (!check.ok) {
+    return responderNoPainel(interaction, { ephemeralError: check.reply.content || check.reply });
+  }
   const canal = check.canal;
   const novoJogo = interaction.fields.getTextInputValue('nome_call_input').trim();
   const dadosCall = check.dadosCall;
 
   if (!novoJogo || novoJogo.length > 100) {
-    return interaction.editReply({ content: mensagens.nomeInvalido });
+    return confirmarNoPainel(interaction, mensagens.nomeInvalido);
   }
 
   if (dadosCall) {
     const nomeFinal = gerarNomeCall(dadosCall.tipo, dadosCall.donoNome, novoJogo, canal.members.size);
-    const partesNome = nomeFinal.split('|').map((parte) => parte.trim());
-    console.log('Dados para renomear call:', {
-      tipoCall: dadosCall.tipo,
-      textoJogoAntesDoDivisor: novoJogo,
-      parteFixaDepoisDoDivisor: partesNome.slice(2).join(' | '),
-      nomeFinal
-    });
     try {
       const botMember = canal.guild.members.me;
       if (!botMember || !canal.permissionsFor(botMember).has(PermissionFlagsBits.ManageChannels)) {
-        return interaction.editReply({ content: mensagens.nomeSemPermissao });
+        return confirmarNoPainel(interaction, mensagens.nomeSemPermissao);
       }
       await comTimeout(() => canal.setName(nomeFinal.slice(0, 100)));
     } catch (error) {
@@ -144,7 +187,7 @@ async function onModalRename(interaction) {
         code: error?.code,
         stack: error?.stack
       });
-      return interaction.editReply({ content: error.code === 'CALL_TIMEOUT' ? mensagens.operacaoExpirada : mensagens.nomeFalhou });
+      return confirmarNoPainel(interaction, error.code === 'CALL_TIMEOUT' ? mensagens.operacaoExpirada : mensagens.nomeFalhou);
     }
     dadosCall.jogo = novoJogo;
     try {
@@ -155,40 +198,44 @@ async function onModalRename(interaction) {
         code: error?.code,
         stack: error?.stack
       });
-      return interaction.editReply({ content: mensagens.operacaoExpirada });
+      return confirmarNoPainel(interaction, mensagens.operacaoExpirada);
     }
   }
 
-  return interaction.editReply({ content: mensagens.nomeAtualizado });
+  return confirmarNoPainel(interaction, `✏️ Nome atualizado: **${novoJogo}**.`);
 }
 
 async function onModalLimit(interaction) {
-  await interaction.deferReply({ flags: 64 });
+  await interaction.deferUpdate();
   const check = await exigirCallDoLider(interaction);
-  if (!check.ok) return interaction.editReply(check.reply);
+  if (!check.ok) {
+    return responderNoPainel(interaction, { ephemeralError: check.reply.content || check.reply });
+  }
   const canal = check.canal;
   const limite = parseInt(interaction.fields.getTextInputValue('limite_call_input').trim(), 10);
 
   if (isNaN(limite) || limite < 0 || limite > 99) {
-    return interaction.editReply({ content: mensagens.limiteInvalido });
+    return confirmarNoPainel(interaction, mensagens.limiteInvalido);
   }
 
   await comTimeout(() => canal.setUserLimit(limite));
-  return interaction.editReply({
-    content: mensagens.limiteAtualizado(limite)
-  });
+  return confirmarNoPainel(interaction, mensagens.limiteAtualizado(limite));
 }
 
 async function onSelectPassDono(interaction) {
-  await interaction.deferReply({ flags: 64 });
+  await interaction.deferUpdate();
   const check = await exigirCallDoLider(interaction);
-  if (!check.ok) return interaction.editReply(check.reply);
+  if (!check.ok) {
+    return responderNoPainel(interaction, { ephemeralError: check.reply.content || check.reply });
+  }
   const canal = check.canal;
   const novoDonoId = interaction.values[0];
   const antigoDono = interaction.member;
   const novoDono = canal.members.get(novoDonoId);
 
-  if (!novoDono || novoDono.user.bot) return interaction.editReply({ content: mensagens.membroNaoEncontradoLideranca });
+  if (!novoDono || novoDono.user.bot) {
+    return confirmarNoPainel(interaction, mensagens.membroNaoEncontradoLideranca);
+  }
 
   try {
     await comTimeout((ativo) => transferirLideranca(canal, check.dadosCall.donoId, novoDono, interaction.client, ativo));
@@ -200,11 +247,11 @@ async function onSelectPassDono(interaction) {
     });
     if (error.code === 10003) {
       await interaction.client.stores.calls.remover(canal.id).catch(() => {});
-      return interaction.editReply({ content: mensagens.canalInexistente, components: [] });
+      return confirmarNoPainel(interaction, mensagens.canalInexistente);
     }
     throw error;
   }
-  await interaction.editReply({ content: mensagens.liderancaTransferida });
+  await confirmarNoPainel(interaction, `👑 Liderança transferida para ${novoDono}.`);
   return canal.send({ content: mensagens.liderancaPublica(antigoDono, novoDono) });
 }
 
@@ -242,41 +289,47 @@ function menuMembro(customId, membros, texto) {
 }
 
 async function onMemberAction(interaction, action) {
-  await interaction.deferReply({ flags: 64 });
+  await interaction.deferUpdate();
   const check = await exigirCallDoLider(interaction);
-  if (!check.ok) return interaction.editReply(check.reply);
+  if (!check.ok) {
+    return responderNoPainel(interaction, { ephemeralError: check.reply.content || check.reply });
+  }
   const membrosNaCall = obterMembrosAcao(check.canal, interaction.member.id);
-  if (membrosNaCall.length === 0) return interaction.editReply({ content: mensagens.semAlvos });
-  return interaction.editReply(paginacaoMembros(action, 0, membrosNaCall, mensagens.selecioneMembro));
+  if (membrosNaCall.length === 0) return confirmarNoPainel(interaction, mensagens.semAlvos);
+  return responderNoPainel(interaction, paginacaoMembros(action, 0, membrosNaCall, mensagens.selecioneMembro));
 }
 
 async function onCallPage(interaction) {
   await interaction.deferUpdate();
   const check = await exigirCallDoLider(interaction);
-  if (!check.ok) return interaction.editReply(check.reply);
+  if (!check.ok) {
+    return responderNoPainel(interaction, { ephemeralError: check.reply.content || check.reply });
+  }
   const [, , action, paginaTexto] = interaction.customId.split('_');
   const pagina = Number(paginaTexto);
   const membros = obterMembrosAcao(check.canal, interaction.member.id);
   const totalPaginas = Math.ceil(membros.length / 25);
   if (!Number.isInteger(pagina) || pagina < 0 || pagina >= totalPaginas) {
-    return interaction.editReply({ content: mensagens.paginaIndisponivel, components: [] });
+    return confirmarNoPainel(interaction, mensagens.paginaIndisponivel);
   }
   const texto = action === 'transfer' ? mensagens.selecioneLider : mensagens.selecioneMembro;
-  return interaction.editReply(paginacaoMembros(action, pagina, membros, texto));
+  return responderNoPainel(interaction, paginacaoMembros(action, pagina, membros, texto));
 }
 
 async function onSelectMemberAction(interaction, action) {
-  await interaction.deferReply({ flags: 64 });
+  await interaction.deferUpdate();
   const check = await exigirCallDoLider(interaction);
-  if (!check.ok) return interaction.editReply(check.reply);
+  if (!check.ok) {
+    return responderNoPainel(interaction, { ephemeralError: check.reply.content || check.reply });
+  }
   const memberId = interaction.values[0];
   const membro = check.canal.members.get(memberId);
   if (!membro || membro.user.bot || membro.id === check.dadosCall.donoId) {
-    return interaction.editReply({ content: mensagens.membroNaoEncontrado });
+    return confirmarNoPainel(interaction, mensagens.membroNaoEncontrado);
   }
 
   if (action === 'ban' && check.dadosCall.bannedUserIds.includes(memberId)) {
-    return interaction.editReply({ content: mensagens.jaBanido });
+    return confirmarNoPainel(interaction, mensagens.jaBanido);
   }
 
   if (action === 'ban') {
@@ -285,18 +338,27 @@ async function onSelectMemberAction(interaction, action) {
     }));
   }
   await comTimeout(() => membro.voice.disconnect());
-  return interaction.editReply({ content: action === 'ban' ? mensagens.banido : mensagens.removido });
+  return confirmarNoPainel(interaction, action === 'ban' ? mensagens.banido : mensagens.removido);
 }
 
 async function onInvite(interaction) {
-  await interaction.deferReply({ flags: 64 });
+  await interaction.deferUpdate();
   const check = await exigirCallDoLider(interaction);
-  if (!check.ok) return interaction.editReply(check.reply);
+  if (!check.ok) {
+    return responderNoPainel(interaction, { ephemeralError: check.reply.content || check.reply });
+  }
   const convite = await comTimeout(() => check.canal.createInvite({ maxAge: 3600, maxUses: 0, unique: true }).catch((error) => {
     if (error.code === 10003) return null;
     throw error;
   }));
-  return interaction.editReply({ content: convite ? mensagens.conviteGerado(convite.url) : mensagens.conviteFalhou });
+  if (!convite) {
+    return confirmarNoPainel(interaction, mensagens.conviteFalhou);
+  }
+  // Convite vai ephemeral para o líder (não polui a call com URL visível)
+  try {
+    await interaction.followUp({ content: mensagens.conviteGerado(convite.url), flags: 64 });
+  } catch (_) {}
+  return interaction.client.stores.calls.get(check.canal.id) && confirmarNoPainel(interaction, '🔗 Convite gerado e enviado no seu privado.');
 }
 
 function register(registry) {

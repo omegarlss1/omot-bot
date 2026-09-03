@@ -61,6 +61,18 @@ class CallsStore {
     this.mem.set(channelId, { hidden: false, bannedUserIds: [], ...dados });
   }
 
+  async setPanelMessageId(channelId, panelMessageId) {
+    const atual = this.mem.get(channelId);
+    if (!atual) return null;
+    await CallTemporaria.updateOne({ channelId }, { $set: { panelMessageId } });
+    atual.panelMessageId = panelMessageId;
+    return atual;
+  }
+
+  getPanelMessageId(channelId) {
+    return this.mem.get(channelId)?.panelMessageId || null;
+  }
+
   async atualizar(channelId, patch) {
     const atual = this.mem.get(channelId);
     if (!atual) return null;
