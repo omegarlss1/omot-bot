@@ -32,47 +32,61 @@ function compactarLinhasComponentes(rows) {
 
 // ─── Botões Admin do Perfil ───────────────────────────────────────────────────
 
+// ─── Botões Admin do Perfil ───────────────────────────────────────────────────
+
+const STAT_FIELDS = [
+  { key: 'gol', label: 'Gol', emoji: '⚽', style: ButtonStyle.Success },
+  { key: 'assist', label: 'Assist', emoji: '🅰️', style: ButtonStyle.Primary },
+  { key: 'save', label: 'Save', emoji: '🧤', style: ButtonStyle.Secondary },
+  { key: 'chutes', label: 'Chutes', emoji: '🥅', style: ButtonStyle.Secondary },
+  { key: 'mvp', label: 'MVP', emoji: '🏅', style: ButtonStyle.Danger },
+  { key: 'pontuacao', label: 'Pontos', emoji: '🎯', style: ButtonStyle.Primary }
+];
+
+function statButton(prefixo, stat, targetId) {
+  return new ButtonBuilder()
+    .setCustomId(`btn_admin_${prefixo}_${stat.key}_${targetId}`)
+    .setLabel(`${prefixo === 'minus' ? '−' : '+'} ${stat.label}`)
+    .setStyle(prefixo === 'minus' ? ButtonStyle.Secondary : stat.style)
+    .setEmoji(stat.emoji);
+}
+
 function buildAdminButtons(targetId) {
   if (!targetId) return [];
 
   const row1 = new ActionRowBuilder();
-  row1.addComponents(
-    new ButtonBuilder().setCustomId(`btn_admin_gol_${targetId}`).setLabel('+ Gol').setStyle(ButtonStyle.Success).setEmoji('⚽'),
-    new ButtonBuilder().setCustomId(`btn_admin_assist_${targetId}`).setLabel('+ Assist').setStyle(ButtonStyle.Primary).setEmoji('🅰️'),
-    new ButtonBuilder().setCustomId(`btn_admin_save_${targetId}`).setLabel('+ Save').setStyle(ButtonStyle.Secondary).setEmoji('🧤'),
-    new ButtonBuilder().setCustomId(`btn_admin_chutes_${targetId}`).setLabel('+ Chutes').setStyle(ButtonStyle.Secondary).setEmoji('🥅'),
-    new ButtonBuilder().setCustomId(`btn_admin_mvp_${targetId}`).setLabel('+ MVP').setStyle(ButtonStyle.Danger).setEmoji('🏅')
-  );
+  STAT_FIELDS.slice(0, 5).forEach((s) => row1.addComponents(statButton('add', s, targetId)));
 
   const row2 = new ActionRowBuilder();
   row2.addComponents(
-    new ButtonBuilder().setCustomId(`btn_admin_pontuacao_${targetId}`).setLabel('+ Pontos').setStyle(ButtonStyle.Primary).setEmoji('🎯'),
+    statButton('add', STAT_FIELDS[5], targetId),
     new ButtonBuilder().setCustomId(`btn_admin_add_titulo_${targetId}`).setLabel('+ Título').setStyle(ButtonStyle.Success).setEmoji('🏆')
   );
 
-  return [row1, row2];
+  const row3 = new ActionRowBuilder();
+  STAT_FIELDS.slice(0, 5).forEach((s) => row3.addComponents(statButton('minus', s, targetId)));
+
+  const row4 = new ActionRowBuilder();
+  row4.addComponents(statButton('minus', STAT_FIELDS[5], targetId));
+
+  return [row1, row2, row3, row4];
 }
 
 // ─── Modal de Stat Admin ──────────────────────────────────────────────────────
 
-function buildAdminStatModal(field, targetId) {
-  const labels = {
-    gol: 'Gol',
-    assist: 'Assist',
-    save: 'Save',
-    chutes: 'Chutes',
-    mvp: 'MVP',
-    pontuacao: 'Pontuação'
-  };
+function buildAdminStatModal(prefixo, field, targetId) {
+  const stat = STAT_FIELDS.find((s) => s.key === field) || { key: field, label: 'estatística' };
+  const sinal = prefixo === 'minus' ? '−' : '+';
+  const acao = prefixo === 'minus' ? 'subtrair' : 'adicionar';
 
   const modal = new ModalBuilder()
-    .setCustomId(`modal_admin_stat_${field}_${targetId}`)
-    .setTitle(`Adicionar ${labels[field] || 'estatística'}`);
+    .setCustomId(`modal_admin_stat_${prefixo}_${field}_${targetId}`)
+    .setTitle(`${sinal} ${stat.label}`);
 
   const inputValor = new TextInputBuilder()
     .setCustomId('admin_stat_valor')
-    .setLabel(`Quantidade a adicionar em ${labels[field] || 'estatística'}`)
-    .setPlaceholder('Ex: 1, 3, 5')
+    .setLabel(`Quantidade a ${acao} em ${stat.label}`)
+    .setPlaceholder(prefixo === 'minus' ? 'Ex: 1, 2, 3' : 'Ex: 1, 3, 5')
     .setStyle(TextInputStyle.Short)
     .setRequired(true);
 

@@ -657,9 +657,9 @@ async function onAbrirModalAdminEstatistica(interaction) {
   if (!hasPermissaoAdmin(interaction.member)) {
     return responderFichaNoPainel(interaction, { content: '❌ Apenas administradores ou membros de staff podem alterar essas estatísticas.', embeds: [], components: [] });
   }
-  const [, campo, targetId] = interaction.customId.match(/^btn_admin_(gol|assist|save|chutes|mvp|pontuacao)_(.+)$/) || [];
-  if (!campo || !targetId) return;
-  return interaction.showModal(buildAdminStatModal(campo, targetId));
+  const [, prefixo, campo, targetId] = interaction.customId.match(/^btn_admin_(add|minus)_(gol|assist|save|chutes|mvp|pontuacao)_(.+)$/) || [];
+  if (!prefixo || !campo || !targetId) return;
+  return interaction.showModal(buildAdminStatModal(prefixo, campo, targetId));
 }
 
 async function onAdminIncrement(interaction) {
@@ -668,9 +668,9 @@ async function onAdminIncrement(interaction) {
     return responderFichaNoPainel(interaction, { content: '❌ Apenas administradores ou membros de staff podem alterar essas estatísticas.', embeds: [], components: [] });
   }
 
-  const match = interaction.customId.match(/^modal_admin_stat_(gol|assist|save|chutes|mvp|pontuacao)_(.+)$/);
+  const match = interaction.customId.match(/^modal_admin_stat_(add|minus)_(gol|assist|save|chutes|mvp|pontuacao)_(.+)$/);
   if (!match) return;
-  const [, campo, targetId] = match;
+  const [, prefixo, campo, targetId] = match;
   const valorTexto = interaction.fields.getTextInputValue('admin_stat_valor').trim();
   if (!/^-?\d+(?:[.,]\d+)?$/.test(valorTexto.replace(/\s/g, ''))) {
     return responderFichaNoPainel(interaction, { content: '❌ Digite apenas números no campo de valor.', embeds: [], components: [] });
@@ -679,8 +679,9 @@ async function onAdminIncrement(interaction) {
   const camposMap = { gol: 'gols', assist: 'assist', save: 'saves', chutes: 'chutes', mvp: 'mvps', pontuacao: 'pontuacao' };
   const fieldName = camposMap[campo];
   if (!fieldName) return;
-  const valor = Number(valorTexto.replace(',', '.'));
-  if (!Number.isFinite(valor)) return;
+  const valorAbs = Number(valorTexto.replace(',', '.'));
+  if (!Number.isFinite(valorAbs)) return;
+  const valor = prefixo === 'minus' ? -Math.abs(valorAbs) : Math.abs(valorAbs);
 
   const perfilAtualizado = await PerfilMembro.findOneAndUpdate(
     { guildId: interaction.guildId, userId: targetId },
@@ -974,7 +975,7 @@ function register(registry) {
   registry.button('btn_abrir_busca_nick', onAbrirBuscaNickModal);
 
   // Admin: stats
-  registry.button(/^btn_admin_(gol|assist|save|chutes|mvp|pontuacao)_[0-9]+$/, onAbrirModalAdminEstatistica);
+  registry.button(/^btn_admin_(add|minus)_(gol|assist|save|chutes|mvp|pontuacao)_[0-9]+$/, onAbrirModalAdminEstatistica);
 
   // Admin: fluxo de títulos
   registry.button(/^btn_admin_add_titulo_[0-9]+$/, onAbrirEscolhaTitulo);
@@ -984,7 +985,7 @@ function register(registry) {
   registry.button(/^btn_abrir_finais_(omega|comunidade)_[123]_[0-9]+$/, onAbrirModalFinais);
 
   // Modals
-  registry.modal(/^modal_admin_stat_(gol|assist|save|chutes|mvp|pontuacao)_[0-9]+$/, onAdminIncrement);
+  registry.modal(/^modal_admin_stat_(add|minus)_(gol|assist|save|chutes|mvp|pontuacao)_[0-9]+$/, onAdminIncrement);
   registry.modal(/^modal_titulo_semis_(omega|comunidade)_[123]_[0-9]+$/, onSubmitSemifinais);
   registry.modal(/^modal_titulo_finais_(omega|comunidade)_[123]_[0-9]+$/, onSubmitFinais);
   registry.modal(/^modal_titulo_tabela_(omega|comunidade)_[123]_[0-9]+$/, onSubmitTabelaColocacao);
