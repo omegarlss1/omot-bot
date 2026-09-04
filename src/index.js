@@ -11,7 +11,7 @@ async function main() {
   startHttpServer(() => ({
     ready: Boolean(client?.isReady()),
     tag: client?.user?.tag || null
-  }));
+  }), () => client);
 
   await connectDb();
 
