@@ -5,7 +5,7 @@ const GAMES = [
     key: 'sideswipe',
     nome: 'RL SideSwipe',
     emoji: '🏎️',
-    roleId: requireEnv('CARGO_RLSIDESWIPE_ID'),
+    roleId: optionalEnv('CARGO_RLSIDESWIPE_ID', null),
     descricaoChamada: 'Notifica a galera do SideSwipe',
     descricaoCargo: 'Avisos de chamadas do SideSwipe'
   },
@@ -13,7 +13,7 @@ const GAMES = [
     key: 'diversos',
     nome: 'Jogos Diversos',
     emoji: '🎮',
-    roleId: requireEnv('CARGO_JOGOSDIVERSOS_ID'),
+    roleId: optionalEnv('CARGO_JOGOSDIVERSOS_ID', null),
     descricaoChamada: 'Notifica a galera de Jogos Diversos',
     descricaoCargo: 'Avisos de chamadas de outros jogos'
   }
@@ -35,14 +35,14 @@ module.exports = {
   mongoUri: requireEnv('MONGODB_URI'),
   port: Number(optionalEnv('PORT', 3000)),
   discord: {
-    canalPingsId: requireEnv('CANAL_PINGS_ID')
+    canalPingsId: optionalEnv('CANAL_PINGS_ID', null)
   },
   games: GAMES,
   ranks: RANKS,
   campeonato: {
-    cargoOrganizacaoId: requireEnv('CARGO_ORGANIZADORCAMPS_ID'),
+    cargoOrganizacaoId: optionalEnv('CARGO_ORGANIZADORCAMPS_ID', null),
     cargosRanks: Object.fromEntries(
-      RANKS.map((r) => [r.key, requireEnv(`CARGO_${r.key.toUpperCase()}_ID`)])
+      RANKS.map((r) => [r.key, optionalEnv(`CARGO_${r.key.toUpperCase()}_ID`, null)])
     )
   },
   startgg: {
