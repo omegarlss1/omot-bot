@@ -5,8 +5,11 @@ const {
   ActionRowBuilder
 } = require('discord.js');
 const config = require('../../config');
-const { embedCriarEvento, embedSelecionarRanks, botoesSelecionarRanks, embedEventoCriado } = require('./embeds');
+const { embedCriarEvento, embedSelecionarRanks, botoesSelecionarRanks, embedEventoCriado, embedPainelInscricao, embedInscricaoConfirmada, embedResumoCorte, embedMenuFormato } = require('./embeds');
 const { criarEvento, EventoError } = require('./service');
+const { inscreverCapitao, fecharInscricoes, executarCorte, definirFormato, findCampeonatoPorCanalInscricao, listarInscricoes, InscricaoError } = require('./services/inscricao');
+const { InscricaoError: ValidacaoInscricaoError } = require('./validators/inscricao');
+const { CorteError } = require('./validators/corte');
 
 const selecaoRanks = new Map();
 
@@ -187,6 +190,120 @@ function register(registry) {
   registry.button(/^btn_camp_rank_toggle_(bronze|prata|ouro|platina|diamante|champion|grand_champion|omega_champion)$/, onToggleRank);
   registry.button('btn_camp_rank_confirmar', onConfirmarRanks);
   registry.modal('modal_criar_evento', onSubmitCriarEvento);
+  registry.button('btn_camp_inscrever', onBotaoInscrever);
+  registry.modal('modal_camp_inscricao', onSubmitInscricao);
+  registry.button('btn_camp_fechar_inscricoes', onBotaoFecharInscricoes);
+  registry.button('btn_camp_cortar', onBotaoCortar);
+  registry.button(/^btn_camp_formato_(round-robin|grupos-mata-mata|double-elimination|single-elimination)_[a-f0-9]{24}$/, onEscolherFormato);
 }
 
 module.exports = { register, temPermissaoOrganizador, parseDataBR };
+
+// ─── INSCRIÇÃO ────────────────────────────────────────────────────────────────
+
+async function onBotaoInscrever(interaction) {
+  const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId);
+  if (!campeonato) {
+    return interaction.reply({ content: '❌ Este canal não é de inscrição de campeonato.', flags: 64 });
+  }
+  if (campeonato.status !== 'INSCRICOES_ABERTAS') {
+    return interaction.reply({ content: '❌ Inscrições não estão abertas.', flags: 64 });
+  }
+  const modal = new ModalBuilder()
+    .setCustomId('modal_camp_inscricao')
+    .setTitle('Inscrição — ' + String(campeonato.rank || '').toUpperCase());
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId('inscricao_nome_time')
+        .setLabel('Nome do Time (opcional)')
+        .setStyle(TextInputStyle.Short)
+        .setMaxLength(40)
+        .setRequired(false)
+    )
+  );
+  return interaction.showModal(modal);
+}
+
+async function onSubmitInscricao(interaction) {
+  await interaction.deferReply({ flags: 64 });
+  const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId);
+  if (!campeonato) {
+    return interaction.editReply({ content: '❌ Campeonato não encontrado neste canal.' });
+  }
+  const nomeTime = interaction.fields.getTextInputValue('inscricao_nome_time');
+  try {
+    const { time, dadosCapitao } = await inscreverCapitao({
+      guild: interaction.guild,
+      member: interaction.member,
+      campeonato,
+      nomeTime
+    });
+    return interaction.editReply(embedInscricaoConfirmada({ time, capitao: dadosCapitao }));
+  } catch (error) {
+    if (error instanceof InscricaoError || error instanceof ValidacaoInscricaoError) {
+      return interaction.editReply({ content: `❌ ${error.message}` });
+    }
+    console.error('[campeonato.inscricao] erro:', error);
+    return interaction.editReply({ content: '❌ Erro ao processar inscrição.' });
+  }
+}
+
+async function onBotaoFecharInscricoes(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.reply({ content: '❌ Apenas `@OrganizadorCamps` pode fechar inscrições.', flags: 64 });
+  }
+  const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId);
+  if (!campeonato) {
+    return interaction.reply({ content: '❌ Campeonato não encontrado.', flags: 64 });
+  }
+  const inscricoes = await listarInscricoes(campeonato._id);
+  await fecharInscricoes(campeonato._id);
+  return interaction.reply({
+    content: `🔒 Inscrições fechadas. **${inscricoes.length}** time(s) inscrito(s).`,
+    flags: 64
+  });
+}
+
+async function onBotaoCortar(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.reply({ content: '❌ Apenas `@OrganizadorCamps` pode cortar.', flags: 64 });
+  }
+  const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId);
+  if (!campeonato) {
+    return interaction.reply({ content: '❌ Campeonato não encontrado.', flags: 64 });
+  }
+  await interaction.deferReply({ flags: 64 });
+  try {
+    const resultado = await executarCorte({
+      campeonatoId: campeonato._id,
+      tipoDupla: campeonato.tipoDupla || 'SORTEADA'
+    });
+    await interaction.editReply(embedResumoCorte(resultado));
+    if (resultado.precisaEscolherFormato) {
+      const menu = embedMenuFormato(campeonato._id, resultado.totalTimes, resultado.alternativas);
+      await interaction.followUp({ ...menu, flags: 64 });
+    }
+  } catch (error) {
+    if (error instanceof CorteError) {
+      return interaction.editReply({ content: `❌ ${error.message}` });
+    }
+    console.error('[campeonato.corte] erro:', error);
+    return interaction.editReply({ content: '❌ Erro ao processar corte.' });
+  }
+}
+
+async function onEscolherFormato(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.update({ content: '❌ Sem permissão.', embeds: [], components: [] });
+  }
+  const match = interaction.customId.match(/^btn_camp_formato_([\w-]+)_([a-f0-9]{24})$/);
+  if (!match) return;
+  const [, formato, campeonatoId] = match;
+  await definirFormato(campeonatoId, formato);
+  return interaction.update({
+    content: `✅ Formato definido como **${formato}**.`,
+    embeds: [],
+    components: []
+  });
+}

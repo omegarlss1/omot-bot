@@ -90,6 +90,74 @@ module.exports = {
   embedSelecionarRanks,
   botoesSelecionarRanks,
   embedEventoCriado,
+  embedPainelInscricao,
+  embedInscricaoConfirmada,
+  embedResumoCorte,
+  embedMenuFormato,
   corRank,
   CORES
 };
+
+function embedPainelInscricao(campeonato, totalInscritos) {
+  const rankLabel = String(campeonato.rank || '').toUpperCase();
+  return {
+    embeds: [{
+      title: '🎮 Inscrições Abertas — ' + rankLabel,
+      description: 'Campeonato: **' + campeonato.nome + '**\nModo: **' + campeonato.modo + '** | Tipo: **' + campeonato.tipoDupla + '**\n\n' +
+        'Clique no botão abaixo para inscrever seu time. Você deve ter o **cargo @' + rankLabel + '** no Discord e o rank correspondente na sua ficha.',
+      color: 0x00C2FF,
+      fields: [
+        { name: '📊 Inscritos', value: String(totalInscritos || 0) + ' jogador(es)', inline: true },
+        { name: '🎯 Modo', value: campeonato.modo, inline: true },
+        { name: '👥 Tipo', value: campeonato.tipoDupla, inline: true }
+      ]
+    }],
+    components: [[
+      { type: 2, style: 3, label: '🎮 Inscrever Time', custom_id: 'btn_camp_inscrever', emoji: { name: '🎮' } }
+    ]]
+  };
+}
+
+function embedInscricaoConfirmada({ time, capitao }) {
+  return {
+    embeds: [{
+      title: '✅ Inscrição Confirmada!',
+      description: '**' + time.nome + '** entrou no campeonato.\nCapitão: <@' + capitao.userId + '> (' + capitao.nickSnapshot + ')',
+      color: 0x00FF00
+    }]
+  };
+}
+
+function embedResumoCorte({ totalAntes, totalDepois, removidos, motivoCorte, potenciaDe2, totalTimes, menuFormatoNecessario, alternativas }) {
+  const fields = [
+    { name: '👥 Inscritos antes', value: String(totalAntes), inline: true },
+    { name: '🗑️ Removidos', value: String(removidos) + (motivoCorte ? ' (' + motivoCorte + ')' : ''), inline: true },
+    { name: '✅ Restantes', value: String(totalDepois), inline: true }
+  ];
+  if (potenciaDe2) {
+    fields.push({ name: '🎯 Total de times', value: String(totalTimes) + ' (potência de 2 — pode iniciar single elimination)', inline: false });
+  } else if (menuFormatoNecessario) {
+    fields.push({
+      name: '⚠️ Não é potência de 2',
+      value: 'Total de times: **' + totalTimes + '**. Escolha um formato alternativo:\n' + alternativas.map((f) => '• ' + f).join('\n'),
+      inline: false
+    });
+  }
+  return { embeds: [{ title: '✂️ Corte Realizado', color: potenciaDe2 ? 0x00FF00 : 0xFFA500, fields }] };
+}
+
+function embedMenuFormato(campeonatoId, totalTimes, alternativas) {
+  return {
+    embeds: [{
+      title: '⚠️ Escolha o Formato do Campeonato',
+      description: 'Com **' + totalTimes + '** times, não é possível usar Single Elimination.\n\n' +
+        'Como organizador, escolha um formato alternativo:',
+      color: 0xFFA500
+    }],
+    components: [alternativas.map((f) => ({
+      type: 2, style: 1,
+      label: f.replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase()),
+      custom_id: 'btn_camp_formato_' + f + '_' + campeonatoId
+    }))]
+  };
+}
