@@ -21,7 +21,14 @@ const EVENTOS = {
   WO_REGISTRADO: 'wo.registrado',
   PARTIDA_FINALIZADA: 'partida.finalizada',
   DESEMPATE_NECESSARIO: 'desempate.necessario',
-  CLASSIFICACAO_CALCULADA: 'classificacao.calculada'
+  CLASSIFICACAO_CALCULADA: 'classificacao.calculada',
+  CAMPEAO_DEFINIDO: 'campeao.definido',
+  CAMPEONATO_CANCELADO: 'campeonato.cancelado',
+  CAMPEONATO_REABERTO: 'campeonato.reaberto',
+  TIME_DESCLASSIFICADO: 'time.desclassificado',
+  PLACAR_AJUSTADO: 'placar.ajustado',
+  STARTGG_SCORE_REPORTADO: 'startgg.score.reportado',
+  NOTIFICACAO_ENVIADA: 'notificacao.enviada'
 };
 
 function emitir(chaveOuValor, payload) {

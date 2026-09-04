@@ -1,6 +1,8 @@
 const Partida = require('../../../db/models/partida');
 const Time = require('../../../db/models/time');
+const Campeonato = require('../../../db/models/campeonato');
 const { emitir, EVENTOS } = require('../events');
+const { StartGGAdapter } = require('../adapters/StartGGAdapter');
 
 class PlacarError extends Error {
   constructor(mensagem, code) {
@@ -8,6 +10,25 @@ class PlacarError extends Error {
     this.name = 'PlacarError';
     this.code = code || 'PLACAR_ERROR';
   }
+}
+
+let _adapter = null;
+function _getAdapter() {
+  if (_adapter) return _adapter;
+  _adapter = new StartGGAdapter();
+  return _adapter;
+}
+function _setAdapter(adapter) { _adapter = adapter; }
+
+const _partidaModel = {
+  findById: (id) => Partida.findById(id)
+};
+const _campeonatoModel = {
+  findById: (id) => Campeonato.findById(id)
+};
+function _setModels({ partida, campeonato } = {}) {
+  if (partida) _partidaModel.findById = partida.findById;
+  if (campeonato) _campeonatoModel.findById = campeonato.findById;
 }
 
 function parsePlacar(texto) {
@@ -93,6 +114,7 @@ async function validarPlacar({ partidaId, userId, timeId, aceito }) {
     await aplicarPontuacao(partidaId, novoEstado.vencedorId, parsed?.golsA, parsed?.golsB);
     emitir(EVENTOS.PLACAR_VALIDADO, { partidaId, placar: placarA });
     emitir(EVENTOS.PARTIDA_FINALIZADA, { partidaId, vencedorId: novoEstado.vencedorId, porWO: false });
+    await _tentarReportarStartGG(partidaId, novoEstado.vencedorId, placarA).catch(() => null);
   }
   return { ok: true, status: novoEstado.status || 'AGUARDANDO_VALIDACAO' };
 }
@@ -110,4 +132,20 @@ async function aplicarPontuacao(partidaId, vencedorId, golsA, golsB) {
   );
 }
 
-module.exports = { enviarPlacar, validarPlacar, parsePlacar, PlacarError };
+async function _tentarReportarStartGG(partidaId, vencedorId, placar) {
+  const partida = await _partidaModel.findById(partidaId);
+  if (!partida) return { ok: false, motivo: 'PARTIDA_NAO_ENCONTRADA' };
+  if (!partida.startggSetId) return { ok: false, motivo: 'SEM_SET_ID' };
+  const camp = await _campeonatoModel.findById(partida.campeonatoId);
+  if (!camp || !camp.startgg?.tournamentId) return { ok: false, motivo: 'SEM_TOURNAMENT_ID' };
+  try {
+    const adapter = _getAdapter();
+    const res = await adapter.reportScore({ setId: partida.startggSetId, winnerId: vencedorId, gameNum: 1 });
+    emitir(EVENTOS.STARTGG_SCORE_REPORTADO, { partidaId: String(partidaId), setId: partida.startggSetId, res });
+    return { ok: true, res };
+  } catch (err) {
+    return { ok: false, erro: err?.message };
+  }
+}
+
+module.exports = { enviarPlacar, validarPlacar, parsePlacar, PlacarError, _setAdapter, _setModels, _tentarReportarStartGG };

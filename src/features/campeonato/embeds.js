@@ -168,6 +168,62 @@ function embedClassificacao({ classificacao, desempatesPendentes }) {
   return { embeds: [{ title: '📊 Classificação', description: desc, color: 0x00C2FF }] };
 }
 
+function embedCampeaoDefinido({ vencedor, podio }) {
+  const linhas = podio.map((p) => p.posicao + 'º — ' + p.nome).join('\n');
+  return {
+    embeds: [{
+      title: '🏆 Campeão Definido!',
+      description: '**' + vencedor.nome + '** é o grande campeão!\n\n**Pódio:**\n' + linhas,
+      color: 0xFFD700
+    }]
+  };
+}
+
+function embedPainelAdmin({ campeonato }) {
+  return {
+    embeds: [{
+      title: '🛠️ Painel Admin — ' + campeonato.rank.toUpperCase(),
+      description: 'Ações restritas a organizadores do campeonato `' + campeonato._id + '`.',
+      color: 0xFF6B00,
+      fields: [
+        { name: '📌 Status', value: campeonato.status, inline: true }
+      ]
+    }],
+    components: [[
+      { type: 2, style: 1, label: '🏁 Finalizar', custom_id: 'btn_camp_finalizar_' + campeonato._id, emoji: { name: '🏁' } },
+      { type: 2, style: 4, label: '⛔ Cancelar', custom_id: 'btn_camp_cancelar_' + campeonato._id, emoji: { name: '⛔' } }
+    ]]
+  };
+}
+
+function embedCancelamentoConfirmado({ motivo }) {
+  return { embeds: [{ title: '⛔ Campeonato cancelado', description: motivo || 'Sem motivo informado.', color: 0xFF0000 }] };
+}
+
+function embedReaberturaConfirmada() {
+  return { embeds: [{ title: '♻️ Campeonato reaberto', description: 'O campeonato voltou ao status EM_ANDAMENTO.', color: 0x00FF00 }] };
+}
+
+function embedTimeDesclassificado({ time, partidasAnuladas }) {
+  return {
+    embeds: [{
+      title: '⛔ Time desclassificado',
+      description: 'Time **' + (time.nome || time._id) + '** foi desclassificado. ' + partidasAnuladas + ' partida(s) anulada(s) por WO.',
+      color: 0xFF0000
+    }]
+  };
+}
+
+function embedPlacarAjustado({ novoPlacar, vencedorNome }) {
+  return {
+    embeds: [{
+      title: '🛠️ Placar ajustado pela organização',
+      description: 'Novo placar: **' + novoPlacar + '**\nVencedor: **' + vencedorNome + '**',
+      color: 0xFFA500
+    }]
+  };
+}
+
 module.exports = {
   embedCriarEvento,
   embedSelecionarRanks,
@@ -182,6 +238,12 @@ module.exports = {
   embedDisputaOrganizador,
   embedBracket,
   embedClassificacao,
+  embedCampeaoDefinido,
+  embedPainelAdmin,
+  embedCancelamentoConfirmado,
+  embedReaberturaConfirmada,
+  embedTimeDesclassificado,
+  embedPlacarAjustado,
   corRank,
   CORES
 };

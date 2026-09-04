@@ -5,7 +5,7 @@ const {
   ActionRowBuilder
 } = require('discord.js');
 const config = require('../../config');
-const { embedCriarEvento, embedSelecionarRanks, botoesSelecionarRanks, embedEventoCriado, embedPainelInscricao, embedInscricaoConfirmada, embedResumoCorte, embedMenuFormato, embedPainelPartida, embedPlacarEnviado, embedDisputaOrganizador, embedBracket, embedClassificacao } = require('./embeds');
+const { embedCriarEvento, embedSelecionarRanks, botoesSelecionarRanks, embedEventoCriado, embedPainelInscricao, embedInscricaoConfirmada, embedResumoCorte, embedMenuFormato, embedPainelPartida, embedPlacarEnviado, embedDisputaOrganizador, embedBracket, embedClassificacao, embedCampeaoDefinido, embedPainelAdmin, embedCancelamentoConfirmado, embedReaberturaConfirmada, embedTimeDesclassificado, embedPlacarAjustado } = require('./embeds');
 const { criarEvento, EventoError } = require('./service');
 const { inscreverCapitao, fecharInscricoes, executarCorte, definirFormato, findCampeonatoPorCanalInscricao, listarInscricoes, InscricaoError } = require('./services/inscricao');
 const { InscricaoError: ValidacaoInscricaoError } = require('./validators/inscricao');
@@ -15,6 +15,10 @@ const { registrarCheckIn, verificarAdversarioFaltou, registrarWO, CheckinError }
 const { enviarPlacar, validarPlacar, parsePlacar, PlacarError } = require('./services/placar');
 const { placarEhValido } = require('./validators/placar');
 const { calcularClassificacao } = require('./services/classificacao');
+const { finalizarCampeonato, obterClassificacaoFinal, FinalizacaoError } = require('./services/finalizacao');
+const { cancelarCampeonato, reabrirCampeonato, desclassificarTime, ajustarPlacar, AdminError } = require('./services/admin');
+const { notificarCampeao, anunciarNoCanal } = require('./services/notificacoes');
+const Campeonato = require('../../db/models/campeonato');
 const Partida = require('../../db/models/partida');
 const Time = require('../../db/models/time');
 
@@ -448,6 +452,83 @@ async function onBotaoVerBracket(interaction) {
   return interaction.editReply(embedBracket(ordenados));
 }
 
+async function onBotaoFinalizar(interaction) {
+  const cid = interaction.customId.replace('btn_camp_finalizar_', '');
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
+  }
+  await interaction.deferReply({ flags: 64 });
+  try {
+    const camp = await Campeonato.findById(cid);
+    if (!camp) return interaction.editReply({ content: 'Campeonato nao encontrado.' });
+    const r = await finalizarCampeonato({ campeonatoId: cid });
+    await notificarCampeao({
+      campeonatoId: cid,
+      vencedor: { capitaoId: r.vencedor.id, nome: r.vencedor.nome },
+      podio: r.podio
+    }).catch(() => null);
+    if (camp.canals?.geral) {
+      await anunciarNoCanal({
+        channelId: camp.canals.geral,
+        payload: embedCampeaoDefinido({ vencedor: r.vencedor, podio: r.podio })
+      }).catch(() => null);
+    }
+    return interaction.editReply(embedCampeaoDefinido({ vencedor: r.vencedor, podio: r.podio }));
+  } catch (error) {
+    if (error instanceof FinalizacaoError) return interaction.editReply({ content: error.message });
+    console.error('[campeonato.finalizar] erro:', error);
+    return interaction.editReply({ content: 'Erro ao finalizar.' });
+  }
+}
+
+async function onBotaoCancelar(interaction) {
+  const cid = interaction.customId.replace('btn_camp_cancelar_', '');
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
+  }
+  await interaction.deferReply({ flags: 64 });
+  try {
+    await cancelarCampeonato({ campeonatoId: cid, executadoPor: interaction.user.id });
+    return interaction.editReply(embedCancelamentoConfirmado({ motivo: 'Cancelado por organizador.' }));
+  } catch (error) {
+    if (error instanceof AdminError) return interaction.editReply({ content: error.message });
+    console.error('[campeonato.cancelar] erro:', error);
+    return interaction.editReply({ content: 'Erro ao cancelar.' });
+  }
+}
+
+async function onBotaoReabrir(interaction) {
+  const cid = interaction.customId.replace('btn_camp_reabrir_', '');
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
+  }
+  await interaction.deferReply({ flags: 64 });
+  try {
+    await reabrirCampeonato({ campeonatoId: cid, executadoPor: interaction.user.id });
+    return interaction.editReply(embedReaberturaConfirmada());
+  } catch (error) {
+    if (error instanceof AdminError) return interaction.editReply({ content: error.message });
+    return interaction.editReply({ content: 'Erro ao reabrir.' });
+  }
+}
+
+async function onSubmitDesclassificar(interaction) {
+  const tid = interaction.customId.replace('modal_camp_desclassificar_', '');
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
+  }
+  await interaction.deferReply({ flags: 64 });
+  const motivo = interaction.fields.getTextInputValue('motivo') || null;
+  try {
+    const r = await desclassificarTime({ timeId: tid, motivo, executadoPor: interaction.user.id });
+    const time = await Time.findById(tid).lean();
+    return interaction.editReply(embedTimeDesclassificado({ time, partidasAnuladas: r.partidasAnuladas }));
+  } catch (error) {
+    if (error instanceof AdminError) return interaction.editReply({ content: error.message });
+    return interaction.editReply({ content: 'Erro ao desclassificar.' });
+  }
+}
+
 function register(registry) {
   registry.button('btn_campeonato_criar', onAbrirPainelCriacao);
   registry.button('btn_campeonato_criar_evento', onBotaoCriarEvento);
@@ -468,6 +549,10 @@ function register(registry) {
   registry.button(/^btn_camp_contestar_placar_[a-f0-9]{24}$/, onBotaoContestarPlacar);
   registry.button('btn_camp_ver_classificacao', onBotaoVerClassificacao);
   registry.button('btn_camp_ver_bracket', onBotaoVerBracket);
+  registry.button(/^btn_camp_finalizar_[a-f0-9]{24}$/, onBotaoFinalizar);
+  registry.button(/^btn_camp_cancelar_[a-f0-9]{24}$/, onBotaoCancelar);
+  registry.button(/^btn_camp_reabrir_[a-f0-9]{24}$/, onBotaoReabrir);
+  registry.modal(/^modal_camp_desclassificar_[a-f0-9]{24}$/, onSubmitDesclassificar);
 }
 
 module.exports = { register, temPermissaoOrganizador, parseDataBR };
