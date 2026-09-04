@@ -85,6 +85,89 @@ function embedEventoCriado({ evento, categoria, campeonatos }) {
   };
 }
 
+function embedPainelPartida({ partida, timeA, timeB }) {
+  const checkA = partida.checkIns?.timeA?.fez ? '✅' : '⏳';
+  const checkB = partida.checkIns?.timeB?.fez ? '✅' : '⏳';
+  const statusEmoji = {
+    AGUARDANDO_CHECKIN: '⏰', AGUARDANDO_PLACAR: '🎮', AGUARDANDO_VALIDACAO: '⏳',
+    EM_DISPUTA_ORGANIZADOR: '⚖️', FINALIZADA: '🏆', CANCELADA: '❌', WO: '🚫'
+  }[partida.status] || '❓';
+  return {
+    embeds: [{
+      title: statusEmoji + ' Partida — Rodada ' + (partida.rodada || 1),
+      description: 'Fase: **' + (partida.fase || 'R1') + '** | Status: **' + partida.status + '**',
+      color: 0x00C2FF,
+      fields: [
+        { name: '🟦 Time A', value: (timeA?.nome || 'A definir') + ' ' + checkA, inline: true },
+        { name: '🟥 Time B', value: (timeB?.nome || 'A definir') + ' ' + checkB, inline: true },
+        { name: '🕐 Janela check-in', value: new Date(partida.janelaCheckIn.inicio).toLocaleString('pt-BR') + ' → ' + new Date(partida.janelaCheckIn.fim).toLocaleString('pt-BR'), inline: false }
+      ]
+    }],
+    components: [[
+      { type: 2, style: 3, label: '✅ Check-in', custom_id: 'btn_camp_checkin_' + partida._id, emoji: { name: '✅' } },
+      { type: 2, style: 4, label: '🚫 Adversário não compareceu', custom_id: 'btn_camp_adversario_faltou_' + partida._id, emoji: { name: '🚫' } },
+      { type: 2, style: 1, label: '🏆 Enviar Placar', custom_id: 'btn_camp_enviar_placar_' + partida._id, emoji: { name: '🏆' } }
+    ]]
+  };
+}
+
+function embedPlacarEnviado({ partida, lado, placar }) {
+  return {
+    embeds: [{
+      title: '⏳ Placar Enviado — Aguardando Validação',
+      description: 'Time ' + lado + ' enviou placar **' + placar + '**.\nO time adversário deve validar ou contestar.',
+      color: 0xFFA500
+    }],
+    components: [[
+      { type: 2, style: 3, label: '✅ Validar Placar', custom_id: 'btn_camp_validar_placar_' + partida._id, emoji: { name: '✅' } },
+      { type: 2, style: 4, label: '❌ Contestar', custom_id: 'btn_camp_contestar_placar_' + partida._id, emoji: { name: '❌' } }
+    ]]
+  };
+}
+
+function embedDisputaOrganizador({ partida, placarA, placarB }) {
+  return {
+    embeds: [{
+      title: '⚖️ Disputa de Placar — Organização',
+      description: 'Os times enviaram placares diferentes. A staff precisa definir.',
+      color: 0xFF6B00,
+      fields: [
+        { name: '🟦 Placar Time A', value: placarA || 'não enviado', inline: true },
+        { name: '🟥 Placar Time B', value: placarB || 'não enviado', inline: true }
+      ]
+    }]
+  };
+}
+
+function embedBracket(times = []) {
+  const linhas = [];
+  for (let i = 0; i < times.length; i += 2) {
+    const a = times[i] || { nome: 'TBD' };
+    const b = times[i + 1] || { nome: 'TBD' };
+    linhas.push('**' + a.nome + '** vs **' + b.nome + '**');
+  }
+  return {
+    embeds: [{
+      title: '🏆 Bracket — Rodada 1',
+      description: linhas.join('\n') || 'Sem chaves geradas ainda.',
+      color: 0xFFD700
+    }]
+  };
+}
+
+function embedClassificacao({ classificacao, desempatesPendentes }) {
+  const linhas = classificacao.map((c) =>
+    '**' + c.posicao + 'º** ' + c.nome + ' — ' + c.pontos + ' pts (' + c.vitorias + 'V / ' + c.derrotas + 'D)'
+  ).join('\n');
+  let desc = linhas || 'Nenhum time classificado ainda.';
+  if (desempatesPendentes?.length) {
+    desc += '\n\n⚠️ **Desempates pendentes:**\n' + desempatesPendentes.map((d) =>
+      '• ' + d.tipo + ': ' + d.times.length + ' time(s) (' + d.times.join(', ') + ')'
+    ).join('\n');
+  }
+  return { embeds: [{ title: '📊 Classificação', description: desc, color: 0x00C2FF }] };
+}
+
 module.exports = {
   embedCriarEvento,
   embedSelecionarRanks,
@@ -94,6 +177,11 @@ module.exports = {
   embedInscricaoConfirmada,
   embedResumoCorte,
   embedMenuFormato,
+  embedPainelPartida,
+  embedPlacarEnviado,
+  embedDisputaOrganizador,
+  embedBracket,
+  embedClassificacao,
   corRank,
   CORES
 };

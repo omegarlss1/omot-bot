@@ -81,6 +81,35 @@ class StartGGAdapter {
     return data?.currentUser ?? null;
   }
 
+  async createTournament({ eventId, name }) {
+    const query = `mutation CreateTournament($eventId: ID!, $name: String!) {
+      createTournament(eventId: $eventId, name: $name) { id name slug }
+    }`;
+    const data = await this.request({ query, variables: { eventId, name } });
+    return data?.createTournament ?? null;
+  }
+
+  async addParticipantsBulk(tournamentId, participants = []) {
+    if (!Array.isArray(participants) || participants.length === 0) return [];
+    const mutation = `mutation AddParticipants($tournamentId: ID!, $participants: [ParticipantInput!]!) {
+      addParticipants(tournamentId: $tournamentId, participants: $participants) { id gamerTag }
+    }`;
+    const operations = [];
+    for (let i = 0; i < participants.length; i += 50) {
+      const lote = participants.slice(i, i + 50);
+      operations.push({ query: mutation, variables: { tournamentId, participants: lote } });
+    }
+    return this.queryMany(operations.map((op) => ({ query: op.query, variables: op.variables })));
+  }
+
+  async reportScore({ setId, winnerId, gameNum = 1 }) {
+    const mutation = `mutation ReportScore($setId: ID!, $winnerId: ID!, $gameNum: Int!) {
+      reportScore(setId: $setId, winnerId: $winnerId, gameNum: $gameNum) { id state }
+    }`;
+    const data = await this.request({ query: mutation, variables: { setId, winnerId, gameNum } });
+    return data?.reportScore ?? null;
+  }
+
   static diagnostic() {
     return {
       apiUrl: config.startgg.apiUrl,
