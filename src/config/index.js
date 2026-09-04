@@ -1,9 +1,11 @@
+const { requireEnv, optionalEnv } = require('./secrets');
+
 const GAMES = [
   {
     key: 'sideswipe',
     nome: 'RL SideSwipe',
     emoji: '🏎️',
-    roleId: process.env.CARGO_SIDESWIPE_ID || '1541236990232764416',
+    roleId: requireEnv('CARGO_RLSIDESWIPE_ID'),
     descricaoChamada: 'Notifica a galera do SideSwipe',
     descricaoCargo: 'Avisos de chamadas do SideSwipe'
   },
@@ -11,22 +13,44 @@ const GAMES = [
     key: 'diversos',
     nome: 'Jogos Diversos',
     emoji: '🎮',
-    roleId: process.env.CARGO_DIVERSOS_ID || '1541237104754041002',
+    roleId: requireEnv('CARGO_JOGOSDIVERSOS_ID'),
     descricaoChamada: 'Notifica a galera de Jogos Diversos',
     descricaoCargo: 'Avisos de chamadas de outros jogos'
   }
 ];
 
+const RANKS = [
+  { key: 'bronze', label: 'Bronze', emoji: '🥉' },
+  { key: 'prata', label: 'Prata', emoji: '🥈' },
+  { key: 'ouro', label: 'Ouro', emoji: '🥇' },
+  { key: 'platina', label: 'Platina', emoji: '💠' },
+  { key: 'diamante', label: 'Diamante', emoji: '💎' },
+  { key: 'champion', label: 'Champion', emoji: '🏅' },
+  { key: 'grand_champion', label: 'Grand Champion', emoji: '🏆' },
+  { key: 'omega_champion', label: 'Ômega Champion', emoji: '👑' }
+];
+
 module.exports = {
-  token: process.env.TOKEN || process.env.DISCORD_TOKEN,
-  mongoUri: process.env.MONGODB_URI,
-  port: Number(process.env.PORT) || 3000,
+  token: requireEnv('TOKEN'),
+  mongoUri: requireEnv('MONGODB_URI'),
+  port: Number(optionalEnv('PORT', 3000)),
   discord: {
-    canalPingsId: process.env.CANAL_PINGS_ID || '1541254928545218610'
+    canalPingsId: requireEnv('CANAL_PINGS_ID')
   },
   games: GAMES,
+  ranks: RANKS,
+  campeonato: {
+    cargoOrganizacaoId: requireEnv('CARGO_ORGANIZADORCAMPS_ID'),
+    cargosRanks: Object.fromEntries(
+      RANKS.map((r) => [r.key, requireEnv(`CARGO_${r.key.toUpperCase()}_ID`)])
+    )
+  },
+  startgg: {
+    token: requireEnv('STARTGG_TOKEN'),
+    apiUrl: optionalEnv('STARTGG_API_URL', 'https://api.start.gg/gql/alpha')
+  },
   lfg: {
     cooldownMs: 5 * 60 * 1000,
-    limpezaMensagemMs: 2 * 60 * 60 * 1000
+    limpezaMensagemMs: 2 * 60 * 1000
   }
 };

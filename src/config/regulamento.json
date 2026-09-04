@@ -1,0 +1,46 @@
+{
+  "versao": "1.0.0",
+  "pontuacao": {
+    "vitoria": 3,
+    "derrota": 0,
+    "wo": 0
+  },
+  "substituto": {
+    "maximoPartidasGrupos": 2,
+    "maximoPartidasEliminatoria": 1,
+    "permitidoEmModos": ["2v2", "3v3", "4v4", "6v6", "8v8", "10v10"]
+  },
+  "checkin": {
+    "janelaMin": 30,
+    "fimJanelaMin": 5,
+    "toleranciaAtrasoMin": 10
+  },
+  "partida": {
+    "tempoMaximoConexaoSeg": 15,
+    "tempoMaximoConexaoSegPartidaLonga": 30,
+    "limiteRestartPorPartida": 1,
+    "restartIlimitadoPorBug": true
+  },
+  "corte": {
+    "permitirBye": false,
+    "formatosAlternativosQuandoNaoPotenciaDe2": [
+      "round-robin",
+      "grupos-mata-mata",
+      "double-elimination"
+    ],
+    "incluirDisputa3Lugar": true
+  },
+  "wo": {
+    "eliminatoria": "vitoria-adversario",
+    "grupos": "anular-partidas-time-abandonou"
+  },
+  "classificacao": {
+    "empateDoisCriterios": [
+      "vitorias",
+      "confronto-direto",
+      "menor-wo-e-penalidades"
+    ],
+    "empateTresOuMaisEstrategia": "mini-tabela",
+    "desempateFinal": "MD3-ou-Triangular-MD1"
+  }
+}
