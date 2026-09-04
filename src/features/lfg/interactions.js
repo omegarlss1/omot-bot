@@ -119,8 +119,10 @@ async function onModalChamarTime(interaction) {
     return interaction.editReply({ content: '❌ Manda um número válido de vagas!' });
   }
 
-  const canalProcura = interaction.guild.channels.cache.get(config.discord.canalPingsId);
-  if (!canalProcura) return interaction.editReply({ content: '❌ Canal de chamadas não encontrado no servidor!' });
+  const canalProcura = config.discord.canalPingsId
+    ? interaction.guild.channels.cache.get(config.discord.canalPingsId)
+    : interaction.channel;
+  if (!canalProcura) return interaction.editReply({ content: '❌ Canal de chamadas não encontrado!' });
 
   const cargoId = game?.roleId;
   const mencaoCargo = cargoId ? `<@&${cargoId}>` : '';
