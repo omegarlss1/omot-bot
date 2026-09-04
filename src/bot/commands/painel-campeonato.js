@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { embedCriarEvento } = require('../../features/campeonato/embeds');
 const config = require('../../config');
 
@@ -7,6 +7,24 @@ function temPermissaoOrganizador(member) {
   if (member.permissions?.has?.('Administrator')) return true;
   const orgRoleId = config.campeonato.cargoOrganizacaoId;
   return member.roles?.cache?.has?.(orgRoleId) || false;
+}
+
+function buildPayload(guild, organizador) {
+  const e = embedCriarEvento({ guild, organizador });
+  const components = (e.components || []).map((row) => {
+    const actionRow = new ActionRowBuilder();
+    for (const btn of row) {
+      actionRow.addComponents(
+        new ButtonBuilder()
+          .setCustomId(btn.custom_id)
+          .setLabel(btn.label)
+          .setStyle(ButtonStyle.Primary)
+          .setEmoji(btn.emoji?.name || '')
+      );
+    }
+    return actionRow;
+  });
+  return { embeds: e.embeds, components };
 }
 
 module.exports = {
@@ -30,10 +48,7 @@ module.exports = {
     await interaction.deferReply({ flags: 64 });
     try {
       const silencioso = interaction.options.getBoolean('silencioso') || false;
-      const payload = embedCriarEvento({
-        guild: interaction.guild,
-        organizador: interaction.member
-      });
+      const payload = buildPayload(interaction.guild, interaction.member);
       const mensagem = await interaction.channel.send(payload);
       if (silencioso) {
         return interaction.deleteReply().catch(() => {});

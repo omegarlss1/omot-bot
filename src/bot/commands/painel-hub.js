@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -26,7 +26,20 @@ module.exports = {
           { type: 2, style: 2, label: '🔎 Buscar Jogador', custom_id: 'btn_abrir_busca_nick', emoji: { name: '🔎' } }
         ]]
       };
-      const mensagem = await interaction.channel.send(payload);
+      const components = payload.components.map((row) => {
+        const actionRow = new ActionRowBuilder();
+        for (const btn of row) {
+          actionRow.addComponents(
+            new ButtonBuilder()
+              .setCustomId(btn.custom_id)
+              .setLabel(btn.label)
+              .setStyle(ButtonStyle.Primary)
+              .setEmoji(btn.emoji?.name || '')
+          );
+        }
+        return actionRow;
+      });
+      const mensagem = await interaction.channel.send({ embeds: payload.embeds, components });
       if (silencioso) {
         return interaction.deleteReply().catch(() => {});
       }
