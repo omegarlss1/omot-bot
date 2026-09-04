@@ -6,8 +6,7 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node index.js",
-    "test": "node --test",
-    "post:paineis": "node scripts/post-paineis.js"
+    "test": "node --test"
   },
   "dependencies": {
     "discord.js": "^14.14.1",
