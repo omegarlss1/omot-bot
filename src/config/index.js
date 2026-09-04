@@ -1,4 +1,4 @@
-const { requireEnv, optionalEnv } = require('./secrets');
+const { requireEnv, optionalEnv, validarEnv, ENV_OBRIGATORIAS } = require('./secrets');
 
 const GAMES = [
   {
@@ -29,6 +29,14 @@ const RANKS = [
   { key: 'grand_champion', label: 'Grand Champion', emoji: '🏆' },
   { key: 'omega_champion', label: 'Ômega Champion', emoji: '👑' }
 ];
+
+const faltando = validarEnv();
+if (faltando.length > 0) {
+  const err = new Error(`[config] Variáveis obrigatórias não definidas (${faltando.length}): ${faltando.join(', ')}`);
+  err.code = 'CONFIG_MISSING_VARS';
+  err.faltando = faltando;
+  throw err;
+}
 
 module.exports = {
   token: requireEnv('TOKEN'),

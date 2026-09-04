@@ -42,10 +42,31 @@ function redacaoSegura(...args) {
   });
 }
 
+const ENV_OBRIGATORIAS = [
+  'TOKEN', 'MONGODB_URI', 'CANAL_PINGS_ID',
+  'CARGO_RLSIDESWIPE_ID', 'CARGO_JOGOSDIVERSOS_ID', 'CARGO_ORGANIZADORCAMPS_ID',
+  'CARGO_BRONZE_ID', 'CARGO_PRATA_ID', 'CARGO_OURO_ID', 'CARGO_PLATINA_ID',
+  'CARGO_DIAMANTE_ID', 'CARGO_CHAMPION_ID', 'CARGO_GRAND_CHAMPION_ID',
+  'CARGO_OMEGA_CHAMPION_ID', 'STARTGG_TOKEN'
+];
+
+function validarEnv() {
+  const faltando = [];
+  for (const nome of ENV_OBRIGATORIAS) {
+    const valor = process.env[nome];
+    if (valor === undefined || valor === null || valor === '') {
+      faltando.push(nome);
+    }
+  }
+  return faltando;
+}
+
 module.exports = {
   requireEnv,
   optionalEnv,
   mascarar,
   redacaoSegura,
-  ConfigError
+  ConfigError,
+  validarEnv,
+  ENV_OBRIGATORIAS
 };
