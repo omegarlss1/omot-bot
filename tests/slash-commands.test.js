@@ -8,7 +8,7 @@ const ENV_BASE = {
   CARGO_BRONZE_ID: '4', CARGO_PRATA_ID: '5', CARGO_OURO_ID: '6',
   CARGO_PLATINA_ID: '7', CARGO_DIAMANTE_ID: '8', CARGO_CHAMPION_ID: '9',
   CARGO_GRAND_CHAMPION_ID: '10', CARGO_OMEGA_CHAMPION_ID: '11',
-  STARTGG_TOKEN: 't'
+  STARTGG_TOKEN: 't', CLIENT_ID: 'c', GUILD_ID: 'g'
 };
 
 function comEnv(extra = {}, fn) {
@@ -21,6 +21,42 @@ function comEnv(extra = {}, fn) {
     Object.assign(process.env, snapshot);
   }
 }
+
+test('slash /debug-config', async (t) => {
+  await t.test('data.toJSON() tem name, description e default_member_permissions', () => {
+    comEnv({}, () => {
+      const cmd = require('../src/bot/commands/debug-config');
+      const json = cmd.data.toJSON();
+      assert.equal(json.name, 'debug-config');
+      assert.match(json.description, /env/);
+      assert.equal(json.default_member_permissions, String(1n << 3n));
+    });
+  });
+
+  await t.test('execute é uma função', () => {
+    comEnv({}, () => {
+      const cmd = require('../src/bot/commands/debug-config');
+      assert.equal(typeof cmd.execute, 'function');
+    });
+  });
+
+  await t.test('buildDebugMessage marca faltando quando env está incompleta', () => {
+    comEnv({ CANAL_PINGS_ID: '' }, () => {
+      const cmd = require('../src/bot/commands/debug-config');
+      const msg = cmd.buildDebugMessage();
+      assert.match(msg, /CANAL_PINGS_ID/);
+      assert.match(msg, /faltando/);
+    });
+  });
+
+  await t.test('buildDebugMessage mostra tudo ok quando env está completa', () => {
+    comEnv({}, () => {
+      const cmd = require('../src/bot/commands/debug-config');
+      const msg = cmd.buildDebugMessage();
+      assert.match(msg, /Todas as env vars obrigatórias estão setadas/);
+    });
+  });
+});
 
 test('slash /painel-campeonato', async (t) => {
   await t.test('data.toJSON() tem name, description, default_member_permissions e opcao silencioso', () => {
@@ -40,27 +76,6 @@ test('slash /painel-campeonato', async (t) => {
     comEnv({}, () => {
       const cmd = require('../src/bot/commands/painel-campeonato');
       assert.equal(typeof cmd.execute, 'function');
-    });
-  });
-
-  await t.test('temPermissaoOrganizador rejeita sem cargo', () => {
-    comEnv({}, () => {
-      const cmd = require('../src/bot/commands/painel-campeonato');
-      const member = { permissions: { has: () => false }, roles: { cache: { has: () => false } } };
-      assert.equal(cmd.execute, cmd.execute);
-      assert.equal(typeof cmd.execute, 'function');
-      const memberSemNada = { permissions: { has: () => false }, roles: { cache: { has: () => false } } };
-      const memberEhOrg = { permissions: { has: () => false }, roles: { cache: { has: (id) => id === '3' } } };
-      const memberAdmin = { permissions: { has: (p) => p === 'Administrator' }, roles: { cache: { has: () => false } } };
-      const tpo = (m) => {
-        if (!m) return false;
-        if (m.permissions?.has?.('Administrator')) return true;
-        const orgRoleId = require('../src/config').campeonato.cargoOrganizacaoId;
-        return m.roles?.cache?.has?.(orgRoleId) || false;
-      };
-      assert.equal(tpo(memberSemNada), false);
-      assert.equal(tpo(memberEhOrg), true);
-      assert.equal(tpo(memberAdmin), true);
     });
   });
 });
@@ -86,7 +101,7 @@ test('slash /painel-hub', async (t) => {
   });
 });
 
-test('deploy-commands.js lê os 5 comandos (3 antigos + 2 novos)', () => {
+test('deploy-commands.js lê os 6 comandos (3 antigos + 3 novos)', () => {
   comEnv({}, () => {
     const fs = require('node:fs');
     const path = require('node:path');
@@ -94,6 +109,7 @@ test('deploy-commands.js lê os 5 comandos (3 antigos + 2 novos)', () => {
     const files = fs.readdirSync(commandsPath).filter((f) => f.endsWith('.js'));
     assert.ok(files.includes('painel-campeonato.js'), 'espera painel-campeonato.js em commands');
     assert.ok(files.includes('painel-hub.js'), 'espera painel-hub.js em commands');
-    assert.ok(files.length >= 5, 'espera pelo menos 5 comandos (3 antigos + 2 novos), achou ' + files.length);
+    assert.ok(files.includes('debug-config.js'), 'espera debug-config.js em commands');
+    assert.ok(files.length >= 6, 'espera pelo menos 6 comandos (3 antigos + 3 novos), achou ' + files.length);
   });
 });
