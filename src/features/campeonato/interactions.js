@@ -111,9 +111,20 @@ async function onSubmitCriarEvento(interaction) {
   const tipoDupla = interaction.fields.getTextInputValue('evento_tipo_dupla')?.trim() || 'SORTEADA';
   const baseadoEmInscricoesStr = interaction.fields.getTextInputValue('evento_baseado_inscricoes')?.trim() || 'SIM';
   const baseadoEmInscricoes = baseadoEmInscricoesStr === 'SIM';
+
   if (!dataInicio || !dataFim) {
     return interaction.reply({ content: 'Datas invalidas. Use o formato DD/MM/AAAA ate DD/MM/AAAA.', flags: 64 });
   }
+
+  const diaIdx = new Date(dataInicio).getDay();
+  const permitidos = [5, 6, 0];
+  if (!permitidos.includes(diaIdx)) {
+    return interaction.reply({
+      content: 'Data de inicio invalida. Escolha SEXTA, SABADO ou DOMINGO.',
+      flags: 64
+    });
+  }
+
   selecaoRanks.set(`camp:selecao:${interaction.user.id}`, { nome, dataInicio, dataFim, modo, tipoDupla, baseadoEmInscricoes, ranksSelecionados: [] });
   const sel = embedSelecionarRanks({ nome, dataInicio, dataFim, ranksSelecionados: [] });
   await interaction.reply({
@@ -172,6 +183,95 @@ async function onConfirmarRanks(interaction) {
     embeds: [],
     components: [new ActionRowBuilder().addComponents(select)]
   });
+}
+
+async function onModalSimultaneo(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
+  }
+  const valor = interaction.values[0];
+  const simultaneo = valor === 'SIM';
+  const selecao = selecaoRanks.get(`camp:selecao:${interaction.user.id}`);
+  if (!selecao) {
+    return interaction.update({ content: 'Sessao expirou. Clique em Criar Evento de novo.', embeds: [], components: [] });
+  }
+  const preview3h = gerarDescricaoEvento({
+    dataInicio: selecao.dataInicio,
+    duracaoMin: 180,
+    numTimes: 0,
+    modo: selecao.modo || 'simples',
+    simultaneo
+  });
+  const preview4h = gerarDescricaoEvento({
+    dataInicio: selecao.dataInicio,
+    duracaoMin: 240,
+    numTimes: 0,
+    modo: selecao.modo || 'simples',
+    simultaneo
+  });
+  const select = new StringSelectMenuBuilder()
+    .setCustomId('modal_duracao')
+    .setPlaceholder('Escolha a duração do campeonato')
+    .addOptions([
+      { label: '3h (padrão)', value: '180', description: 'Previsão: ' + preview3h.horaInicio + ' às ' + preview3h.horaFim },
+      { label: '4h', value: '240', description: 'Previsão: ' + preview4h.horaInicio + ' às ' + preview4h.horaFim }
+    ]);
+  await interaction.update({
+    content: 'Escolha a duração do campeonato:',
+    embeds: [{
+      title: '⏱️ Prévia — 3h (padrão)',
+      description: preview3h.descricao,
+      color: 0xFF6B00
+    }],
+    components: [new ActionRowBuilder().addComponents(select)]
+  });
+}
+
+async function onModalDuracao(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
+  }
+  const duracaoMin = Number(interaction.values[0]) || 180;
+  const selecao = selecaoRanks.get(`camp:selecao:${interaction.user.id}`);
+  if (!selecao) {
+    return interaction.update({ content: 'Sessao expirou. Clique em Criar Evento de novo.', embeds: [], components: [] });
+  }
+  await interaction.update({ content: 'Criando categoria, canais e campeonatos...', embeds: [], components: [] });
+  try {
+    const resultado = await criarEvento(interaction.guild, {
+      nome: selecao.nome,
+      dataInicio: selecao.dataInicio,
+      dataFim: selecao.dataFim,
+      ranksSelecionados: selecao.ranksSelecionados,
+      organizadorId: interaction.user.id,
+      modo: selecao.modo,
+      tipoDupla: selecao.tipoDupla,
+      baseadoEmInscricoes: selecao.baseadoEmInscricoes,
+      simultaneo: true,
+      duracaoMin
+    });
+    selecaoRanks.delete(`camp:selecao:${interaction.user.id}`);
+    const eventosCriados = [];
+    for (const camp of resultado.campeonatos) {
+      const canal = await interaction.guild.channels.fetch(camp.canais.inscricoes).catch(() => null);
+      if (canal && canal.isTextBased()) {
+        const painel = embedPainelInscricao(camp, 0);
+        await canal.send({ embeds: painel.embeds, components: toActionRows(painel.components) }).catch(() => {});
+      }
+      eventosCriados.push(camp);
+    }
+    return interaction.editReply(embedEventoCriado({
+      evento: resultado.evento,
+      categoria: resultado.categoria,
+      campeonatos: eventosCriados
+    }));
+  } catch (error) {
+    if (error instanceof EventoError) {
+      return interaction.editReply({ content: error.message });
+    }
+    console.error('[campeonato.criarEvento] erro:', error);
+    return interaction.editReply({ content: 'Erro ao criar evento. Verifique permissoes do bot e tente novamente.' });
+  }
 }
 
 async function onBotaoInscrever(interaction) {
@@ -563,29 +663,35 @@ async function onModalSimultaneo(interaction) {
   if (!selecao) {
     return interaction.update({ content: 'Sessao expirou. Clique em Criar Evento de novo.', embeds: [], components: [] });
   }
-  const preview = gerarDescricaoEvento({
+  const preview3h = gerarDescricaoEvento({
     dataInicio: selecao.dataInicio,
     duracaoMin: 180,
     numTimes: 0,
     modo: selecao.modo || 'simples',
     simultaneo
   });
-  const confirmar = new ButtonBuilder()
-    .setCustomId('btn_camp_confirmar_evento')
-    .setLabel('✅ Confirmar e Criar')
-    .setStyle(ButtonStyle.Success);
-  const cancelar = new ButtonBuilder()
-    .setCustomId('btn_camp_cancelar_evento')
-    .setLabel('❌ Cancelar')
-    .setStyle(ButtonStyle.Danger);
+  const preview4h = gerarDescricaoEvento({
+    dataInicio: selecao.dataInicio,
+    duracaoMin: 240,
+    numTimes: 0,
+    modo: selecao.modo || 'simples',
+    simultaneo
+  });
+  const select = new StringSelectMenuBuilder()
+    .setCustomId('modal_duracao')
+    .setPlaceholder('Escolha a duração do campeonato')
+    .addOptions([
+      { label: '3h (padrão)', value: '180', description: 'Previsão: ' + preview3h.horaInicio + ' às ' + preview3h.horaFim },
+      { label: '4h', value: '240', description: 'Previsão: ' + preview4h.horaInicio + ' às ' + preview4h.horaFim }
+    ]);
   await interaction.update({
-    content: 'Prévia da descrição do evento:',
+    content: 'Escolha a duração do campeonato:',
     embeds: [{
-      title: '📋 Prévia do Evento',
-      description: preview.descricao,
+      title: '⏱️ Prévia — 3h (padrão)',
+      description: preview3h.descricao,
       color: 0xFF6B00
     }],
-    components: [new ActionRowBuilder().addComponents(confirmar, cancelar)]
+    components: [new ActionRowBuilder().addComponents(select)]
   });
 }
 
@@ -708,8 +814,8 @@ function register(registry) {
   registry.button(/^btn_camp_reabrir_[a-f0-9]{24}$/, onBotaoReabrir);
   registry.modal(/^modal_camp_desclassificar_[a-f0-9]{24}$/, onSubmitDesclassificar);
   registry.select('modal_simultaneo', onModalSimultaneo);
-  registry.button('btn_camp_confirmar_evento', onConfirmarCriarEvento);
-  registry.button('btn_camp_cancelar_evento', onCancelarCriarEvento);
+  registry.select('modal_duracao', onModalDuracao);
+  registry.select('painel_org_tab', onPainelOrganizadorTab);
 }
 
 module.exports = { register, temPermissaoOrganizador, parseDataBR };

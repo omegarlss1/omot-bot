@@ -12,14 +12,13 @@ function calcularFasesSimultaneo({ numTimes, modo, duracaoMin = 180, intervaloMi
 
   const duracaoPorFase = Math.floor((duracaoMin - intervaloMin) / numFases);
   const duracaoReal = numFases * duracaoPorFase + intervaloMin;
-  const maxPartidasPorFase = Math.max(1, Math.floor(numTimes / 2 / numFases));
 
   return {
     fases: numFases,
     duracaoReal,
     duracaoPorFase,
     intervalo: intervaloMin,
-    maxPartidasPorFase,
+    maxPartidasPorFase: Math.max(1, Math.floor(numTimes / 2 / numFases)),
     precisaDividirDias: duracaoReal > duracaoMin && numTimes > 512,
     sugestaoDuracao: numTimes > 512 ? 240 : duracaoMin
   };
@@ -30,9 +29,9 @@ function calcularFasesEscalonado({ numTimes, modo, duracaoMin = 180, intervaloMi
 
   let totalPartidas;
   if (modo === 'dupla') {
-    totalPartidas = (Math.ceil(Math.log2(numTimes)) * 2 - 1) * numTimes;
+    totalPartidas = (Math.ceil(Math.log2(numTimes)) * 2 - 1);
   } else if (modo === 'tripla') {
-    totalPartidas = (Math.ceil(Math.log2(numTimes)) * 3 - 2) * numTimes;
+    totalPartidas = (Math.ceil(Math.log2(numTimes)) * 3 - 2);
   } else {
     totalPartidas = numTimes - 1;
   }
@@ -51,11 +50,23 @@ function calcularFasesEscalonado({ numTimes, modo, duracaoMin = 180, intervaloMi
 }
 
 function gerarDescricaoEvento({ dataInicio, duracaoMin = 180, numTimes = 0, modo = 'simples', simultaneo = true }) {
-  const diaSemana = ['DOMINGO', 'SEGUNDA', 'TERÇA', 'QUARTA', 'QUINTA', 'SEXTA', 'SÁBADO'][new Date(dataInicio).getDay()];
-  const horaInicio = diaSemana === 'SEXTA' ? '19:30' : diaSemana === 'SÁBADO' ? '19:00' : '14:30';
-  const [h, m] = horaInicio.split(':').map(Number);
-  const inicio = new Date(dataInicio);
-  inicio.setHours(h, m, 0, 0);
+  const data = new Date(dataInicio);
+  const diaSemanaIdx = data.getDay();
+  const nomes = ['DOMINGO', 'SEGUNDA', 'TERÇA', 'QUARTA', 'QUINTA', 'SEXTA', 'SÁBADO'];
+  const diaSemana = nomes[diaSemanaIdx];
+
+  const horariosPadrao = {
+    SEXTA: '19:30',
+    SÁBADO: '19:00',
+    DOMINGO: '14:30'
+  };
+
+  const horaInicioStr = horariosPadrao[diaSemana] || '19:00';
+  const [hInicio, mInicio] = horaInicioStr.split(':').map(Number);
+
+  const inicio = new Date(data);
+  inicio.setHours(hInicio, mInicio, 0, 0);
+
   const fim = new Date(inicio.getTime() + duracaoMin * 60 * 1000);
   const horaFim = fim.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
 
@@ -65,7 +76,7 @@ function gerarDescricaoEvento({ dataInicio, duracaoMin = 180, numTimes = 0, modo
 
   const linhas = [];
   linhas.push(`🏆 **Campeonato Ômega**`);
-  linhas.push(`📅 Início: **${diaSemana} ${dataInicio.toLocaleDateString('pt-BR')} às ${horaInicio}**`);
+  linhas.push(`📅 Início: **${diaSemana} ${data.toLocaleDateString('pt-BR')} às ${horaInicioStr}**`);
   linhas.push(`⏰ Previsão de término: **${horaFim}**`);
   linhas.push(`👥 Times inscritos: **${numTimes}**`);
   linhas.push(`🎮 Modo: **${modo}** (${simultaneo ? 'SIMULTÂNEO' : 'ESCALONADO'})`);
@@ -87,7 +98,7 @@ function gerarDescricaoEvento({ dataInicio, duracaoMin = 180, numTimes = 0, modo
       linhas.push(`• Dias necessários: ${calc.dias}`);
       if (calc.precisadividirDias) {
         linhas.push(`\n⚠️ Com ${numTimes} times, são necessários **${calc.dias} dias** no formato escalonado.`);
-        linhas.push(`Sugestão: ${diaSemana} ${horaInicio}-${horaFim} + ${calc.dias - 1} dia(s) adicional(is).`);
+        linhas.push(`Sugestão: ${diaSemana} ${horaInicioStr}-${horaFim} + ${calc.dias - 1} dia(s) adicional(is).`);
       }
     }
   }
@@ -96,8 +107,9 @@ function gerarDescricaoEvento({ dataInicio, duracaoMin = 180, numTimes = 0, modo
     descricao: linhas.join('\n'),
     inicio,
     fim,
-    horaInicio,
+    horaInicio: horaInicioStr,
     horaFim,
+    diaSemana,
     calculo: calc
   };
 }

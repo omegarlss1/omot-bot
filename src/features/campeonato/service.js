@@ -48,7 +48,7 @@ async function criarEvento(guild, parametros) {
 
   const descricaoEvento = gerarDescricaoEvento({
     dataInicio: params.dataInicio,
-    duracaoMin: 180,
+    duracaoMin: parametros.duracaoMin || 180,
     numTimes: 0,
     modo: parametros.modo || 'simples',
     simultaneo: parametros.simultaneo !== false
@@ -61,7 +61,9 @@ async function criarEvento(guild, parametros) {
     dataInicio: params.dataInicio,
     dataFim: params.dataFim,
     organizadorId: parametros.organizadorId,
-    descricao: descricaoEvento.descricao
+    descricao: descricaoEvento.descricao,
+    duracaoMin: parametros.duracaoMin || 180,
+    simultaneo: parametros.simultaneo !== false
   });
   emitir(EVENTOS.EVENTO_CRIADO, { eventoId: evento._id, guildId: guild.id });
 
