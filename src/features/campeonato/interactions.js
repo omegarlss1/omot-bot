@@ -97,7 +97,7 @@ async function onSubmitCriarEvento(interaction) {
 
   selecaoRanks.set(`camp:selecao:${interaction.user.id}`, { nome, dataInicio, dataFim: dataInicio, modo: null, tipoDupla: null, baseadoEmInscricoes: null, ranksSelecionados: [] });
   const select = new StringSelectMenuBuilder()
-    .setCustomId('modal_config_evento')
+    .setCustomId('modal_config_modo')
     .setPlaceholder('Configure o evento')
     .addOptions([
       { label: '1v1', value: '1v1', description: 'Individual' },
