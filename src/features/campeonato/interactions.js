@@ -107,8 +107,7 @@ async function onSubmitCriarEvento(interaction) {
       { label: '6v6', value: '6v6', description: 'Duplas mescladas' },
       { label: '8v8', value: '8v8', description: 'Duplas mescladas' },
       { label: '10v10', value: '10v10', description: 'Duplas mescladas' },
-      { label: '12v12', value: '12v12', description: 'Duplas mescladas' },
-      { label: 'FFA', value: 'ffa', description: 'Cada um por si' }
+      { label: '12v12', value: '12v12', description: 'Duplas mescladas' }
     ]);
   await interaction.update({
     content: 'Escolha o **modo de jogo**:',
