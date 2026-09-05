@@ -11,6 +11,20 @@ const CORES = {
   omega_champion: '#9400D3'
 };
 
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+
+function toActionRows(components = []) {
+  return components.map((row) => {
+    const actionRow = new ActionRowBuilder();
+    for (const btn of row) {
+      if (!btn || typeof btn !== 'object') continue;
+      const builder = ButtonBuilder.from(btn);
+      actionRow.addComponents(builder);
+    }
+    return actionRow;
+  });
+}
+
 function corRank(rank) {
   return CORES[rank] || '#5865F2';
 }
@@ -245,7 +259,8 @@ module.exports = {
   embedTimeDesclassificado,
   embedPlacarAjustado,
   corRank,
-  CORES
+  CORES,
+  toActionRows
 };
 
 function embedPainelInscricao(campeonato, totalInscritos) {

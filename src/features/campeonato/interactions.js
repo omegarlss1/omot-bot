@@ -5,7 +5,7 @@ const {
   ActionRowBuilder
 } = require('discord.js');
 const config = require('../../config');
-const { embedCriarEvento, embedSelecionarRanks, botoesSelecionarRanks, embedEventoCriado, embedPainelInscricao, embedInscricaoConfirmada, embedResumoCorte, embedMenuFormato, embedPainelPartida, embedPlacarEnviado, embedDisputaOrganizador, embedBracket, embedClassificacao, embedCampeaoDefinido, embedPainelAdmin, embedCancelamentoConfirmado, embedReaberturaConfirmada, embedTimeDesclassificado, embedPlacarAjustado } = require('./embeds');
+const { embedCriarEvento, embedSelecionarRanks, embedEventoCriado, embedPainelInscricao, embedInscricaoConfirmada, embedResumoCorte, embedMenuFormato, embedPainelPartida, embedPlacarEnviado, embedDisputaOrganizador, embedBracket, embedClassificacao, embedCampeaoDefinido, embedPainelAdmin, embedCancelamentoConfirmado, embedReaberturaConfirmada, embedTimeDesclassificado, embedPlacarAjustado, toActionRows } = require('./embeds');
 const { criarEvento, EventoError } = require('./service');
 const { inscreverCapitao, fecharInscricoes, executarCorte, definirFormato, findCampeonatoPorCanalInscricao, listarInscricoes, InscricaoError } = require('./services/inscricao');
 const { InscricaoError: ValidacaoInscricaoError } = require('./validators/inscricao');
@@ -97,9 +97,11 @@ async function onSubmitCriarEvento(interaction) {
     return interaction.reply({ content: 'Datas invalidas. Use o formato DD/MM/AAAA.', flags: 64 });
   }
   selecaoRanks.set(`camp:selecao:${interaction.user.id}`, { nome, dataInicio, dataFim, ranksSelecionados: [] });
+  const sel = embedSelecionarRanks({ nome, dataInicio, dataFim, ranksSelecionados: [] });
   await interaction.reply({
     content: 'Evento **' + nome + '** preparado. Agora selecione os ranks:',
-    ...embedSelecionarRanks({ nome, dataInicio, dataFim, ranksSelecionados: [] }),
+    embeds: sel.embeds,
+    components: toActionRows(sel.components),
     flags: 64
   });
 }
@@ -117,12 +119,16 @@ async function onToggleRank(interaction) {
   if (idx >= 0) selecao.ranksSelecionados.splice(idx, 1);
   else selecao.ranksSelecionados.push(rank);
   selecaoRanks.set(`camp:selecao:${interaction.user.id}`, selecao);
-  return interaction.update(embedSelecionarRanks({
+  const ranksEmbed = embedSelecionarRanks({
     nome: selecao.nome,
     dataInicio: selecao.dataInicio,
     dataFim: selecao.dataFim,
     ranksSelecionados: selecao.ranksSelecionados
-  }));
+  });
+  return interaction.update({
+    embeds: ranksEmbed.embeds,
+    components: toActionRows(ranksEmbed.components)
+  });
 }
 
 async function onConfirmarRanks(interaction) {
@@ -238,10 +244,18 @@ async function onBotaoCortar(interaction) {
       campeonatoId: campeonato._id,
       tipoDupla: campeonato.tipoDupla || 'SORTEADA'
     });
-    await interaction.editReply(embedResumoCorte(resultado));
+    const resumo = embedResumoCorte(resultado);
+    await interaction.editReply({
+      embeds: resumo.embeds,
+      components: toActionRows(resumo.components)
+    });
     if (resultado.precisaEscolherFormato) {
       const menu = embedMenuFormato(campeonato._id, resultado.totalTimes, resultado.alternativas);
-      await interaction.followUp({ ...menu, flags: 64 });
+      await interaction.followUp({
+        embeds: menu.embeds,
+        components: toActionRows(menu.components),
+        flags: 64
+      });
     }
   } catch (error) {
     if (error instanceof CorteError) {
@@ -310,7 +324,8 @@ async function onBotaoCheckIn(interaction) {
     const partidaAtualizada = await Partida.findById(partidaId);
     const timeA = await Time.findById(partidaAtualizada.timeA);
     const timeB = await Time.findById(partidaAtualizada.timeB);
-    return interaction.editReply(embedPainelPartida({ partida: partidaAtualizada, timeA, timeB }));
+    const painel = embedPainelPartida({ partida: partidaAtualizada, timeA, timeB });
+    return interaction.editReply({ embeds: painel.embeds, components: toActionRows(painel.components) });
   } catch (error) {
     if (error instanceof CheckinError) {
       return interaction.editReply({ content: error.message, embeds: [], components: [] });
@@ -379,7 +394,8 @@ async function onSubmitEnviarPlacar(interaction) {
       placar
     });
     const partida = await Partida.findById(partidaId);
-    return interaction.editReply(embedPlacarEnviado({ partida, lado: resultado.lado, placar: resultado.placar }));
+    const placarEmbed = embedPlacarEnviado({ partida, lado: resultado.lado, placar: resultado.placar });
+    return interaction.editReply({ embeds: placarEmbed.embeds, components: toActionRows(placarEmbed.components) });
   } catch (error) {
     if (error instanceof PlacarError) {
       return interaction.editReply({ content: error.message });
