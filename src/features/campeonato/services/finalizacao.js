@@ -36,7 +36,7 @@ async function finalizarCampeonato({ campeonatoId, forcado = false, definirPosic
     throw new FinalizacaoError('Sem times para finalizar.', 'CAMP_SEM_TIMES');
   }
   const partidas = await _partidasFinalizadas(campeonatoId);
-  const { classificacao } = await calcularClassificacao(times, partidas);
+  const { classificacao } = await calcularClassificacao(campeonatoId);
   if (classificacao.length === 0) {
     throw new FinalizacaoError('Nenhuma classificação pôde ser calculada.', 'CAMP_SEM_CLASSIFICACAO');
   }
@@ -70,7 +70,7 @@ async function obterClassificacaoFinal(campeonatoId) {
   const times = await Time.find({ campeonatoId }).lean();
   if (times.length === 0) return [];
   const partidas = await _partidasFinalizadas(campeonatoId);
-  const { classificacao } = await calcularClassificacao(times, partidas);
+  const { classificacao } = await calcularClassificacao(campeonatoId);
   return classificacao.map((c, i) => ({ ...c, posicaoFinal: i + 1 }));
 }
 

@@ -64,35 +64,45 @@ async function onBotaoCriarEvento(interaction) {
     ),
     new ActionRowBuilder().addComponents(
       new TextInputBuilder()
-        .setCustomId('evento_datas')
-        .setLabel('Inicio e Fim (DD/MM/AAAA ate DD/MM/AAAA)')
+        .setCustomId('evento_data_inicio')
+        .setLabel('Data de inicio (DD/MM/AAAA)')
         .setStyle(TextInputStyle.Short)
-        .setPlaceholder('01/12/2026 ate 15/12/2026')
+        .setPlaceholder('01/12/2026')
         .setRequired(true)
     ),
     new ActionRowBuilder().addComponents(
-      new TextInputBuilder()
+      new StringSelectMenuBuilder()
         .setCustomId('evento_modo')
-        .setLabel('Modo (ex: 3v3, ffa)')
-        .setStyle(TextInputStyle.Short)
-        .setPlaceholder('3v3')
-        .setRequired(true)
+        .setPlaceholder('Modo de jogo')
+        .addOptions([
+          { label: '1v1', value: '1v1' },
+          { label: '2v2', value: '2v2' },
+          { label: '3v3', value: '3v3' },
+          { label: '4v4', value: '4v4' },
+          { label: '6v6', value: '6v6' },
+          { label: '8v8', value: '8v8' },
+          { label: '10v10', value: '10v10' },
+          { label: '12v12', value: '12v12' },
+          { label: 'FFA', value: 'ffa' }
+        ])
     ),
     new ActionRowBuilder().addComponents(
-      new TextInputBuilder()
+      new StringSelectMenuBuilder()
         .setCustomId('evento_tipo_dupla')
-        .setLabel('Tipo Dupla (FIXA ou SORTEADA)')
-        .setStyle(TextInputStyle.Short)
-        .setPlaceholder('SORTEADA')
-        .setRequired(true)
+        .setPlaceholder('Tipo de dupla')
+        .addOptions([
+          { label: 'SORTEADA', value: 'SORTEADA', description: 'Duplas serão sorteadas' },
+          { label: 'FIXA', value: 'FIXA', description: 'Duplas fixas' }
+        ])
     ),
     new ActionRowBuilder().addComponents(
-      new TextInputBuilder()
+      new StringSelectMenuBuilder()
         .setCustomId('evento_baseado_inscricoes')
-        .setLabel('Baseado em Inscricoes? (SIM/NAO)')
-        .setStyle(TextInputStyle.Short)
-        .setPlaceholder('SIM')
-        .setRequired(true)
+        .setPlaceholder('Baseado em inscrições?')
+        .addOptions([
+          { label: 'SIM', value: 'SIM', description: 'Formar times por inscrição' },
+          { label: 'NÃO', value: 'NAO', description: 'Times pré-definidos' }
+        ])
     )
   );
   return interaction.showModal(modal);
@@ -103,17 +113,15 @@ async function onSubmitCriarEvento(interaction) {
     return interaction.reply({ content: 'Sem permissao.', flags: 64 });
   }
   const nome = interaction.fields.getTextInputValue('evento_nome');
-  const datas = interaction.fields.getTextInputValue('evento_datas') || '';
-  const partes = datas.split(' até ').map((s) => s.trim());
-  const dataInicio = parseDataBR(partes[0]);
-  const dataFim = parseDataBR(partes[1]);
-  const modo = interaction.fields.getTextInputValue('evento_modo')?.trim() || '3v3';
-  const tipoDupla = interaction.fields.getTextInputValue('evento_tipo_dupla')?.trim() || 'SORTEADA';
-  const baseadoEmInscricoesStr = interaction.fields.getTextInputValue('evento_baseado_inscricoes')?.trim() || 'SIM';
+  const dataInicioStr = interaction.fields.getTextInputValue('evento_data_inicio') || '';
+  const dataInicio = parseDataBR(dataInicioStr);
+  const modo = (interaction.fields.components.find((c) => c.customId === 'evento_modo')?.values || [])[0] || '3v3';
+  const tipoDupla = (interaction.fields.components.find((c) => c.customId === 'evento_tipo_dupla')?.values || [])[0] || 'SORTEADA';
+  const baseadoEmInscricoesStr = (interaction.fields.components.find((c) => c.customId === 'evento_baseado_inscricoes')?.values || [])[0] || 'SIM';
   const baseadoEmInscricoes = baseadoEmInscricoesStr === 'SIM';
 
-  if (!dataInicio || !dataFim) {
-    return interaction.reply({ content: 'Datas invalidas. Use o formato DD/MM/AAAA ate DD/MM/AAAA.', flags: 64 });
+  if (!dataInicio) {
+    return interaction.reply({ content: 'Data invalida. Use o formato DD/MM/AAAA.', flags: 64 });
   }
 
   const diaIdx = new Date(dataInicio).getDay();
@@ -125,7 +133,7 @@ async function onSubmitCriarEvento(interaction) {
     });
   }
 
-  selecaoRanks.set(`camp:selecao:${interaction.user.id}`, { nome, dataInicio, dataFim, modo, tipoDupla, baseadoEmInscricoes, ranksSelecionados: [] });
+  selecaoRanks.set(`camp:selecao:${interaction.user.id}`, { nome, dataInicio, dataFim: dataInicio, modo, tipoDupla, baseadoEmInscricoes, ranksSelecionados: [] });
   const sel = embedSelecionarRanks({ nome, dataInicio, dataFim, ranksSelecionados: [] });
   await interaction.reply({
     content: 'Evento **' + nome + '** preparado. Agora selecione os ranks:',
@@ -195,6 +203,8 @@ async function onModalSimultaneo(interaction) {
   if (!selecao) {
     return interaction.update({ content: 'Sessao expirou. Clique em Criar Evento de novo.', embeds: [], components: [] });
   }
+  selecao.simultaneo = simultaneo;
+  selecaoRanks.set(`camp:selecao:${interaction.user.id}`, selecao);
   const preview3h = gerarDescricaoEvento({
     dataInicio: selecao.dataInicio,
     duracaoMin: 180,
@@ -236,6 +246,49 @@ async function onModalDuracao(interaction) {
   if (!selecao) {
     return interaction.update({ content: 'Sessao expirou. Clique em Criar Evento de novo.', embeds: [], components: [] });
   }
+  selecao.duracaoMin = duracaoMin;
+  selecaoRanks.set(`camp:selecao:${interaction.user.id}`, selecao);
+  const preview = gerarDescricaoEvento({
+    dataInicio: selecao.dataInicio,
+    duracaoMin: duracaoMin,
+    numTimes: 0,
+    modo: selecao.modo || 'simples',
+    simultaneo: selecao.simultaneo
+  });
+  const embed = {
+    title: '📋 Confira os dados do evento',
+    description: '**Nome:** ' + selecao.nome + '\n' +
+      '**Data de início:** ' + new Date(selecao.dataInicio).toLocaleDateString('pt-BR') + '\n' +
+      '**Modo:** ' + selecao.modo + '\n' +
+      '**Tipo Dupla:** ' + selecao.tipoDupla + '\n' +
+      '**Baseado em Inscrições:** ' + (selecao.baseadoEmInscricoes ? 'SIM' : 'NÃO') + '\n' +
+      '**Ranks:** ' + selecao.ranksSelecionados.map((r) => r.toUpperCase()).join(', ') + '\n' +
+      '**Formato:** ' + (selecao.simultaneo ? 'SIMULTÂNEO' : 'ESCALONADO') + '\n' +
+      '**Duração:** ' + duracaoMin + ' min\n' +
+      '**3º Lugar:** SIM (padrão)\n\n' +
+      '**Previsão:** ' + preview.horaInicio + ' às ' + preview.horaFim + '\n' +
+      preview.descricao,
+    color: 0xFF6B00
+  };
+  const components = [[
+    { type: 2, style: 3, label: '✅ Confirmar e Criar Evento', custom_id: 'btn_camp_confirmar_criacao', emoji: { name: '✅' } },
+    { type: 2, style: 4, label: '❌ Cancelar', custom_id: 'btn_camp_cancelar_criacao', emoji: { name: '❌' } }
+  ]];
+  return interaction.update({
+    content: 'Confira os dados do evento antes de criar:',
+    embeds: [embed],
+    components: toActionRows(components)
+  });
+}
+
+async function onConfirmarCriacao(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
+  }
+  const selecao = selecaoRanks.get(`camp:selecao:${interaction.user.id}`);
+  if (!selecao) {
+    return interaction.update({ content: 'Sessao expirou. Clique em Criar Evento de novo.', embeds: [], components: [] });
+  }
   await interaction.update({ content: 'Criando categoria, canais e campeonatos...', embeds: [], components: [] });
   try {
     const resultado = await criarEvento(interaction.guild, {
@@ -247,8 +300,9 @@ async function onModalDuracao(interaction) {
       modo: selecao.modo,
       tipoDupla: selecao.tipoDupla,
       baseadoEmInscricoes: selecao.baseadoEmInscricoes,
-      simultaneo: true,
-      duracaoMin
+      simultaneo: selecao.simultaneo,
+      duracaoMin: selecao.duracaoMin,
+      temTerceiroLugar: true
     });
     selecaoRanks.delete(`camp:selecao:${interaction.user.id}`);
     const eventosCriados = [];
@@ -272,6 +326,14 @@ async function onModalDuracao(interaction) {
     console.error('[campeonato.criarEvento] erro:', error);
     return interaction.editReply({ content: 'Erro ao criar evento. Verifique permissoes do bot e tente novamente.' });
   }
+}
+
+async function onCancelarCriacao(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
+  }
+  selecaoRanks.delete(`camp:selecao:${interaction.user.id}`);
+  return interaction.update({ content: 'Criacao cancelada.', embeds: [], components: [] });
 }
 
 async function onBotaoInscrever(interaction) {
@@ -653,93 +715,6 @@ async function onSubmitDesclassificar(interaction) {
   }
 }
 
-async function onModalSimultaneo(interaction) {
-  if (!temPermissaoOrganizador(interaction.member)) {
-    return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
-  }
-  const valor = interaction.values[0];
-  const simultaneo = valor === 'SIM';
-  const selecao = selecaoRanks.get(`camp:selecao:${interaction.user.id}`);
-  if (!selecao) {
-    return interaction.update({ content: 'Sessao expirou. Clique em Criar Evento de novo.', embeds: [], components: [] });
-  }
-  const preview3h = gerarDescricaoEvento({
-    dataInicio: selecao.dataInicio,
-    duracaoMin: 180,
-    numTimes: 0,
-    modo: selecao.modo || 'simples',
-    simultaneo
-  });
-  const preview4h = gerarDescricaoEvento({
-    dataInicio: selecao.dataInicio,
-    duracaoMin: 240,
-    numTimes: 0,
-    modo: selecao.modo || 'simples',
-    simultaneo
-  });
-  const select = new StringSelectMenuBuilder()
-    .setCustomId('modal_duracao')
-    .setPlaceholder('Escolha a duração do campeonato')
-    .addOptions([
-      { label: '3h (padrão)', value: '180', description: 'Previsão: ' + preview3h.horaInicio + ' às ' + preview3h.horaFim },
-      { label: '4h', value: '240', description: 'Previsão: ' + preview4h.horaInicio + ' às ' + preview4h.horaFim }
-    ]);
-  await interaction.update({
-    content: 'Escolha a duração do campeonato:',
-    embeds: [{
-      title: '⏱️ Prévia — 3h (padrão)',
-      description: preview3h.descricao,
-      color: 0xFF6B00
-    }],
-    components: [new ActionRowBuilder().addComponents(select)]
-  });
-}
-
-async function onConfirmarCriarEvento(interaction) {
-  if (!temPermissaoOrganizador(interaction.member)) {
-    return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
-  }
-  const selecao = selecaoRanks.get(`camp:selecao:${interaction.user.id}`);
-  if (!selecao) {
-    return interaction.update({ content: 'Sessao expirou. Clique em Criar Evento de novo.', embeds: [], components: [] });
-  }
-  await interaction.update({ content: 'Criando categoria, canais e campeonatos...', embeds: [], components: [] });
-  try {
-    const resultado = await criarEvento(interaction.guild, {
-      nome: selecao.nome,
-      dataInicio: selecao.dataInicio,
-      dataFim: selecao.dataFim,
-      ranksSelecionados: selecao.ranksSelecionados,
-      organizadorId: interaction.user.id,
-      modo: selecao.modo,
-      tipoDupla: selecao.tipoDupla,
-      baseadoEmInscricoes: selecao.baseadoEmInscricoes,
-      simultaneo: true
-    });
-    selecaoRanks.delete(`camp:selecao:${interaction.user.id}`);
-    const eventosCriados = [];
-    for (const camp of resultado.campeonatos) {
-      const canal = await interaction.guild.channels.fetch(camp.canais.inscricoes).catch(() => null);
-      if (canal && canal.isTextBased()) {
-        const painel = embedPainelInscricao(camp, 0);
-        await canal.send({ embeds: painel.embeds, components: toActionRows(painel.components) }).catch(() => {});
-      }
-      eventosCriados.push(camp);
-    }
-    return interaction.editReply(embedEventoCriado({
-      evento: resultado.evento,
-      categoria: resultado.categoria,
-      campeonatos: eventosCriados
-    }));
-  } catch (error) {
-    if (error instanceof EventoError) {
-      return interaction.editReply({ content: error.message });
-    }
-    console.error('[campeonato.criarEvento] erro:', error);
-    return interaction.editReply({ content: 'Erro ao criar evento.' });
-  }
-}
-
 async function onCancelarCriarEvento(interaction) {
   if (!temPermissaoOrganizador(interaction.member)) {
     return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
@@ -753,40 +728,86 @@ async function onPainelOrganizadorTab(interaction) {
     return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
   }
   const tab = interaction.values[0];
-  let embed;
-  switch (tab) {
-    case 'inscritos':
-      embed = {
-        title: '📋 ABA 1 - INSCRITOS',
-        description: 'Lista de inscritos por rank.\n\nEm desenvolvimento...',
-        color: 0x00C2FF
-      };
-      break;
-    case 'times':
-      embed = {
-        title: '👥 ABA 2 - TIMES DEFINIDOS',
-        description: 'Times formados (FIXA).\n\nEm desenvolvimento...',
-        color: 0x00FF00
-      };
-      break;
-    case 'partidas':
-      embed = {
-        title: '🎮 ABA 3 - PARTIDAS AO VIVO',
-        description: 'Partidas em andamento.\n\nEm desenvolvimento...',
-        color: 0xFFA500
-      };
-      break;
-    case 'gestao':
-      embed = {
-        title: '🛠️ ABA 4 - GESTÃO EXTRA',
-        description: 'W.O., broadcast, classificação.\n\nEm desenvolvimento...',
-        color: 0xFF6B00
-      };
-      break;
-    default:
-      embed = { title: '❓ Aba desconhecida', color: 0xFF0000 };
+  const campeonato = await Campeonato.findOne({
+    $or: [
+      { 'canais.inscricoes': interaction.channelId },
+      { 'canais.partidas': interaction.channelId },
+      { 'canais.prints': interaction.channelId }
+    ]
+  }).lean();
+  if (!campeonato) {
+    return interaction.update({ content: 'Canal não pertence a nenhum campeonato.', embeds: [], components: [] });
   }
-  return interaction.update({ embeds: [embed], components: [] });
+  switch (tab) {
+    case 'inscritos': {
+      const inscritos = await listarInscricoes(campeonato._id);
+      const linhas = inscritos.map((t, i) =>
+        `${i + 1}. **${t.nome || 'Sem nome'}** — Capitão: <@${t.capitaoId}> (${t.jogadores?.length || 0} jogador(es))`
+      ).join('\n') || 'Nenhum inscrito.';
+      return interaction.update({
+        embeds: [{
+          title: '📋 ABA 1 - INSCRITOS',
+          description: linhas,
+          color: 0x00C2FF,
+          footer: { text: `Total: ${inscritos.length} time(s)` }
+        }],
+        components: []
+      });
+    }
+    case 'times': {
+      const times = await Time.find({ campeonatoId: campeonato._id }).lean();
+      const linhas = times.map((t, i) => {
+        const jogadores = (t.jogadores || []).map(j => `<@${j.userId}>`).join(', ') || 'Sem jogadores';
+        return `${i + 1}. **${t.nome || 'Sem nome'}** — ${jogadores}`;
+      }).join('\n') || 'Nenhum time definido.';
+      return interaction.update({
+        embeds: [{
+          title: '👥 ABA 2 - TIMES DEFINIDOS',
+          description: linhas,
+          color: 0x00FF00,
+          footer: { text: `Total: ${times.length} time(s)` }
+        }],
+        components: []
+      });
+    }
+    case 'partidas': {
+      const partidas = await Partida.find({
+        campeonatoId: campeonato._id,
+        status: { $nin: ['FINALIZADA', 'CANCELADA', 'WO'] }
+      }).lean();
+      const timesIds = partidas.flatMap((p) => [p.timeA, p.timeB]).filter(Boolean);
+      const times = await Time.find({ _id: { $in: timesIds } }).lean();
+      const timesMap = new Map(times.map((t) => [String(t._id), t.nome]));
+      const linhas = partidas.map((p, i) => {
+        const nomeA = timesMap.get(String(p.timeA)) || 'TBD';
+        const nomeB = timesMap.get(String(p.timeB)) || 'TBD';
+        return `${i + 1}. **R${p.rodada || 1}** ${p.fase || ''} — **${nomeA}** vs **${nomeB}** — Status: ${p.status}`;
+      }).join('\n') || 'Nenhuma partida em andamento.';
+      return interaction.update({
+        embeds: [{
+          title: '🎮 ABA 3 - PARTIDAS AO VIVO',
+          description: linhas,
+          color: 0xFFA500,
+          footer: { text: `Total: ${partidas.length} partida(s)` }
+        }],
+        components: []
+      });
+    }
+    case 'gestao': {
+      const adminEmbed = embedPainelAdmin(campeonato);
+      const components = campeonato.status === 'CANCELADO'
+        ? [[
+            { type: 2, style: 1, label: '♻️ Reabrir', custom_id: 'btn_camp_reabrir_' + campeonato._id, emoji: { name: '♻️' } }
+          ]]
+        : adminEmbed.components;
+      return interaction.update({
+        embeds: adminEmbed.embeds,
+        components: toActionRows(components)
+      });
+    }
+    default:
+      return interaction.update({ embeds: [{ title: '❓ Aba desconhecida', color: 0xFF0000 }], components: [] });
+  }
 }
 
 function register(registry) {
@@ -815,6 +836,8 @@ function register(registry) {
   registry.modal(/^modal_camp_desclassificar_[a-f0-9]{24}$/, onSubmitDesclassificar);
   registry.select('modal_simultaneo', onModalSimultaneo);
   registry.select('modal_duracao', onModalDuracao);
+  registry.button('btn_camp_confirmar_criacao', onConfirmarCriacao);
+  registry.button('btn_camp_cancelar_criacao', onCancelarCriacao);
   registry.select('painel_org_tab', onPainelOrganizadorTab);
 }
 

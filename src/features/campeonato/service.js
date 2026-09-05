@@ -86,7 +86,7 @@ async function criarEvento(guild, parametros) {
       baseadoEmInscricoes: parametros.baseadoEmInscricoes,
       limiteInscricoes: parametros.limiteInscricoes || null,
       modalidade: parametros.modalidade || null,
-      temTerceiroLugar: true
+      temTerceiroLugar: parametros.temTerceiroLugar !== false
     });
     const canais = await criarCanaisRank(guild, categoria, rank, { nome: evento.nome, sufixoNumero: sufixo }, botUserId);
     camp.canais = {
