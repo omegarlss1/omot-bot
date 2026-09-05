@@ -69,40 +69,6 @@ async function onBotaoCriarEvento(interaction) {
         .setStyle(TextInputStyle.Short)
         .setPlaceholder('01/12/2026')
         .setRequired(true)
-    ),
-    new ActionRowBuilder().addComponents(
-      new StringSelectMenuBuilder()
-        .setCustomId('evento_modo')
-        .setPlaceholder('Modo de jogo')
-        .addOptions([
-          { label: '1v1', value: '1v1' },
-          { label: '2v2', value: '2v2' },
-          { label: '3v3', value: '3v3' },
-          { label: '4v4', value: '4v4' },
-          { label: '6v6', value: '6v6' },
-          { label: '8v8', value: '8v8' },
-          { label: '10v10', value: '10v10' },
-          { label: '12v12', value: '12v12' },
-          { label: 'FFA', value: 'ffa' }
-        ])
-    ),
-    new ActionRowBuilder().addComponents(
-      new StringSelectMenuBuilder()
-        .setCustomId('evento_tipo_dupla')
-        .setPlaceholder('Tipo de dupla')
-        .addOptions([
-          { label: 'SORTEADA', value: 'SORTEADA', description: 'Duplas serão sorteadas' },
-          { label: 'FIXA', value: 'FIXA', description: 'Duplas fixas' }
-        ])
-    ),
-    new ActionRowBuilder().addComponents(
-      new StringSelectMenuBuilder()
-        .setCustomId('evento_baseado_inscricoes')
-        .setPlaceholder('Baseado em inscrições?')
-        .addOptions([
-          { label: 'SIM', value: 'SIM', description: 'Formar times por inscrição' },
-          { label: 'NÃO', value: 'NAO', description: 'Times pré-definidos' }
-        ])
     )
   );
   return interaction.showModal(modal);
@@ -115,10 +81,6 @@ async function onSubmitCriarEvento(interaction) {
   const nome = interaction.fields.getTextInputValue('evento_nome');
   const dataInicioStr = interaction.fields.getTextInputValue('evento_data_inicio') || '';
   const dataInicio = parseDataBR(dataInicioStr);
-  const modo = (interaction.fields.components.find((c) => c.customId === 'evento_modo')?.values || [])[0] || '3v3';
-  const tipoDupla = (interaction.fields.components.find((c) => c.customId === 'evento_tipo_dupla')?.values || [])[0] || 'SORTEADA';
-  const baseadoEmInscricoesStr = (interaction.fields.components.find((c) => c.customId === 'evento_baseado_inscricoes')?.values || [])[0] || 'SIM';
-  const baseadoEmInscricoes = baseadoEmInscricoesStr === 'SIM';
 
   if (!dataInicio) {
     return interaction.reply({ content: 'Data invalida. Use o formato DD/MM/AAAA.', flags: 64 });
@@ -133,13 +95,19 @@ async function onSubmitCriarEvento(interaction) {
     });
   }
 
-  selecaoRanks.set(`camp:selecao:${interaction.user.id}`, { nome, dataInicio, dataFim: dataInicio, modo, tipoDupla, baseadoEmInscricoes, ranksSelecionados: [] });
-  const sel = embedSelecionarRanks({ nome, dataInicio, dataFim, ranksSelecionados: [] });
-  await interaction.reply({
-    content: 'Evento **' + nome + '** preparado. Agora selecione os ranks:',
-    embeds: sel.embeds,
-    components: toActionRows(sel.components),
-    flags: 64
+  selecaoRanks.set(`camp:selecao:${interaction.user.id}`, { nome, dataInicio, dataFim: dataInicio, modo: null, tipoDupla: null, baseadoEmInscricoes: null, ranksSelecionados: [] });
+  const select = new StringSelectMenuBuilder()
+    .setCustomId('modal_config_evento')
+    .setPlaceholder('Configure o evento')
+    .addOptions([
+      { label: '3v3', value: '3v3', description: 'Padrão' },
+      { label: '6v6', value: '6v6', description: '6 por time' },
+      { label: 'FFA', value: 'ffa', description: 'Cada um por si' }
+    ]);
+  await interaction.update({
+    content: 'Escolha o **modo de jogo**:',
+    embeds: [],
+    components: [new ActionRowBuilder().addComponents(select)]
   });
 }
 
@@ -810,6 +778,84 @@ async function onPainelOrganizadorTab(interaction) {
   }
 }
 
+async function onConfigSelect(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
+  }
+  const customId = interaction.customId;
+  const valor = interaction.values[0];
+  const selecao = selecaoRanks.get(`camp:selecao:${interaction.user.id}`);
+  if (!selecao) {
+    return interaction.update({ content: 'Sessao expirou. Clique em Criar Evento de novo.', embeds: [], components: [] });
+  }
+  if (customId === 'modal_config_modo') {
+    selecao.modo = valor;
+    selecaoRanks.set(`camp:selecao:${interaction.user.id}`, selecao);
+    const select = new StringSelectMenuBuilder()
+      .setCustomId('modal_config_tipo_dupla')
+      .setPlaceholder('Tipo de dupla')
+      .addOptions([
+        { label: 'SORTEADA', value: 'SORTEADA', description: 'Duplas serão sorteadas' },
+        { label: 'FIXA', value: 'FIXA', description: 'Duplas fixas' }
+      ]);
+    return interaction.update({
+      content: 'Escolha o **tipo de dupla**:',
+      embeds: [],
+      components: [new ActionRowBuilder().addComponents(select)]
+    });
+  }
+  if (customId === 'modal_config_tipo_dupla') {
+    selecao.tipoDupla = valor;
+    selecaoRanks.set(`camp:selecao:${interaction.user.id}`, selecao);
+    const select = new StringSelectMenuBuilder()
+      .setCustomId('modal_config_baseado')
+      .setPlaceholder('Baseado em inscrições?')
+      .addOptions([
+        { label: 'SIM', value: 'SIM', description: 'Formar times por inscrição' },
+        { label: 'NÃO', value: 'NAO', description: 'Times pré-definidos' }
+      ]);
+    return interaction.update({
+      content: 'Evento **baseado em inscrições**?',
+      embeds: [],
+      components: [new ActionRowBuilder().addComponents(select)]
+    });
+  }
+  if (customId === 'modal_config_baseado') {
+    selecao.baseadoEmInscricoes = valor === 'SIM';
+    selecaoRanks.set(`camp:selecao:${interaction.user.id}`, selecao);
+    const preview = gerarDescricaoEvento({
+      dataInicio: selecao.dataInicio,
+      duracaoMin: 180,
+      numTimes: 0,
+      modo: selecao.modo || 'simples',
+      simultaneo: true
+    });
+    const embed = {
+      title: '📋 Confira os dados do evento',
+      description: '**Nome:** ' + selecao.nome + '\n' +
+        '**Data de início:** ' + new Date(selecao.dataInicio).toLocaleDateString('pt-BR') + '\n' +
+        '**Modo:** ' + selecao.modo + '\n' +
+        '**Tipo Dupla:** ' + selecao.tipoDupla + '\n' +
+        '**Baseado em Inscrições:** ' + (selecao.baseadoEmInscricoes ? 'SIM' : 'NÃO') + '\n' +
+        '**Ranks:** ' + (selecao.ranksSelecionados.length ? selecao.ranksSelecionados.map((r) => r.toUpperCase()).join(', ') : '—') + '\n' +
+        '**3º Lugar:** SIM (padrão)\n\n' +
+        '**Previsão:** ' + preview.horaInicio + ' às ' + preview.horaFim + '\n' +
+        preview.descricao,
+      color: 0xFF6B00
+    };
+    const components = [[
+      { type: 2, style: 3, label: '✅ Confirmar e Criar Evento', custom_id: 'btn_camp_confirmar_criacao', emoji: { name: '✅' } },
+      { type: 2, style: 4, label: '❌ Cancelar', custom_id: 'btn_camp_cancelar_criacao', emoji: { name: '❌' } }
+    ]];
+    return interaction.update({
+      content: 'Confira os dados do evento antes de criar:',
+      embeds: [embed],
+      components: toActionRows(components)
+    });
+  }
+  return interaction.update({ content: 'Opção inválida.', embeds: [], components: [] });
+}
+
 function register(registry) {
   registry.button('btn_campeonato_criar', onAbrirPainelCriacao);
   registry.button('btn_campeonato_criar_evento', onBotaoCriarEvento);
@@ -836,6 +882,7 @@ function register(registry) {
   registry.modal(/^modal_camp_desclassificar_[a-f0-9]{24}$/, onSubmitDesclassificar);
   registry.select('modal_simultaneo', onModalSimultaneo);
   registry.select('modal_duracao', onModalDuracao);
+  registry.select(/^modal_config_(modo|tipo_dupla|baseado)$/, onConfigSelect);
   registry.button('btn_camp_confirmar_criacao', onConfirmarCriacao);
   registry.button('btn_camp_cancelar_criacao', onCancelarCriacao);
   registry.select('painel_org_tab', onPainelOrganizadorTab);
