@@ -4,6 +4,7 @@ const config = require('../../config');
 const { criarCategoriaEvento, criarCanalGeral, criarCanaisRank } = require('./permissions');
 const CampeonatoFactory = require('./factory/CampeonatoFactory');
 const { emitir, EVENTOS } = require('./events');
+const { gerarDescricaoEvento } = require('./services/duracao');
 
 class EventoError extends Error {
   constructor(mensagem, code) {
@@ -45,13 +46,22 @@ async function criarEvento(guild, parametros) {
   const botUserId = guild.members.me?.id || guild.client?.user?.id;
   if (!botUserId) throw new EventoError('Não foi possível identificar o userId do bot.', 'EVENTO_BOT_MISSING');
 
+  const descricaoEvento = gerarDescricaoEvento({
+    dataInicio: params.dataInicio,
+    duracaoMin: 180,
+    numTimes: 0,
+    modo: parametros.modo || 'simples',
+    simultaneo: parametros.simultaneo !== false
+  });
+
   const evento = await Evento.create({
     guildId: guild.id,
     nome: params.nome,
     ranksSelecionados: parametros.ranksSelecionados,
     dataInicio: params.dataInicio,
     dataFim: params.dataFim,
-    organizadorId: parametros.organizadorId
+    organizadorId: parametros.organizadorId,
+    descricao: descricaoEvento.descricao
   });
   emitir(EVENTOS.EVENTO_CRIADO, { eventoId: evento._id, guildId: guild.id });
 

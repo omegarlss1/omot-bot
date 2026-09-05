@@ -15,6 +15,7 @@ const eventoSchema = new mongoose.Schema({
   dataFim: { type: Date, required: true },
   organizadorId: { type: String, required: true },
   categoriaId: { type: String, default: null },
+  descricao: { type: String, default: null },
   criadoEm: { type: Date, default: Date.now }
 }, { timestamps: true });
 

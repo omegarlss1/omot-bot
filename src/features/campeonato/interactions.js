@@ -2,6 +2,7 @@ const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, String
 const config = require('../../config');
 const { embedCriarEvento, embedSelecionarRanks, embedEventoCriado, embedPainelInscricao, embedInscricaoConfirmada, embedResumoCorte, embedMenuFormato, embedPainelPartida, embedPlacarEnviado, embedDisputaOrganizador, embedBracket, embedClassificacao, embedCampeaoDefinido, embedPainelAdmin, embedCancelamentoConfirmado, embedReaberturaConfirmada, embedTimeDesclassificado, embedPlacarAjustado, toActionRows } = require('./embeds');
 const { criarEvento, EventoError } = require('./service');
+const { gerarDescricaoEvento } = require('./services/duracao');
 const { inscreverCapitao, fecharInscricoes, executarCorte, definirFormato, findCampeonatoPorCanalInscricao, listarInscricoes, InscricaoError } = require('./services/inscricao');
 const { InscricaoError: ValidacaoInscricaoError } = require('./validators/inscricao');
 const { CorteError } = require('./validators/corte');
@@ -159,40 +160,18 @@ async function onConfirmarRanks(interaction) {
   if (selecao.ranksSelecionados.length === 0) {
     return interaction.update({ content: 'Selecione ao menos 1 rank antes de confirmar.', embeds: [], components: [] });
   }
-  await interaction.update({ content: 'Criando categoria, canais e campeonatos...', embeds: [], components: [] });
-  try {
-    const resultado = await criarEvento(interaction.guild, {
-      nome: selecao.nome,
-      dataInicio: selecao.dataInicio,
-      dataFim: selecao.dataFim,
-      ranksSelecionados: selecao.ranksSelecionados,
-      organizadorId: interaction.user.id,
-      modo: selecao.modo,
-      tipoDupla: selecao.tipoDupla,
-      baseadoEmInscricoes: selecao.baseadoEmInscricoes
-    });
-    selecaoRanks.delete(`camp:selecao:${interaction.user.id}`);
-    const eventosCriados = [];
-    for (const camp of resultado.campeonatos) {
-      const canal = await interaction.guild.channels.fetch(camp.canais.inscricoes).catch(() => null);
-      if (canal && canal.isTextBased()) {
-        const painel = embedPainelInscricao(camp, 0);
-        await canal.send({ embeds: painel.embeds, components: toActionRows(painel.components) }).catch(() => {});
-      }
-      eventosCriados.push(camp);
-    }
-    return interaction.editReply(embedEventoCriado({
-      evento: resultado.evento,
-      categoria: resultado.categoria,
-      campeonatos: eventosCriados
-    }));
-  } catch (error) {
-    if (error instanceof EventoError) {
-      return interaction.editReply({ content: error.message });
-    }
-    console.error('[campeonato.criarEvento] erro:', error);
-    return interaction.editReply({ content: 'Erro ao criar evento. Verifique permissoes do bot e tente novamente.' });
-  }
+  const select = new StringSelectMenuBuilder()
+    .setCustomId('modal_simultaneo')
+    .setPlaceholder('Como as partidas vao rolar?')
+    .addOptions([
+      { label: 'SIMULTÂNEO', value: 'SIM', description: 'Todas as partidas começam ao mesmo tempo' },
+      { label: 'ESCALONADO', value: 'NAO', description: 'Uma partida após a outra' }
+    ]);
+  await interaction.update({
+    content: 'Evento com ' + selecao.ranksSelecionados.length + ' rank(s). Como as partidas vao rolar?',
+    embeds: [],
+    components: [new ActionRowBuilder().addComponents(select)]
+  });
 }
 
 async function onBotaoInscrever(interaction) {
@@ -574,6 +553,95 @@ async function onSubmitDesclassificar(interaction) {
   }
 }
 
+async function onModalSimultaneo(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
+  }
+  const valor = interaction.values[0];
+  const simultaneo = valor === 'SIM';
+  const selecao = selecaoRanks.get(`camp:selecao:${interaction.user.id}`);
+  if (!selecao) {
+    return interaction.update({ content: 'Sessao expirou. Clique em Criar Evento de novo.', embeds: [], components: [] });
+  }
+  const preview = gerarDescricaoEvento({
+    dataInicio: selecao.dataInicio,
+    duracaoMin: 180,
+    numTimes: 0,
+    modo: selecao.modo || 'simples',
+    simultaneo
+  });
+  const confirmar = new ButtonBuilder()
+    .setCustomId('btn_camp_confirmar_evento')
+    .setLabel('✅ Confirmar e Criar')
+    .setStyle(ButtonStyle.Success);
+  const cancelar = new ButtonBuilder()
+    .setCustomId('btn_camp_cancelar_evento')
+    .setLabel('❌ Cancelar')
+    .setStyle(ButtonStyle.Danger);
+  await interaction.update({
+    content: 'Prévia da descrição do evento:',
+    embeds: [{
+      title: '📋 Prévia do Evento',
+      description: preview.descricao,
+      color: 0xFF6B00
+    }],
+    components: [new ActionRowBuilder().addComponents(confirmar, cancelar)]
+  });
+}
+
+async function onConfirmarCriarEvento(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
+  }
+  const selecao = selecaoRanks.get(`camp:selecao:${interaction.user.id}`);
+  if (!selecao) {
+    return interaction.update({ content: 'Sessao expirou. Clique em Criar Evento de novo.', embeds: [], components: [] });
+  }
+  await interaction.update({ content: 'Criando categoria, canais e campeonatos...', embeds: [], components: [] });
+  try {
+    const resultado = await criarEvento(interaction.guild, {
+      nome: selecao.nome,
+      dataInicio: selecao.dataInicio,
+      dataFim: selecao.dataFim,
+      ranksSelecionados: selecao.ranksSelecionados,
+      organizadorId: interaction.user.id,
+      modo: selecao.modo,
+      tipoDupla: selecao.tipoDupla,
+      baseadoEmInscricoes: selecao.baseadoEmInscricoes,
+      simultaneo: true
+    });
+    selecaoRanks.delete(`camp:selecao:${interaction.user.id}`);
+    const eventosCriados = [];
+    for (const camp of resultado.campeonatos) {
+      const canal = await interaction.guild.channels.fetch(camp.canais.inscricoes).catch(() => null);
+      if (canal && canal.isTextBased()) {
+        const painel = embedPainelInscricao(camp, 0);
+        await canal.send({ embeds: painel.embeds, components: toActionRows(painel.components) }).catch(() => {});
+      }
+      eventosCriados.push(camp);
+    }
+    return interaction.editReply(embedEventoCriado({
+      evento: resultado.evento,
+      categoria: resultado.categoria,
+      campeonatos: eventosCriados
+    }));
+  } catch (error) {
+    if (error instanceof EventoError) {
+      return interaction.editReply({ content: error.message });
+    }
+    console.error('[campeonato.criarEvento] erro:', error);
+    return interaction.editReply({ content: 'Erro ao criar evento.' });
+  }
+}
+
+async function onCancelarCriarEvento(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
+  }
+  selecaoRanks.delete(`camp:selecao:${interaction.user.id}`);
+  return interaction.update({ content: 'Criacao cancelada.', embeds: [], components: [] });
+}
+
 async function onPainelOrganizadorTab(interaction) {
   if (!temPermissaoOrganizador(interaction.member)) {
     return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
@@ -639,7 +707,9 @@ function register(registry) {
   registry.button(/^btn_camp_cancelar_[a-f0-9]{24}$/, onBotaoCancelar);
   registry.button(/^btn_camp_reabrir_[a-f0-9]{24}$/, onBotaoReabrir);
   registry.modal(/^modal_camp_desclassificar_[a-f0-9]{24}$/, onSubmitDesclassificar);
-  registry.select('painel_org_tab', onPainelOrganizadorTab);
+  registry.select('modal_simultaneo', onModalSimultaneo);
+  registry.button('btn_camp_confirmar_evento', onConfirmarCriarEvento);
+  registry.button('btn_camp_cancelar_evento', onCancelarCriarEvento);
 }
 
 module.exports = { register, temPermissaoOrganizador, parseDataBR };
