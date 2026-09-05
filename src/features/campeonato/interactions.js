@@ -63,18 +63,10 @@ async function onBotaoCriarEvento(interaction) {
     ),
     new ActionRowBuilder().addComponents(
       new TextInputBuilder()
-        .setCustomId('evento_data_inicio')
-        .setLabel('Data de inicio (DD/MM/AAAA)')
+        .setCustomId('evento_datas')
+        .setLabel('Inicio e Fim (DD/MM/AAAA ate DD/MM/AAAA)')
         .setStyle(TextInputStyle.Short)
-        .setPlaceholder('01/12/2026')
-        .setRequired(true)
-    ),
-    new ActionRowBuilder().addComponents(
-      new TextInputBuilder()
-        .setCustomId('evento_data_fim')
-        .setLabel('Data de fim (DD/MM/AAAA)')
-        .setStyle(TextInputStyle.Short)
-        .setPlaceholder('15/12/2026')
+        .setPlaceholder('01/12/2026 ate 15/12/2026')
         .setRequired(true)
     ),
     new ActionRowBuilder().addComponents(
@@ -110,14 +102,16 @@ async function onSubmitCriarEvento(interaction) {
     return interaction.reply({ content: 'Sem permissao.', flags: 64 });
   }
   const nome = interaction.fields.getTextInputValue('evento_nome');
-  const dataInicio = parseDataBR(interaction.fields.getTextInputValue('evento_data_inicio'));
-  const dataFim = parseDataBR(interaction.fields.getTextInputValue('evento_data_fim'));
+  const datas = interaction.fields.getTextInputValue('evento_datas') || '';
+  const partes = datas.split(' até ').map((s) => s.trim());
+  const dataInicio = parseDataBR(partes[0]);
+  const dataFim = parseDataBR(partes[1]);
   const modo = interaction.fields.getTextInputValue('evento_modo')?.trim() || '3v3';
   const tipoDupla = interaction.fields.getTextInputValue('evento_tipo_dupla')?.trim() || 'SORTEADA';
   const baseadoEmInscricoesStr = interaction.fields.getTextInputValue('evento_baseado_inscricoes')?.trim() || 'SIM';
   const baseadoEmInscricoes = baseadoEmInscricoesStr === 'SIM';
   if (!dataInicio || !dataFim) {
-    return interaction.reply({ content: 'Datas invalidas. Use o formato DD/MM/AAAA.', flags: 64 });
+    return interaction.reply({ content: 'Datas invalidas. Use o formato DD/MM/AAAA ate DD/MM/AAAA.', flags: 64 });
   }
   selecaoRanks.set(`camp:selecao:${interaction.user.id}`, { nome, dataInicio, dataFim, modo, tipoDupla, baseadoEmInscricoes, ranksSelecionados: [] });
   const sel = embedSelecionarRanks({ nome, dataInicio, dataFim, ranksSelecionados: [] });
