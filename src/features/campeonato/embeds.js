@@ -106,16 +106,24 @@ function embedPainelPartida({ partida, timeA, timeB }) {
     AGUARDANDO_CHECKIN: '⏰', AGUARDANDO_PLACAR: '🎮', AGUARDANDO_VALIDACAO: '⏳',
     EM_DISPUTA_ORGANIZADOR: '⚖️', FINALIZADA: '🏆', CANCELADA: '❌', WO: '🚫'
   }[partida.status] || '❓';
+  const fields = [
+    { name: '🟦 Time A', value: (timeA?.nome || 'A definir') + ' ' + checkA, inline: true },
+    { name: '🟥 Time B', value: (timeB?.nome || 'A definir') + ' ' + checkB, inline: true },
+    { name: '🕐 Janela check-in', value: new Date(partida.janelaCheckIn.inicio).toLocaleString('pt-BR') + ' → ' + new Date(partida.janelaCheckIn.fim).toLocaleString('pt-BR'), inline: false }
+  ];
+  if (partida.duelos && partida.duelos.length > 0) {
+    const linhas = partida.duelos.map((d, idx) => {
+      const status = d.vencedorLado ? ('Vencedor: ' + d.vencedorLado) : 'Pendente';
+      return 'Dupla ' + (idx + 1) + ': ' + (d.placarA || '—') + ' x ' + (d.placarB || '—') + ' — ' + status;
+    }).join('\n');
+    fields.push({ name: '⚔️ Duplas', value: linhas, inline: false });
+  }
   return {
     embeds: [{
       title: statusEmoji + ' Partida — Rodada ' + (partida.rodada || 1),
       description: 'Fase: **' + (partida.fase || 'R1') + '** | Status: **' + partida.status + '**',
       color: 0x00C2FF,
-      fields: [
-        { name: '🟦 Time A', value: (timeA?.nome || 'A definir') + ' ' + checkA, inline: true },
-        { name: '🟥 Time B', value: (timeB?.nome || 'A definir') + ' ' + checkB, inline: true },
-        { name: '🕐 Janela check-in', value: new Date(partida.janelaCheckIn.inicio).toLocaleString('pt-BR') + ' → ' + new Date(partida.janelaCheckIn.fim).toLocaleString('pt-BR'), inline: false }
-      ]
+      fields
     }],
     components: [[
       { type: 2, style: 3, label: '✅ Check-in', custom_id: 'btn_camp_checkin_' + partida._id, emoji: { name: '✅' } },
@@ -125,11 +133,14 @@ function embedPainelPartida({ partida, timeA, timeB }) {
   };
 }
 
-function embedPlacarEnviado({ partida, lado, placar }) {
+function embedPlacarEnviado({ partida, lado, placar, dueloIndex }) {
+  const dueloInfo = dueloIndex !== null && partida.duelos && partida.duelos[dueloIndex]
+    ? ' (Dupla ' + (dueloIndex + 1) + ')'
+    : '';
   return {
     embeds: [{
       title: '⏳ Placar Enviado — Aguardando Validação',
-      description: 'Time ' + lado + ' enviou placar **' + placar + '**.\nO time adversário deve validar ou contestar.',
+      description: 'Time ' + lado + ' enviou placar **' + placar + '**' + dueloInfo + '.\nO time adversário deve validar ou contestar.',
       color: 0xFFA500
     }],
     components: [[

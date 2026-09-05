@@ -38,7 +38,7 @@ function parsePlacar(texto) {
   return { golsA: Number(match[1]), golsB: Number(match[2]) };
 }
 
-async function enviarPlacar({ partidaId, timeId, userId, placar, prints = [], duelos = [] }) {
+async function enviarPlacar({ partidaId, timeId, userId, placar, prints = [], duelos = [], dueloIndex = null }) {
   const partida = await Partida.findById(partidaId);
   if (!partida) throw new PlacarError('Partida não encontrada.', 'PLACAR_PARTIDA_NAO_ENCONTRADA');
   if (partida.status !== 'AGUARDANDO_PLACAR' && partida.status !== 'AGUARDANDO_VALIDACAO') {
@@ -58,20 +58,27 @@ async function enviarPlacar({ partidaId, timeId, userId, placar, prints = [], du
   if (!ehTimeA && !ehTimeB) {
     throw new PlacarError('Seu time não está nesta partida.', 'PLACAR_TIME_INVALIDO');
   }
-  const campo = ehTimeA ? 'placarEnviado.timeA' : 'placarEnviado.timeB';
   const atualizacao = {
-    [campo]: {
+    status: 'AGUARDANDO_VALIDACAO'
+  };
+  if (dueloIndex !== null && partida.duelos && partida.duelos.length > dueloIndex) {
+    const duelo = partida.duelos[dueloIndex];
+    const campo = ehTimeA ? 'placarA' : 'placarB';
+    atualizacao[`duelos.${dueloIndex}.${campo}`] = placar;
+    atualizacao[`duelos.${dueloIndex}.vencedorLado`] = parsed.golsA > parsed.golsB ? 'A' : (parsed.golsB > parsed.golsA ? 'B' : null);
+  } else {
+    const campo = ehTimeA ? 'placarEnviado.timeA' : 'placarEnviado.timeB';
+    atualizacao[campo] = {
       por: userId,
       placar,
       prints,
       duelosRegistrados: duelos,
       timestamp: new Date()
-    },
-    status: 'AGUARDANDO_VALIDACAO'
-  };
+    };
+  }
   await Partida.updateOne({ _id: partidaId }, { $set: atualizacao });
-  emitir(EVENTOS.PLACAR_ENVIADO, { partidaId, timeId, placar, lado: ehTimeA ? 'A' : 'B' });
-  return { ok: true, lado: ehTimeA ? 'A' : 'B', placar };
+  emitir(EVENTOS.PLACAR_ENVIADO, { partidaId, timeId, placar, lado: ehTimeA ? 'A' : 'B', dueloIndex });
+  return { ok: true, lado: ehTimeA ? 'A' : 'B', placar, dueloIndex };
 }
 
 async function validarPlacar({ partidaId, userId, timeId, aceito }) {
@@ -104,20 +111,46 @@ async function validarPlacar({ partidaId, userId, timeId, aceito }) {
   const placarA = partida.placarEnviado?.timeA?.placar;
   const placarB = partida.placarEnviado?.timeB?.placar;
   const placaresConvergem = placarA && placarB && placarA === placarB;
+  let vencedorId = null;
   if (placaresConvergem && partida.validacao?.[outroCampo]) {
-    novoEstado.status = 'FINALIZADA';
     const parsed = parsePlacar(placarA);
-    const vencedorId = parsed.golsA > parsed.golsB ? partida.timeA : partida.timeB;
+    vencedorId = parsed.golsA > parsed.golsB ? partida.timeA : partida.timeB;
+    novoEstado.status = 'FINALIZADA';
     novoEstado.vencedorId = vencedorId;
+  } else if (partida.duelos && partida.duelos.length > 0) {
+    const todosValidados = partida.validacao?.timeAValidou && partida.validacao?.timeBValidou;
+    if (todosValidados) {
+      const resultado = calcularVencedorDuplas(partida.duelos);
+      vencedorId = resultado.vencedorId;
+      if (vencedorId) {
+        novoEstado.status = 'FINALIZADA';
+        novoEstado.vencedorId = vencedorId;
+      }
+    }
   }
   await Partida.updateOne({ _id: partidaId }, { $set: novoEstado });
   if (novoEstado.status === 'FINALIZADA') {
-    await aplicarPontuacao(partidaId, novoEstado.vencedorId, parsed?.golsA, parsed?.golsB);
+    const golsA = partida.duelos && partida.duelos.length > 0 ? 0 : (parsed?.golsA || 0);
+    const golsB = partida.duelos && partida.duelos.length > 0 ? 0 : (parsed?.golsB || 0);
+    await aplicarPontuacao(partidaId, vencedorId, golsA, golsB);
     emitir(EVENTOS.PLACAR_VALIDADO, { partidaId, placar: placarA });
-    emitir(EVENTOS.PARTIDA_FINALIZADA, { partidaId, vencedorId: novoEstado.vencedorId, porWO: false });
-    await _tentarReportarStartGG(partidaId, novoEstado.vencedorId, placarA).catch(() => null);
+    emitir(EVENTOS.PARTIDA_FINALIZADA, { partidaId, vencedorId, porWO: false });
+    await _tentarReportarStartGG(partidaId, vencedorId, placarA).catch(() => null);
   }
   return { ok: true, status: novoEstado.status || 'AGUARDANDO_VALIDACAO' };
+}
+
+function calcularVencedorDuplas(duelos) {
+  if (!duelos || duelos.length === 0) return { vencedorId: null };
+  let vitoriasA = 0;
+  let vitoriasB = 0;
+  for (const duelo of duelos) {
+    if (duelo.vencedorLado === 'A') vitoriasA++;
+    else if (duelo.vencedorLado === 'B') vitoriasB++;
+  }
+  if (vitoriasA > vitoriasB) return { vencedorId: null, lado: 'A', vitoriasA, vitoriasB };
+  if (vitoriasB > vitoriasA) return { vencedorId: null, lado: 'B', vitoriasA, vitoriasB };
+  return { vencedorId: null, lado: null, vitoriasA, vitoriasB, empate: true };
 }
 
 async function aplicarPontuacao(partidaId, vencedorId, golsA, golsB) {
@@ -149,4 +182,4 @@ async function _tentarReportarStartGG(partidaId, vencedorId, placar) {
   }
 }
 
-module.exports = { enviarPlacar, validarPlacar, parsePlacar, PlacarError, _setAdapter, _setModels, _tentarReportarStartGG };
+module.exports = { enviarPlacar, validarPlacar, parsePlacar, PlacarError, _setAdapter, _setModels, _tentarReportarStartGG, calcularVencedorDuplas };

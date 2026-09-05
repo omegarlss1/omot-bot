@@ -505,6 +505,38 @@ async function onBotaoAdversarioFaltou(interaction) {
 
 async function onBotaoEnviarPlacar(interaction) {
   const partidaId = interaction.customId.replace('btn_camp_enviar_placar_', '');
+  const partida = await Partida.findById(partidaId);
+  if (!partida) {
+    return interaction.reply({ content: 'Partida nao encontrada.', flags: 64 });
+  }
+  const meuTime = await Time.findOne({ capitaoId: interaction.user.id });
+  if (!meuTime) return interaction.reply({ content: 'Voce nao e capitao de nenhum time.', flags: 64 });
+  const ehTimeA = String(partida.timeA) === String(meuTime._id);
+  const ehTimeB = String(partida.timeB) === String(meuTime._id);
+  if (!ehTimeA && !ehTimeB) {
+    return interaction.reply({ content: 'Seu time nao esta nesta partida.', flags: 64 });
+  }
+  const duelos = partida.duelos || [];
+  if (duelos.length > 0) {
+    const opcoes = duelos.map((d, idx) => {
+      const idsA = (d.duplaA || []).join(', ');
+      const idsB = (d.duplaB || []).join(', ');
+      return {
+        label: 'Dupla ' + (idx + 1),
+        value: String(idx),
+        description: 'A: ' + idsA + ' | B: ' + idsB
+      };
+    });
+    const select = new StringSelectMenuBuilder()
+      .setCustomId('modal_camp_placar_dupla_' + partidaId)
+      .setPlaceholder('Selecione a dupla para enviar placar')
+      .addOptions(opcoes);
+    return interaction.update({
+      content: 'Selecione qual dupla voce quer enviar placar:',
+      embeds: [],
+      components: [new ActionRowBuilder().addComponents(select)]
+    });
+  }
   const modal = new ModalBuilder()
     .setCustomId('modal_camp_placar_' + partidaId)
     .setTitle('Enviar Placar');
@@ -521,8 +553,32 @@ async function onBotaoEnviarPlacar(interaction) {
   return interaction.showModal(modal);
 }
 
+async function onSelectDueloPlacar(interaction) {
+  const match = interaction.customId.match(/^modal_camp_placar_dupla_([a-f0-9]{24})$/);
+  if (!match) return;
+  const partidaId = match[1];
+  const dueloIndex = Number(interaction.values[0]);
+  const modal = new ModalBuilder()
+    .setCustomId('modal_camp_placar_dupla_submit_' + partidaId + '_' + dueloIndex)
+    .setTitle('Enviar Placar - Dupla ' + (dueloIndex + 1));
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId('placar_texto')
+        .setLabel('Placar (ex: 2x1)')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('2x1')
+        .setRequired(true)
+    )
+  );
+  return interaction.showModal(modal);
+}
+
 async function onSubmitEnviarPlacar(interaction) {
-  const partidaId = interaction.customId.replace('modal_camp_placar_', '');
+  const match = interaction.customId.match(/^modal_camp_placar_(?:dupla_submit_)?([a-f0-9]{24})(?:_(\d+))?$/);
+  if (!match) return;
+  const partidaId = match[1];
+  const dueloIndex = match[2] ? Number(match[2]) : null;
   const placar = interaction.fields.getTextInputValue('placar_texto');
   if (!placarEhValido(placar)) {
     return interaction.reply({ content: 'Formato de placar invalido. Use "2x1", "3x0" etc.', flags: 64 });
@@ -535,10 +591,11 @@ async function onSubmitEnviarPlacar(interaction) {
       partidaId,
       timeId: meuTime._id,
       userId: interaction.user.id,
-      placar
+      placar,
+      dueloIndex
     });
     const partida = await Partida.findById(partidaId);
-    const placarEmbed = embedPlacarEnviado({ partida, lado: resultado.lado, placar: resultado.placar });
+    const placarEmbed = embedPlacarEnviado({ partida, lado: resultado.lado, placar: resultado.placar, dueloIndex: resultado.dueloIndex });
     return interaction.editReply({ embeds: placarEmbed.embeds, components: toActionRows(placarEmbed.components) });
   } catch (error) {
     if (error instanceof PlacarError) {
@@ -877,7 +934,8 @@ function register(registry) {
   registry.button(/^btn_camp_checkin_[a-f0-9]{24}$/, onBotaoCheckIn);
   registry.button(/^btn_camp_adversario_faltou_[a-f0-9]{24}$/, onBotaoAdversarioFaltou);
   registry.button(/^btn_camp_enviar_placar_[a-f0-9]{24}$/, onBotaoEnviarPlacar);
-  registry.modal(/^modal_camp_placar_[a-f0-9]{24}$/, onSubmitEnviarPlacar);
+  registry.select(/^modal_camp_placar_dupla_[a-f0-9]{24}$/, onSelectDueloPlacar);
+  registry.modal(/^modal_camp_placar_(?:dupla_submit_)?[a-f0-9]{24}(?:_\d+)?$/, onSubmitEnviarPlacar);
   registry.button(/^btn_camp_validar_placar_[a-f0-9]{24}$/, onBotaoValidarPlacar);
   registry.button(/^btn_camp_contestar_placar_[a-f0-9]{24}$/, onBotaoContestarPlacar);
   registry.button('btn_camp_ver_classificacao', onBotaoVerClassificacao);
