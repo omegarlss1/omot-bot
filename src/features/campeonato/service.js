@@ -51,7 +51,8 @@ async function criarEvento(guild, parametros) {
     duracaoMin: parametros.duracaoMin || 180,
     numTimes: 0,
     modo: parametros.modo || 'simples',
-    simultaneo: parametros.simultaneo !== false
+    simultaneo: parametros.simultaneo !== false,
+    horarioInicio: parametros.horarioInicio
   });
 
   const evento = await Evento.create({

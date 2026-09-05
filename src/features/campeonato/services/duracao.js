@@ -49,7 +49,7 @@ function calcularFasesEscalonado({ numTimes, modo, duracaoMin = 180, intervaloMi
   };
 }
 
-function gerarDescricaoEvento({ dataInicio, duracaoMin = 180, numTimes = 0, modo = 'simples', simultaneo = true }) {
+function gerarDescricaoEvento({ dataInicio, duracaoMin = 180, numTimes = 0, modo = 'simples', simultaneo = true, horarioInicio }) {
   const data = new Date(dataInicio);
   const diaSemanaIdx = data.getDay();
   const nomes = ['DOMINGO', 'SEGUNDA', 'TERÇA', 'QUARTA', 'QUINTA', 'SEXTA', 'SÁBADO'];
@@ -61,7 +61,7 @@ function gerarDescricaoEvento({ dataInicio, duracaoMin = 180, numTimes = 0, modo
     DOMINGO: '14:30'
   };
 
-  const horaInicioStr = horariosPadrao[diaSemana] || '19:00';
+  const horaInicioStr = horarioInicio || horariosPadrao[diaSemana] || '19:00';
   const [hInicio, mInicio] = horaInicioStr.split(':').map(Number);
 
   const inicio = new Date(data);

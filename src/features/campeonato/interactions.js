@@ -192,14 +192,16 @@ async function onModalSimultaneo(interaction) {
     duracaoMin: 180,
     numTimes: 0,
     modo: selecao.modo || 'simples',
-    simultaneo
+    simultaneo,
+    horarioInicio: selecao.horarioInicio
   });
   const preview4h = gerarDescricaoEvento({
     dataInicio: selecao.dataInicio,
     duracaoMin: 240,
     numTimes: 0,
     modo: selecao.modo || 'simples',
-    simultaneo
+    simultaneo,
+    horarioInicio: selecao.horarioInicio
   });
   const select = new StringSelectMenuBuilder()
     .setCustomId('modal_duracao')
@@ -235,7 +237,8 @@ async function onModalDuracao(interaction) {
     duracaoMin: duracaoMin,
     numTimes: 0,
     modo: selecao.modo || 'simples',
-    simultaneo: selecao.simultaneo
+    simultaneo: selecao.simultaneo,
+    horarioInicio: selecao.horarioInicio
   });
   const embed = {
     title: '📋 Confira os dados do evento',
@@ -289,7 +292,8 @@ async function onConfirmarCriacao(interaction) {
       baseadoEmInscricoes: selecao.baseadoEmInscricoes,
       simultaneo: true,
       duracaoMin: 180,
-      temTerceiroLugar: true
+      temTerceiroLugar: true,
+      horarioInicio: selecao.horarioInicio
     });
     selecaoRanks.delete(`camp:selecao:${interaction.user.id}`);
     const eventosCriados = [];
@@ -922,7 +926,8 @@ async function onConfigSelect(interaction) {
       duracaoMin: 180,
       numTimes: 0,
       modo: selecao.modo || 'simples',
-      simultaneo: true
+      simultaneo: true,
+      horarioInicio: selecao.horarioInicio
     });
     const embed = {
       title: '📋 Confira os dados do evento',
