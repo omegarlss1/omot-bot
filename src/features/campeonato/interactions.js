@@ -100,8 +100,14 @@ async function onSubmitCriarEvento(interaction) {
     .setCustomId('modal_config_evento')
     .setPlaceholder('Configure o evento')
     .addOptions([
+      { label: '1v1', value: '1v1', description: 'Individual' },
+      { label: '2v2', value: '2v2', description: 'Duplas fixas' },
       { label: '3v3', value: '3v3', description: 'Padrão' },
-      { label: '6v6', value: '6v6', description: '6 por time' },
+      { label: '4v4', value: '4v4', description: 'Duplas mescladas' },
+      { label: '6v6', value: '6v6', description: 'Duplas mescladas' },
+      { label: '8v8', value: '8v8', description: 'Duplas mescladas' },
+      { label: '10v10', value: '10v10', description: 'Duplas mescladas' },
+      { label: '12v12', value: '12v12', description: 'Duplas mescladas' },
       { label: 'FFA', value: 'ffa', description: 'Cada um por si' }
     ]);
   await interaction.update({

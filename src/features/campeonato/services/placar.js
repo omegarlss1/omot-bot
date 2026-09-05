@@ -3,6 +3,7 @@ const Time = require('../../../db/models/time');
 const Campeonato = require('../../../db/models/campeonato');
 const { emitir, EVENTOS } = require('../events');
 const { StartGGAdapter } = require('../adapters/StartGGAdapter');
+const { ehModoDuplasMescladas } = require('./bracket');
 
 class PlacarError extends Error {
   constructor(mensagem, code) {

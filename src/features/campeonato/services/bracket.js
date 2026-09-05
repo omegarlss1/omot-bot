@@ -25,6 +25,28 @@ function embaralhar(array) {
   return arr;
 }
 
+function combinacoes(arr, k) {
+  const result = [];
+  function combo(start, path) {
+    if (path.length === k) {
+      result.push([...path]);
+      return;
+    }
+    for (let i = start; i < arr.length; i++) {
+      path.push(arr[i]);
+      combo(i + 1, path);
+      path.pop();
+    }
+  }
+  combo(0, []);
+  return result;
+}
+
+function gerarDuplas(jogadores) {
+  const titulares = (jogadores || []).filter((j) => !j.isSubstituto).map((j) => j.userId);
+  return combinacoes(titulares, 2);
+}
+
 function parearChaves(times, semente = Math.random) {
   const embaralhado = embaralhar(times);
   const total = proximaPotenciaDe2(embaralhado.length);
@@ -45,6 +67,10 @@ function gerarJanelaCheckIn(partida) {
   return { inicio, fim };
 }
 
+function ehModoDuplasMescladas(modo) {
+  return ['4v4', '6v6', '8v8', '10v10', '12v12'].includes(modo);
+}
+
 async function gerarBracket(campeonatoId, { shuffle = true } = {}) {
   const times = await Time.find({ campeonatoId }).lean();
   if (times.length < 2) {
@@ -60,20 +86,42 @@ async function gerarBracket(campeonatoId, { shuffle = true } = {}) {
   const partidas = [];
   for (const chave of chavesR1) {
     const janela = gerarJanelaCheckIn(chave);
+    const timeA = chave.timeA?._id || null;
+    const timeB = chave.timeB?._id || null;
+    const timeADoc = chave.timeA || null;
+    const timeBDoc = chave.timeB || null;
+    let duelos = [];
+    const modo = timeADoc?.modo || timeBDoc?.modo || null;
+    if (timeADoc && timeBDoc && ehModoDuplasMescladas(modo)) {
+      const duplasA = gerarDuplas(timeADoc.jogadores || []);
+      const duplasB = gerarDuplas(timeBDoc.jogadores || []);
+      const totalDuplas = Math.min(duplasA.length, duplasB.length);
+      const duplasAPareadas = embaralhar(duplasA).slice(0, totalDuplas);
+      const duplasBPareadas = embaralhar(duplasB).slice(0, totalDuplas);
+      duelos = duplasAPareadas.map((duplaA, idx) => ({
+        duplaA,
+        duplaB: duplasBPareadas[idx],
+        placarA: null,
+        placarB: null,
+        vencedorLado: null,
+        foiWO: false
+      }));
+    }
     const p = await Partida.create({
       campeonatoId,
       fase: chave.fase,
       rodada: chave.rodada,
-      timeA: chave.timeA?._id || null,
-      timeB: chave.timeB?._id || null,
+      timeA,
+      timeB,
       janelaCheckIn: janela,
-      status: 'AGUARDANDO_CHECKIN'
+      status: 'AGUARDANDO_CHECKIN',
+      duelos
     });
     partidas.push(p);
-    emitir(EVENTOS.PARTIDA_CRIADA, { partidaId: p._id, fase: chave.fase });
+    emitir(EVENTOS.PARTIDA_CRIADA, { partidaId: p._id, fase: chave.fase, duelos: duelos.length });
   }
 
   return { totalPartidas: partidas.length, partidas };
 }
 
-module.exports = { gerarBracket, parearChaves, proximaPotenciaDe2, BracketError };
+module.exports = { gerarBracket, parearChaves, proximaPotenciaDe2, BracketError, gerarDuplas, ehModoDuplasMescladas };
