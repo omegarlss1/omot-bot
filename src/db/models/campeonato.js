@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-const MODO_PARTIDA = ['1v1', '2v2', '3v3', '4v4', '6v6', '8v8', '10v10', '12v12'];
+const MODO_PARTIDA = ['1v1', '2v2', '3v3', '4v4', '6v6', '8v8', '10v10', '12v12', 'ffa'];
 const TIPO_DUPLA = ['FIXA', 'SORTEADA'];
 const FORMATO = ['single-elimination', 'double-elimination', 'round-robin', 'grupos-mata-mata'];
 const STATUS = [
@@ -23,6 +23,9 @@ const campeonatoSchema = new mongoose.Schema({
   status: { type: String, enum: STATUS, default: 'INSCRICOES_ABERTAS' },
   maxJogadoresPorTime: { type: Number, required: true, min: 1, max: 12 },
   baseadoEmInscricoes: { type: Boolean, default: true },
+  limiteInscricoes: { type: Number, default: null, min: 2 },
+  modalidade: { type: String, enum: ['single', 'double', 'round-robin', 'grupos-mata-mata'], default: null },
+  temTerceiroLugar: { type: Boolean, default: true },
   canais: {
     inscricoes: { type: String, default: null },
     partidas: { type: String, default: null },

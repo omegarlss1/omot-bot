@@ -2,7 +2,7 @@ const Campeonato = require('../../../db/models/campeonato');
 const config = require('../../../config');
 
 function maxJogadoresPorModo(modo) {
-  if (modo === '1v1') return 1;
+  if (modo === '1v1' || modo === 'ffa') return 1;
   if (modo === '2v2') return 2;
   if (modo === '3v3') return 3;
   if (modo === '4v4') return 4;
@@ -17,7 +17,7 @@ function modoPadrao(rank) {
   return '3v3';
 }
 
-function criar({ eventoId, guildId, rank, sufixoNumero, modo = modoPadrao(), tipoDupla = 'SORTEADA', formato = 'single-elimination' } = {}) {
+function criar({ eventoId, guildId, rank, sufixoNumero, modo = modoPadrao(), tipoDupla = 'SORTEADA', formato = 'single-elimination', baseadoEmInscricoes = true, limiteInscricoes = null, modalidade = null, temTerceiroLugar = true } = {}) {
   if (!eventoId) throw new Error('[CampeonatoFactory] eventoId obrigatório.');
   if (!guildId) throw new Error('[CampeonatoFactory] guildId obrigatório.');
   if (!rank) throw new Error('[CampeonatoFactory] rank obrigatório.');
@@ -38,7 +38,10 @@ function criar({ eventoId, guildId, rank, sufixoNumero, modo = modoPadrao(), tip
     tipoDupla,
     formato,
     maxJogadoresPorTime: maxJog,
-    baseadoEmInscricoes: true,
+    baseadoEmInscricoes,
+    limiteInscricoes,
+    modalidade,
+    temTerceiroLugar,
     status: 'INSCRICOES_ABERTAS'
   });
 }

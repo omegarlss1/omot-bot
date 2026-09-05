@@ -1,9 +1,4 @@
-const {
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle,
-  ActionRowBuilder
-} = require('discord.js');
+const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const config = require('../../config');
 const { embedCriarEvento, embedSelecionarRanks, embedEventoCriado, embedPainelInscricao, embedInscricaoConfirmada, embedResumoCorte, embedMenuFormato, embedPainelPartida, embedPlacarEnviado, embedDisputaOrganizador, embedBracket, embedClassificacao, embedCampeaoDefinido, embedPainelAdmin, embedCancelamentoConfirmado, embedReaberturaConfirmada, embedTimeDesclassificado, embedPlacarAjustado, toActionRows } = require('./embeds');
 const { criarEvento, EventoError } = require('./service');
@@ -81,6 +76,30 @@ async function onBotaoCriarEvento(interaction) {
         .setStyle(TextInputStyle.Short)
         .setPlaceholder('15/12/2026')
         .setRequired(true)
+    ),
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId('evento_modo')
+        .setLabel('Modo (ex: 3v3, ffa)')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('3v3')
+        .setRequired(true)
+    ),
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId('evento_tipo_dupla')
+        .setLabel('Tipo Dupla (FIXA ou SORTEADA)')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('SORTEADA')
+        .setRequired(true)
+    ),
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId('evento_baseado_inscricoes')
+        .setLabel('Baseado em Inscricoes? (SIM/NAO)')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('SIM')
+        .setRequired(true)
     )
   );
   return interaction.showModal(modal);
@@ -93,10 +112,14 @@ async function onSubmitCriarEvento(interaction) {
   const nome = interaction.fields.getTextInputValue('evento_nome');
   const dataInicio = parseDataBR(interaction.fields.getTextInputValue('evento_data_inicio'));
   const dataFim = parseDataBR(interaction.fields.getTextInputValue('evento_data_fim'));
+  const modo = interaction.fields.getTextInputValue('evento_modo')?.trim() || '3v3';
+  const tipoDupla = interaction.fields.getTextInputValue('evento_tipo_dupla')?.trim() || 'SORTEADA';
+  const baseadoEmInscricoesStr = interaction.fields.getTextInputValue('evento_baseado_inscricoes')?.trim() || 'SIM';
+  const baseadoEmInscricoes = baseadoEmInscricoesStr === 'SIM';
   if (!dataInicio || !dataFim) {
     return interaction.reply({ content: 'Datas invalidas. Use o formato DD/MM/AAAA.', flags: 64 });
   }
-  selecaoRanks.set(`camp:selecao:${interaction.user.id}`, { nome, dataInicio, dataFim, ranksSelecionados: [] });
+  selecaoRanks.set(`camp:selecao:${interaction.user.id}`, { nome, dataInicio, dataFim, modo, tipoDupla, baseadoEmInscricoes, ranksSelecionados: [] });
   const sel = embedSelecionarRanks({ nome, dataInicio, dataFim, ranksSelecionados: [] });
   await interaction.reply({
     content: 'Evento **' + nome + '** preparado. Agora selecione os ranks:',
@@ -149,7 +172,10 @@ async function onConfirmarRanks(interaction) {
       dataInicio: selecao.dataInicio,
       dataFim: selecao.dataFim,
       ranksSelecionados: selecao.ranksSelecionados,
-      organizadorId: interaction.user.id
+      organizadorId: interaction.user.id,
+      modo: selecao.modo,
+      tipoDupla: selecao.tipoDupla,
+      baseadoEmInscricoes: selecao.baseadoEmInscricoes
     });
     selecaoRanks.delete(`camp:selecao:${interaction.user.id}`);
     const eventosCriados = [];
@@ -554,6 +580,47 @@ async function onSubmitDesclassificar(interaction) {
   }
 }
 
+async function onPainelOrganizadorTab(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
+  }
+  const tab = interaction.values[0];
+  let embed;
+  switch (tab) {
+    case 'inscritos':
+      embed = {
+        title: '📋 ABA 1 - INSCRITOS',
+        description: 'Lista de inscritos por rank.\n\nEm desenvolvimento...',
+        color: 0x00C2FF
+      };
+      break;
+    case 'times':
+      embed = {
+        title: '👥 ABA 2 - TIMES DEFINIDOS',
+        description: 'Times formados (FIXA).\n\nEm desenvolvimento...',
+        color: 0x00FF00
+      };
+      break;
+    case 'partidas':
+      embed = {
+        title: '🎮 ABA 3 - PARTIDAS AO VIVO',
+        description: 'Partidas em andamento.\n\nEm desenvolvimento...',
+        color: 0xFFA500
+      };
+      break;
+    case 'gestao':
+      embed = {
+        title: '🛠️ ABA 4 - GESTÃO EXTRA',
+        description: 'W.O., broadcast, classificação.\n\nEm desenvolvimento...',
+        color: 0xFF6B00
+      };
+      break;
+    default:
+      embed = { title: '❓ Aba desconhecida', color: 0xFF0000 };
+  }
+  return interaction.update({ embeds: [embed], components: [] });
+}
+
 function register(registry) {
   registry.button('btn_campeonato_criar', onAbrirPainelCriacao);
   registry.button('btn_campeonato_criar_evento', onBotaoCriarEvento);
@@ -578,6 +645,7 @@ function register(registry) {
   registry.button(/^btn_camp_cancelar_[a-f0-9]{24}$/, onBotaoCancelar);
   registry.button(/^btn_camp_reabrir_[a-f0-9]{24}$/, onBotaoReabrir);
   registry.modal(/^modal_camp_desclassificar_[a-f0-9]{24}$/, onSubmitDesclassificar);
+  registry.select('painel_org_tab', onPainelOrganizadorTab);
 }
 
 module.exports = { register, temPermissaoOrganizador, parseDataBR };
