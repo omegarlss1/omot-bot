@@ -152,10 +152,19 @@ async function onConfirmarRanks(interaction) {
       organizadorId: interaction.user.id
     });
     selecaoRanks.delete(`camp:selecao:${interaction.user.id}`);
+    const eventosCriados = [];
+    for (const camp of resultado.campeonatos) {
+      const canal = await interaction.guild.channels.fetch(camp.canais.inscricoes).catch(() => null);
+      if (canal && canal.isTextBased()) {
+        const painel = embedPainelInscricao(camp, 0);
+        await canal.send({ embeds: painel.embeds, components: toActionRows(painel.components) }).catch(() => {});
+      }
+      eventosCriados.push(camp);
+    }
     return interaction.editReply(embedEventoCriado({
       evento: resultado.evento,
       categoria: resultado.categoria,
-      campeonatos: resultado.campeonatos
+      campeonatos: eventosCriados
     }));
   } catch (error) {
     if (error instanceof EventoError) {
