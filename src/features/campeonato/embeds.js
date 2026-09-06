@@ -91,7 +91,8 @@ function embedEventoCriado({ evento, categoria, campeonatos }) {
         value: [
           '📝 Inscrições: <#' + (c.canals?.inscricoes || '—') + '>',
           '🎮 Partidas: <#' + (c.canals?.partidas || '—') + '>',
-          '📸 Prints: <#' + (c.canals?.prints || '—') + '>'
+          '📸 Prints: <#' + (c.canals?.prints || '—') + '>',
+          c.painelInscricaoErro ? '⚠️ O painel de inscrição não pôde ser publicado. Verifique as permissões do bot neste canal.' : '✅ Botão de inscrição publicado'
         ].join('\n'),
         inline: true
       }))

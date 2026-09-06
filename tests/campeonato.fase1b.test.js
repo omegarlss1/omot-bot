@@ -197,3 +197,20 @@ test('handlers do módulo campeonato registrados', async (t) => {
     });
   });
 });
+
+test('painel de inscrição', async (t) => {
+  await t.test('inclui o botão para inscrever o time', () => {
+    comEnv({}, () => {
+      const { embedPainelInscricao, toActionRows } = require('../src/features/campeonato/embeds');
+      const painel = embedPainelInscricao({
+        nome: 'Omega #42',
+        rank: 'ouro',
+        modo: '3v3',
+        tipoDupla: 'SORTEADA'
+      }, 0);
+      const payload = toActionRows(painel.components).map((row) => row.toJSON());
+      assert.equal(payload[0].components[0].custom_id, 'btn_camp_inscrever');
+      assert.equal(payload[0].components[0].label, '🎮 Inscrever Time');
+    });
+  });
+});

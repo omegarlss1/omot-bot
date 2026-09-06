@@ -301,7 +301,18 @@ async function onConfirmarCriacao(interaction) {
       const canal = await interaction.guild.channels.fetch(camp.canais.inscricoes).catch(() => null);
       if (canal && canal.isTextBased()) {
         const painel = embedPainelInscricao(camp, 0);
-        await canal.send({ embeds: painel.embeds, components: toActionRows(painel.components) }).catch(() => {});
+        try {
+          await canal.send({ embeds: painel.embeds, components: toActionRows(painel.components) });
+        } catch (error) {
+          console.error(`[campeonato.criarEvento] erro ao publicar painel de inscrição no canal ${canal.id}:`, {
+            message: error?.message,
+            code: error?.code,
+            stack: error?.stack
+          });
+          camp.painelInscricaoErro = true;
+        }
+      } else {
+        camp.painelInscricaoErro = true;
       }
       eventosCriados.push(camp);
     }
