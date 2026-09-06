@@ -1,10 +1,10 @@
-const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder, UserSelectMenuBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const config = require('../../config');
 const { embedCriarEvento, embedSelecionarRanks, embedEventoCriado, embedPainelInscricao, embedInscricaoConfirmada, embedResumoCorte, embedMenuFormato, embedPainelPartida, embedPlacarEnviado, embedDisputaOrganizador, embedBracket, embedClassificacao, embedCampeaoDefinido, embedPainelAdmin, embedCancelamentoConfirmado, embedReaberturaConfirmada, embedTimeDesclassificado, embedPlacarAjustado, toActionRows } = require('./embeds');
 const { criarEvento, EventoError } = require('./service');
 const { gerarDescricaoEvento } = require('./services/duracao');
-const { inscreverCapitao, inscreverJogadorManual, fecharInscricoes, executarCorte, definirFormato, findCampeonatoPorCanalInscricao, listarInscricoes, InscricaoError } = require('./services/inscricao');
-const { InscricaoError: ValidacaoInscricaoError } = require('./validators/inscricao');
+const { inscreverCapitao, inscreverJogadorManual, fecharInscricoes, executarCorte, definirFormato, findCampeonatoPorCanalInscricao, findCampeonatoPorCanal, listarInscricoes, InscricaoError } = require('./services/inscricao');
+const { validarInscricao, InscricaoError: ValidacaoInscricaoError } = require('./validators/inscricao');
 const { CorteError } = require('./validators/corte');
 const { gerarBracket, BracketError } = require('./services/bracket');
 const { registrarCheckIn, verificarAdversarioFaltou, registrarWO, CheckinError } = require('./services/checkin');
@@ -318,16 +318,27 @@ async function onConfirmarCriacao(interaction) {
       const canalOrganizador = await interaction.guild.channels.fetch(camp.canais.organizador).catch(() => null);
       if (canalOrganizador?.isTextBased()) {
         const mensagemFixa = await canalOrganizador.send(buildPainelOrganizador());
-        const mensagemDinamica = await canalOrganizador.send({
-          embeds: [{
-            title: '📊 Visão do campeonato',
-            description: `Selecione uma aba no painel acima para consultar **${camp.nome}**.`,
-            color: 0x5865F2
-          }]
+        const mensagens = {};
+        for (const [secao, titulo] of [
+          ['inscritos', '📋 INSCRITOS E TIMES'],
+          ['checkin', '✅ CHECK-IN'],
+          ['partidas', '🎮 PARTIDAS AO VIVO']
+        ]) {
+          const mensagem = await canalOrganizador.send({
+            embeds: [{ title: titulo, description: `Nenhum dado disponível ainda para **${camp.nome}**.`, color: 0x5865F2 }]
+          });
+          mensagens[secao] = mensagem.id;
+        }
+        const gestao = embedPainelAdmin(camp);
+        const mensagemGestao = await canalOrganizador.send({
+          embeds: gestao.embeds,
+          components: toActionRows(gestao.components)
         });
+        mensagens.gestao = mensagemGestao.id;
         camp.painelOrganizador = {
           fixaMessageId: mensagemFixa.id,
-          dinamicaMessageId: mensagemDinamica.id
+          dinamicaMessageId: mensagens.inscritos,
+          mensagens
         };
         await camp.save();
       }
@@ -414,6 +425,62 @@ async function onBotaoInscricaoManual(interaction) {
   return interaction.showModal(modal);
 }
 
+async function onBotaoSelecionarCapitao(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.reply({ content: 'Apenas @OrganizadorCamps pode selecionar capitães.', flags: 64 });
+  }
+  const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId);
+  if (!campeonato || campeonato.status !== 'INSCRICOES_ABERTAS') {
+    return interaction.reply({ content: 'Inscrições não estão abertas neste canal.', flags: 64 });
+  }
+  const menu = new UserSelectMenuBuilder()
+    .setCustomId('select_camp_capitao')
+    .setPlaceholder('Selecione o capitão do time')
+    .setMinValues(1)
+    .setMaxValues(1);
+  return interaction.reply({
+    content: 'Selecione o membro que será o capitão deste time:',
+    components: [new ActionRowBuilder().addComponents(menu)],
+    flags: 64
+  });
+}
+
+async function onSelectCapitao(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
+  }
+  const capitaoId = interaction.values[0];
+  const modal = new ModalBuilder().setCustomId(`modal_camp_capitao_${capitaoId}`).setTitle('Inscrição do time');
+  modal.addComponents(new ActionRowBuilder().addComponents(
+    new TextInputBuilder().setCustomId('capitao_nome_time').setLabel('Nome do time (opcional)').setStyle(TextInputStyle.Short).setMaxLength(40).setRequired(false)
+  ));
+  return interaction.showModal(modal);
+}
+
+async function onSubmitCapitao(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
+  }
+  await interaction.deferReply({ flags: 64 });
+  const capitaoId = interaction.customId.replace('modal_camp_capitao_', '');
+  const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId);
+  const member = await interaction.guild.members.fetch(capitaoId).catch(() => null);
+  if (!campeonato || !member) return interaction.editReply({ content: 'Campeonato ou capitão não encontrado.' });
+  try {
+    const resultado = await inscreverCapitao({
+      guild: interaction.guild,
+      member,
+      campeonato,
+      nomeTime: interaction.fields.getTextInputValue('capitao_nome_time')
+    });
+    return interaction.editReply({ content: `✅ **${resultado.time.nome}** criado com <@${capitaoId}> como capitão.` });
+  } catch (error) {
+    if (error instanceof InscricaoError || error instanceof ValidacaoInscricaoError) return interaction.editReply({ content: error.message });
+    console.error('[campeonato.selecionar_capitao] erro:', error);
+    return interaction.editReply({ content: 'Erro ao inscrever o capitão.' });
+  }
+}
+
 async function onSubmitInscricao(interaction) {
   await interaction.deferReply({ flags: 64 });
   const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId);
@@ -428,7 +495,18 @@ async function onSubmitInscricao(interaction) {
       campeonato,
       nomeTime
     });
-    return interaction.editReply(embedInscricaoConfirmada({ time, capitao: dadosCapitao }));
+    const resposta = embedInscricaoConfirmada({ time, capitao: dadosCapitao });
+    const vagas = Math.max(0, Number(campeonato.maxJogadoresPorTime || 1) - 1);
+    if (vagas > 0) {
+      const menu = new UserSelectMenuBuilder()
+        .setCustomId(`select_camp_jogadores_${time._id}`)
+        .setPlaceholder(`Selecione até ${vagas} jogador(es) do time`)
+        .setMinValues(0)
+        .setMaxValues(Math.min(vagas, 25));
+      resposta.content = `Capitão confirmado. Selecione os jogadores do **${time.nome}**.`;
+      resposta.components = [new ActionRowBuilder().addComponents(menu)];
+    }
+    return interaction.editReply(resposta);
   } catch (error) {
     if (error instanceof InscricaoError || error instanceof ValidacaoInscricaoError) {
       return interaction.editReply({ content: error.message });
@@ -459,6 +537,72 @@ async function onSubmitInscricaoManual(interaction) {
     console.error('[campeonato.inscricao_manual] erro:', error);
     return interaction.editReply({ content: 'Erro ao processar inscricao manual.' });
   }
+}
+
+async function onSelectJogadoresTime(interaction) {
+  await interaction.deferReply({ flags: 64 });
+  const timeId = interaction.customId.replace('select_camp_jogadores_', '');
+  const time = await Time.findById(timeId);
+  if (!time) return interaction.editReply({ content: 'Time nao encontrado.' });
+  if (time.capitaoId !== interaction.user.id) {
+    return interaction.editReply({ content: 'Apenas o capitão pode selecionar os jogadores.' });
+  }
+
+  const campeonato = await Campeonato.findById(time.campeonatoId);
+  if (!campeonato || campeonato.status !== 'INSCRICOES_ABERTAS') {
+    return interaction.editReply({ content: 'As inscrições não estão abertas.' });
+  }
+  const capitaoAtual = time.jogadores.find((jogador) => jogador.userId === interaction.user.id) || time.jogadores[0];
+  const jogadores = [{
+    userId: interaction.user.id,
+    rankSnapshot: capitaoAtual.rankSnapshot,
+    nickSnapshot: capitaoAtual.nickSnapshot,
+    isSubstituto: false,
+    isCapitao: true,
+    partidasJogadas: 0
+  }];
+  for (const userId of interaction.values) {
+    if (userId === interaction.user.id) continue;
+    const member = await interaction.guild.members.fetch(userId).catch(() => null);
+    if (!member) continue;
+    const perfil = await require('../../db/models/perfilMembro').findOne({ guildId: interaction.guild.id, userId });
+    const dados = validarInscricao({ member, perfil, ranksDisponiveis: [campeonato.rank] });
+    jogadores.push({
+      userId,
+      rankSnapshot: dados.capitaoRankSnapshot,
+      nickSnapshot: dados.capitaoNick,
+      isSubstituto: false,
+      isCapitao: false,
+      partidasJogadas: 0
+    });
+  }
+  time.jogadores = jogadores;
+  await time.save();
+  return interaction.editReply({ content: `✅ Time **${time.nome}** atualizado com ${jogadores.length} jogador(es).` });
+}
+
+async function onBotaoBroadcast(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
+  const modal = new ModalBuilder().setCustomId('modal_camp_broadcast').setTitle('Enviar broadcast');
+  modal.addComponents(new ActionRowBuilder().addComponents(
+    new TextInputBuilder().setCustomId('broadcast_mensagem').setLabel('Mensagem para os canais do campeonato').setStyle(TextInputStyle.Paragraph).setMaxLength(1000).setRequired(true)
+  ));
+  return interaction.showModal(modal);
+}
+
+async function onSubmitBroadcast(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
+  await interaction.deferReply({ flags: 64 });
+  const campeonato = await findCampeonatoPorCanal(interaction.channelId);
+  if (!campeonato) return interaction.editReply({ content: 'Campeonato nao encontrado neste canal.' });
+  const mensagem = interaction.fields.getTextInputValue('broadcast_mensagem').trim();
+  const destinos = [campeonato.canais.inscricoes, campeonato.canais.partidas, campeonato.canais.organizador].filter(Boolean);
+  let enviados = 0;
+  for (const channelId of destinos) {
+    const canal = await interaction.client.channels.fetch(channelId).catch(() => null);
+    if (canal?.isTextBased()) await canal.send({ content: `📣 **Broadcast da organização**\n${mensagem}` }).then(() => enviados++).catch(() => {});
+  }
+  return interaction.editReply({ content: `Broadcast enviado para ${enviados} canal(is).` });
 }
 
 async function onBotaoFecharInscricoes(interaction) {
@@ -532,7 +676,7 @@ async function onBotaoGerarBracket(interaction) {
   if (!temPermissaoOrganizador(interaction.member)) {
     return interaction.reply({ content: 'Apenas @OrganizadorCamps pode gerar bracket.', flags: 64 });
   }
-  const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId);
+  const campeonato = await findCampeonatoPorCanal(interaction.channelId);
   if (!campeonato) {
     return interaction.reply({ content: 'Campeonato nao encontrado.', flags: 64 });
   }
@@ -749,7 +893,7 @@ async function onBotaoContestarPlacar(interaction) {
 }
 
 async function onBotaoVerClassificacao(interaction) {
-  const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId);
+  const campeonato = await findCampeonatoPorCanal(interaction.channelId);
   if (!campeonato) {
     return interaction.reply({ content: 'Campeonato nao encontrado.', flags: 64 });
   }
@@ -759,7 +903,7 @@ async function onBotaoVerClassificacao(interaction) {
 }
 
 async function onBotaoVerBracket(interaction) {
-  const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId);
+  const campeonato = await findCampeonatoPorCanal(interaction.channelId);
   if (!campeonato) {
     return interaction.reply({ content: 'Campeonato nao encontrado.', flags: 64 });
   }
@@ -857,9 +1001,10 @@ async function onCancelarCriarEvento(interaction) {
   return interaction.update({ content: 'Criacao cancelada.', embeds: [], components: [] });
 }
 
-async function atualizarPainelOrganizador(interaction, campeonato, payload) {
+async function atualizarPainelOrganizador(interaction, campeonato, secao, payload) {
   await interaction.deferUpdate();
-  let messageId = campeonato.painelOrganizador?.dinamicaMessageId;
+  let messageId = campeonato.painelOrganizador?.mensagens?.[secao]
+    || campeonato.painelOrganizador?.dinamicaMessageId;
   let mensagem = messageId
     ? await interaction.channel.messages.fetch(messageId).catch(() => null)
     : null;
@@ -868,7 +1013,10 @@ async function atualizarPainelOrganizador(interaction, campeonato, payload) {
     mensagem = await interaction.channel.send(payload);
     await Campeonato.updateOne(
       { _id: campeonato._id },
-      { $set: { 'painelOrganizador.dinamicaMessageId': mensagem.id } }
+      { $set: {
+        [`painelOrganizador.mensagens.${secao}`]: mensagem.id,
+        'painelOrganizador.dinamicaMessageId': mensagem.id
+      } }
     );
     return mensagem;
   }
@@ -898,7 +1046,7 @@ async function onPainelOrganizadorTab(interaction) {
       const linhas = inscritos.map((t, i) =>
         `${i + 1}. **${t.nome || 'Sem nome'}** — Capitão: <@${t.capitaoId}> (${t.jogadores?.length || 0} jogador(es))`
       ).join('\n') || 'Nenhum inscrito.';
-      return atualizarPainelOrganizador(interaction, campeonato, {
+      return atualizarPainelOrganizador(interaction, campeonato, 'inscritos', {
         embeds: [{
           title: '📋 ABA 1 - INSCRITOS',
           description: linhas,
@@ -914,7 +1062,7 @@ async function onPainelOrganizadorTab(interaction) {
         const jogadores = (t.jogadores || []).map(j => `<@${j.userId}>`).join(', ') || 'Sem jogadores';
         return `${i + 1}. **${t.nome || 'Sem nome'}** — ${jogadores}`;
       }).join('\n') || 'Nenhum time definido.';
-      return atualizarPainelOrganizador(interaction, campeonato, {
+      return atualizarPainelOrganizador(interaction, campeonato, 'inscritos', {
         embeds: [{
           title: '👥 ABA 2 - TIMES DEFINIDOS',
           description: linhas,
@@ -937,7 +1085,7 @@ async function onPainelOrganizadorTab(interaction) {
         const nomeB = timesMap.get(String(p.timeB)) || 'TBD';
         return `${i + 1}. **R${p.rodada || 1}** ${p.fase || ''} — **${nomeA}** vs **${nomeB}** — Status: ${p.status}`;
       }).join('\n') || 'Nenhuma partida em andamento.';
-      return atualizarPainelOrganizador(interaction, campeonato, {
+      return atualizarPainelOrganizador(interaction, campeonato, 'partidas', {
         embeds: [{
           title: '🎮 ABA 3 - PARTIDAS AO VIVO',
           description: linhas,
@@ -961,7 +1109,7 @@ async function onPainelOrganizadorTab(interaction) {
         const status = p.status === 'AGUARDANDO_PLACAR' ? 'EM ANDAMENTO' : p.status;
         return `${i + 1}. **${timesMap.get(String(p.timeA)) || 'TBD'}** ${checkA} vs **${timesMap.get(String(p.timeB)) || 'TBD'}** ${checkB} — ${status}`;
       }).join('\n') || 'Nenhuma partida aguardando check-in.';
-      return atualizarPainelOrganizador(interaction, campeonato, {
+      return atualizarPainelOrganizador(interaction, campeonato, 'checkin', {
         embeds: [{
           title: '✅ ABA 3 - CHECK-IN',
           description: linhas,
@@ -978,13 +1126,13 @@ async function onPainelOrganizadorTab(interaction) {
             { type: 2, style: 1, label: '♻️ Reabrir', custom_id: 'btn_camp_reabrir_' + campeonato._id, emoji: { name: '♻️' } }
           ]]
         : adminEmbed.components;
-      return atualizarPainelOrganizador(interaction, campeonato, {
+      return atualizarPainelOrganizador(interaction, campeonato, 'gestao', {
         embeds: adminEmbed.embeds,
         components: toActionRows(components)
       });
     }
     default:
-      return atualizarPainelOrganizador(interaction, campeonato, { embeds: [{ title: '❓ Aba desconhecida', color: 0xFF0000 }], components: [] });
+      return atualizarPainelOrganizador(interaction, campeonato, 'gestao', { embeds: [{ title: '❓ Aba desconhecida', color: 0xFF0000 }], components: [] });
   }
 }
 
@@ -1095,8 +1243,12 @@ function register(registry) {
   registry.modal('modal_criar_evento', onSubmitCriarEvento);
   registry.button('btn_camp_inscrever', onBotaoInscrever);
   registry.button('btn_camp_inscricao_manual', onBotaoInscricaoManual);
+  registry.button('btn_camp_selecionar_capitao', onBotaoSelecionarCapitao);
   registry.modal('modal_camp_inscricao', onSubmitInscricao);
   registry.modal('modal_camp_inscricao_manual', onSubmitInscricaoManual);
+  registry.modal(/^modal_camp_capitao_[0-9]+$/, onSubmitCapitao);
+  registry.select(/^select_camp_jogadores_[a-f0-9]{24}$/, onSelectJogadoresTime);
+  registry.select('select_camp_capitao', onSelectCapitao);
   registry.button('btn_camp_fechar_inscricoes', onBotaoFecharInscricoes);
   registry.button('btn_camp_cortar', onBotaoCortar);
   registry.button(/^btn_camp_formato_(round-robin|grupos-mata-mata|double-elimination|single-elimination)_[a-f0-9]{24}$/, onEscolherFormato);
@@ -1110,6 +1262,8 @@ function register(registry) {
   registry.button(/^btn_camp_contestar_placar_[a-f0-9]{24}$/, onBotaoContestarPlacar);
   registry.button('btn_camp_ver_classificacao', onBotaoVerClassificacao);
   registry.button('btn_camp_ver_bracket', onBotaoVerBracket);
+  registry.button('btn_camp_broadcast', onBotaoBroadcast);
+  registry.modal('modal_camp_broadcast', onSubmitBroadcast);
   registry.button(/^btn_camp_finalizar_[a-f0-9]{24}$/, onBotaoFinalizar);
   registry.button(/^btn_camp_cancelar_[a-f0-9]{24}$/, onBotaoCancelar);
   registry.button(/^btn_camp_reabrir_[a-f0-9]{24}$/, onBotaoReabrir);

@@ -35,7 +35,13 @@ const campeonatoSchema = new mongoose.Schema({
   },
   painelOrganizador: {
     fixaMessageId: { type: String, default: null },
-    dinamicaMessageId: { type: String, default: null }
+    dinamicaMessageId: { type: String, default: null },
+    mensagens: {
+      inscritos: { type: String, default: null },
+      checkin: { type: String, default: null },
+      partidas: { type: String, default: null },
+      gestao: { type: String, default: null }
+    }
   },
   categoriaId: { type: String, default: null },
   startgg: {

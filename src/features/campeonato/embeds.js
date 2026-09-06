@@ -217,8 +217,12 @@ function embedPainelAdmin({ campeonato }) {
       ]
     }],
     components: [[
+      { type: 2, style: 1, label: '📊 Classificação', custom_id: 'btn_camp_ver_classificacao', emoji: { name: '📊' } },
+      { type: 2, style: 1, label: '📣 Broadcast', custom_id: 'btn_camp_broadcast', emoji: { name: '📣' } },
       { type: 2, style: 1, label: '🏁 Finalizar', custom_id: 'btn_camp_finalizar_' + campeonato._id, emoji: { name: '🏁' } },
       { type: 2, style: 4, label: '⛔ Cancelar', custom_id: 'btn_camp_cancelar_' + campeonato._id, emoji: { name: '⛔' } }
+    ], [
+      { type: 2, style: 1, label: '🎮 Gerar partidas', custom_id: 'btn_camp_gerar_bracket', emoji: { name: '🎮' } }
     ]]
   };
 }
@@ -292,7 +296,8 @@ function embedPainelInscricao(campeonato, totalInscritos) {
     }],
     components: [[
       { type: 2, style: 3, label: '🎮 Inscrever Time', custom_id: 'btn_camp_inscrever', emoji: { name: '🎮' } },
-      { type: 2, style: 1, label: '📝 Inscrição manual', custom_id: 'btn_camp_inscricao_manual', emoji: { name: '📝' } }
+      { type: 2, style: 1, label: '📝 Inscrição manual', custom_id: 'btn_camp_inscricao_manual', emoji: { name: '📝' } },
+      { type: 2, style: 1, label: '👑 Selecionar capitão', custom_id: 'btn_camp_selecionar_capitao', emoji: { name: '👑' } }
     ]]
   };
 }

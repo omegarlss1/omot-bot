@@ -10,6 +10,17 @@ async function findCampeonatoPorCanalInscricao(canalId) {
   return Campeonato.findOne({ 'canais.inscricoes': canalId });
 }
 
+async function findCampeonatoPorCanal(canalId) {
+  return Campeonato.findOne({
+    $or: [
+      { 'canais.inscricoes': canalId },
+      { 'canais.partidas': canalId },
+      { 'canais.prints': canalId },
+      { 'canais.organizador': canalId }
+    ]
+  });
+}
+
 async function listarInscricoes(campeonatoId) {
   return Time.find({ campeonatoId }).sort({ criadoEm: 1 });
 }
@@ -176,6 +187,7 @@ async function definirFormato(campeonatoId, formato) {
 
 module.exports = {
   findCampeonatoPorCanalInscricao,
+  findCampeonatoPorCanal,
   listarInscricoes,
   jogadorJaInscrito,
   inscreverCapitao,
