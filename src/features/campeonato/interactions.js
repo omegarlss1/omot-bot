@@ -910,6 +910,30 @@ async function onPainelOrganizadorTab(interaction) {
         components: []
       });
     }
+    case 'checkin': {
+      const partidas = await Partida.find({
+        campeonatoId: campeonato._id,
+        status: { $nin: ['FINALIZADA', 'CANCELADA', 'WO'] }
+      }).lean();
+      const timesIds = partidas.flatMap((p) => [p.timeA, p.timeB]).filter(Boolean);
+      const times = await Time.find({ _id: { $in: timesIds } }).lean();
+      const timesMap = new Map(times.map((t) => [String(t._id), t.nome || 'Sem nome']));
+      const linhas = partidas.map((p, i) => {
+        const checkA = p.checkIns?.timeA?.fez ? '✅' : '⏳';
+        const checkB = p.checkIns?.timeB?.fez ? '✅' : '⏳';
+        const status = p.status === 'AGUARDANDO_PLACAR' ? 'EM ANDAMENTO' : p.status;
+        return `${i + 1}. **${timesMap.get(String(p.timeA)) || 'TBD'}** ${checkA} vs **${timesMap.get(String(p.timeB)) || 'TBD'}** ${checkB} — ${status}`;
+      }).join('\n') || 'Nenhuma partida aguardando check-in.';
+      return interaction.update({
+        embeds: [{
+          title: '✅ ABA 3 - CHECK-IN',
+          description: linhas,
+          color: 0x00C2FF,
+          footer: { text: 'Quando os dois times confirmam, a partida fica EM ANDAMENTO.' }
+        }],
+        components: []
+      });
+    }
     case 'gestao': {
       const adminEmbed = embedPainelAdmin(campeonato);
       const components = campeonato.status === 'CANCELADO'

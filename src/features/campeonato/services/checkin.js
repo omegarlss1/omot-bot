@@ -36,12 +36,22 @@ async function registrarCheckIn(partidaId, timeId, userId) {
     throw new CheckinError('Seu time não está nesta partida.', 'CHECKIN_TIME_INVALIDO');
   }
   const campo = ehTimeA ? 'checkIns.timeA' : 'checkIns.timeB';
+  const atualizacao = {
+    [campo]: { fez: true, timestamp: new Date(), porUserId: userId }
+  };
+  const outroCampo = ehTimeA ? partida.checkIns?.timeB : partida.checkIns?.timeA;
+  if (outroCampo?.fez) atualizacao.status = 'AGUARDANDO_PLACAR';
   await Partida.updateOne(
     { _id: partidaId },
-    { $set: { [campo]: { fez: true, timestamp: new Date(), porUserId: userId } } }
+    { $set: atualizacao }
   );
-  emitir(EVENTOS.CHECKIN_REALIZADO, { partidaId, timeId, lado: ehTimeA ? 'A' : 'B' });
-  return { ok: true, lado: ehTimeA ? 'A' : 'B' };
+  emitir(EVENTOS.CHECKIN_REALIZADO, {
+    partidaId,
+    timeId,
+    lado: ehTimeA ? 'A' : 'B',
+    partidaIniciada: Boolean(outroCampo?.fez)
+  });
+  return { ok: true, lado: ehTimeA ? 'A' : 'B', partidaIniciada: Boolean(outroCampo?.fez) };
 }
 
 async function verificarAdversarioFaltou(partidaId, timeReclamanteId, userId) {

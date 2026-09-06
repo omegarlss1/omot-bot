@@ -35,6 +35,15 @@ test('eventos: novos eventos da Fase 3 registrados', () => {
   });
 });
 
+test('painel do organizador inclui a aba de check-in', () => {
+  comEnv({}, () => {
+    const { buildPainelOrganizador } = require('../src/bot/commands/painel-organizador');
+    const painel = buildPainelOrganizador();
+    const opcoes = painel.components[0].toJSON().components[0].options;
+    assert.ok(opcoes.some((opcao) => opcao.value === 'checkin'));
+  });
+});
+
 test('finalizacao.podio - ordenação', async (t) => {
   await t.test('_posicionarSemifinalistas ordena por pontos, vitorias, menos wo', () => {
     comEnv({}, () => {

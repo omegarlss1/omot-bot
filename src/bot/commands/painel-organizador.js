@@ -15,8 +15,9 @@ function buildPainelOrganizador() {
     .addOptions([
       { label: 'ABA 1 - INSCRITOS', value: 'inscritos', description: 'Lista de inscritos por rank', emoji: '📋' },
       { label: 'ABA 2 - TIMES DEFINIDOS', value: 'times', description: 'Times formados (FIXA)', emoji: '👥' },
-      { label: 'ABA 3 - PARTIDAS AO VIVO', value: 'partidas', description: 'Partidas em andamento', emoji: '🎮' },
-      { label: 'ABA 4 - GESTÃO EXTRA', value: 'gestao', description: 'W.O., broadcast, classificação', emoji: '🛠️' }
+      { label: 'ABA 3 - CHECK-IN', value: 'checkin', description: 'Acompanhe quem confirmou presença', emoji: '✅' },
+      { label: 'ABA 4 - PARTIDAS AO VIVO', value: 'partidas', description: 'Partidas em andamento', emoji: '🎮' },
+      { label: 'ABA 5 - GESTÃO EXTRA', value: 'gestao', description: 'W.O., broadcast, classificação', emoji: '🛠️' }
     ]);
 
   return {
@@ -32,10 +33,11 @@ function buildPainelOrganizador() {
 }
 
 module.exports = {
+  buildPainelOrganizador,
   data: new SlashCommandBuilder()
     .setName('painel-organizador')
     .setDescription('Posta o painel do organizador V3 no canal atual')
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    .setDefaultMemberPermissions(null),
 
   async execute(interaction) {
     if (!temPermissaoOrganizador(interaction.member)) {
