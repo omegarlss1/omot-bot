@@ -917,18 +917,19 @@ async function onConfigSelect(interaction) {
   if (customId === 'modal_config_baseado') {
     selecao.baseadoEmInscricoes = valor === 'SIM';
     selecaoRanks.set(`camp:selecao:${interaction.user.id}`, selecao);
-    const [horaInicio, minutoInicio] = (selecao.horarioInicio || '19:00').split(':').map(Number);
-    const inicioDate = new Date(selecao.dataInicio);
-    const terminoDate = new Date(inicioDate);
-    terminoDate.setHours(horaInicio + 3, minutoInicio, 0, 0);
-    const preview = gerarDescricaoEvento({
-      dataInicio: selecao.dataInicio,
-      duracaoMin: 180,
-      numTimes: 0,
-      modo: selecao.modo || 'simples',
-      simultaneo: true,
-      horarioInicio: selecao.horarioInicio
-    });
+  const [horaInicio, minutoInicio] = (selecao.horarioInicio || '19:00').split(':').map(Number);
+  const inicioDate = new Date(selecao.dataInicio);
+  const terminoDate = new Date(inicioDate);
+  terminoDate.setHours(horaInicio + 3, minutoInicio, 0, 0);
+  const duracaoMin = selecao.duracaoMin || 180;
+  const preview = gerarDescricaoEvento({
+    dataInicio: selecao.dataInicio,
+    duracaoMin,
+    numTimes: 0,
+    modo: selecao.modo || 'simples',
+    simultaneo: true,
+    horarioInicio: selecao.horarioInicio
+  });
     const embed = {
       title: '📋 Confira os dados do evento',
       description: '**Nome:** ' + selecao.nome + '\n' +
