@@ -110,6 +110,19 @@ async function criarCanaisRank(guild, categoria, rank, evento, botUserId) {
     reason: `Canal de prints ${rank} do evento ${evento.nome}`
   });
 
+  canais.organizador = await guild.channels.create({
+    name: `🛠️-${rank}-organizador${sufixo ? '-' + sufixo : ''}`,
+    type: ChannelType.GuildText,
+    parent: categoria.id,
+    permissionOverwrites: [
+      { id: guild.roles.everyone.id, deny: PERMISSOES_LEITURA },
+      permOrgao(),
+      permBot(botUserId)
+    ],
+    topic: `Painel do organizador ${rankConfig.label} - ${evento.nome}`,
+    reason: `Canal do organizador ${rank} do evento ${evento.nome}`
+  });
+
   return canais;
 }
 

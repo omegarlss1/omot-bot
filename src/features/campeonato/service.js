@@ -93,7 +93,8 @@ async function criarEvento(guild, parametros) {
     camp.canais = {
       inscricoes: canais.inscricoes.id,
       partidas: canais.partidas.id,
-      prints: canais.prints.id
+      prints: canais.prints.id,
+      organizador: canais.organizador.id
     };
     camp.categoriaId = categoria.id;
     await camp.save();

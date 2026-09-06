@@ -17,6 +17,7 @@ const { notificarCampeao, anunciarNoCanal } = require('./services/notificacoes')
 const Campeonato = require('../../db/models/campeonato');
 const Partida = require('../../db/models/partida');
 const Time = require('../../db/models/time');
+const { buildPainelOrganizador } = require('../../bot/commands/painel-organizador');
 
 const selecaoRanks = new Map();
 
@@ -313,6 +314,22 @@ async function onConfirmarCriacao(interaction) {
         }
       } else {
         camp.painelInscricaoErro = true;
+      }
+      const canalOrganizador = await interaction.guild.channels.fetch(camp.canais.organizador).catch(() => null);
+      if (canalOrganizador?.isTextBased()) {
+        const mensagemFixa = await canalOrganizador.send(buildPainelOrganizador());
+        const mensagemDinamica = await canalOrganizador.send({
+          embeds: [{
+            title: '📊 Visão do campeonato',
+            description: `Selecione uma aba no painel acima para consultar **${camp.nome}**.`,
+            color: 0x5865F2
+          }]
+        });
+        camp.painelOrganizador = {
+          fixaMessageId: mensagemFixa.id,
+          dinamicaMessageId: mensagemDinamica.id
+        };
+        await camp.save();
       }
       eventosCriados.push(camp);
     }
@@ -840,6 +857,25 @@ async function onCancelarCriarEvento(interaction) {
   return interaction.update({ content: 'Criacao cancelada.', embeds: [], components: [] });
 }
 
+async function atualizarPainelOrganizador(interaction, campeonato, payload) {
+  await interaction.deferUpdate();
+  let messageId = campeonato.painelOrganizador?.dinamicaMessageId;
+  let mensagem = messageId
+    ? await interaction.channel.messages.fetch(messageId).catch(() => null)
+    : null;
+
+  if (!mensagem) {
+    mensagem = await interaction.channel.send(payload);
+    await Campeonato.updateOne(
+      { _id: campeonato._id },
+      { $set: { 'painelOrganizador.dinamicaMessageId': mensagem.id } }
+    );
+    return mensagem;
+  }
+
+  return mensagem.edit(payload);
+}
+
 async function onPainelOrganizadorTab(interaction) {
   if (!temPermissaoOrganizador(interaction.member)) {
     return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
@@ -849,7 +885,8 @@ async function onPainelOrganizadorTab(interaction) {
     $or: [
       { 'canais.inscricoes': interaction.channelId },
       { 'canais.partidas': interaction.channelId },
-      { 'canais.prints': interaction.channelId }
+      { 'canais.prints': interaction.channelId },
+      { 'canais.organizador': interaction.channelId }
     ]
   }).lean();
   if (!campeonato) {
@@ -861,7 +898,7 @@ async function onPainelOrganizadorTab(interaction) {
       const linhas = inscritos.map((t, i) =>
         `${i + 1}. **${t.nome || 'Sem nome'}** — Capitão: <@${t.capitaoId}> (${t.jogadores?.length || 0} jogador(es))`
       ).join('\n') || 'Nenhum inscrito.';
-      return interaction.update({
+      return atualizarPainelOrganizador(interaction, campeonato, {
         embeds: [{
           title: '📋 ABA 1 - INSCRITOS',
           description: linhas,
@@ -877,7 +914,7 @@ async function onPainelOrganizadorTab(interaction) {
         const jogadores = (t.jogadores || []).map(j => `<@${j.userId}>`).join(', ') || 'Sem jogadores';
         return `${i + 1}. **${t.nome || 'Sem nome'}** — ${jogadores}`;
       }).join('\n') || 'Nenhum time definido.';
-      return interaction.update({
+      return atualizarPainelOrganizador(interaction, campeonato, {
         embeds: [{
           title: '👥 ABA 2 - TIMES DEFINIDOS',
           description: linhas,
@@ -900,7 +937,7 @@ async function onPainelOrganizadorTab(interaction) {
         const nomeB = timesMap.get(String(p.timeB)) || 'TBD';
         return `${i + 1}. **R${p.rodada || 1}** ${p.fase || ''} — **${nomeA}** vs **${nomeB}** — Status: ${p.status}`;
       }).join('\n') || 'Nenhuma partida em andamento.';
-      return interaction.update({
+      return atualizarPainelOrganizador(interaction, campeonato, {
         embeds: [{
           title: '🎮 ABA 3 - PARTIDAS AO VIVO',
           description: linhas,
@@ -924,7 +961,7 @@ async function onPainelOrganizadorTab(interaction) {
         const status = p.status === 'AGUARDANDO_PLACAR' ? 'EM ANDAMENTO' : p.status;
         return `${i + 1}. **${timesMap.get(String(p.timeA)) || 'TBD'}** ${checkA} vs **${timesMap.get(String(p.timeB)) || 'TBD'}** ${checkB} — ${status}`;
       }).join('\n') || 'Nenhuma partida aguardando check-in.';
-      return interaction.update({
+      return atualizarPainelOrganizador(interaction, campeonato, {
         embeds: [{
           title: '✅ ABA 3 - CHECK-IN',
           description: linhas,
@@ -941,13 +978,13 @@ async function onPainelOrganizadorTab(interaction) {
             { type: 2, style: 1, label: '♻️ Reabrir', custom_id: 'btn_camp_reabrir_' + campeonato._id, emoji: { name: '♻️' } }
           ]]
         : adminEmbed.components;
-      return interaction.update({
+      return atualizarPainelOrganizador(interaction, campeonato, {
         embeds: adminEmbed.embeds,
         components: toActionRows(components)
       });
     }
     default:
-      return interaction.update({ embeds: [{ title: '❓ Aba desconhecida', color: 0xFF0000 }], components: [] });
+      return atualizarPainelOrganizador(interaction, campeonato, { embeds: [{ title: '❓ Aba desconhecida', color: 0xFF0000 }], components: [] });
   }
 }
 

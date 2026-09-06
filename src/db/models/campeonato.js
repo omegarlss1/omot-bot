@@ -30,7 +30,12 @@ const campeonatoSchema = new mongoose.Schema({
     inscricoes: { type: String, default: null },
     partidas: { type: String, default: null },
     prints: { type: String, default: null },
+    organizador: { type: String, default: null },
     geral: { type: String, default: null }
+  },
+  painelOrganizador: {
+    fixaMessageId: { type: String, default: null },
+    dinamicaMessageId: { type: String, default: null }
   },
   categoriaId: { type: String, default: null },
   startgg: {
