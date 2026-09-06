@@ -342,6 +342,16 @@ async function onConfirmarCriacao(interaction) {
         };
         await camp.save();
       }
+      const canalAvisos = await interaction.guild.channels.fetch(camp.canais.avisos).catch(() => null);
+      if (canalAvisos?.isTextBased()) {
+        await canalAvisos.send({
+          embeds: [{
+            title: `📣 Avisos — ${camp.nome}`,
+            description: `Inscrições abertas para o campeonato **${camp.nome}**. Acompanhe este canal para comunicados oficiais.`,
+            color: 0xFF6B00
+          }]
+        }).catch((error) => console.error(`[campeonato.criarEvento] erro ao publicar avisos no canal ${canalAvisos.id}:`, error.message));
+      }
       eventosCriados.push(camp);
     }
     return interaction.editReply(embedEventoCriado({
@@ -596,7 +606,7 @@ async function onSubmitBroadcast(interaction) {
   const campeonato = await findCampeonatoPorCanal(interaction.channelId);
   if (!campeonato) return interaction.editReply({ content: 'Campeonato nao encontrado neste canal.' });
   const mensagem = interaction.fields.getTextInputValue('broadcast_mensagem').trim();
-  const destinos = [campeonato.canais.inscricoes, campeonato.canais.partidas, campeonato.canais.organizador].filter(Boolean);
+  const destinos = [campeonato.canais.inscricoes, campeonato.canais.partidas, campeonato.canais.organizador, campeonato.canais.avisos].filter(Boolean);
   let enviados = 0;
   for (const channelId of destinos) {
     const canal = await interaction.client.channels.fetch(channelId).catch(() => null);
@@ -1034,7 +1044,8 @@ async function onPainelOrganizadorTab(interaction) {
       { 'canais.inscricoes': interaction.channelId },
       { 'canais.partidas': interaction.channelId },
       { 'canais.prints': interaction.channelId },
-      { 'canais.organizador': interaction.channelId }
+      { 'canais.organizador': interaction.channelId },
+      { 'canais.avisos': interaction.channelId }
     ]
   }).lean();
   if (!campeonato) {

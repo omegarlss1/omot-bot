@@ -31,6 +31,7 @@ const campeonatoSchema = new mongoose.Schema({
     partidas: { type: String, default: null },
     prints: { type: String, default: null },
     organizador: { type: String, default: null },
+    avisos: { type: String, default: null },
     geral: { type: String, default: null }
   },
   painelOrganizador: {

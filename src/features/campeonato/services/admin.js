@@ -40,6 +40,23 @@ async function reabrirCampeonato({ campeonatoId, executadoPor = null }) {
   return { ok: true, status: 'EM_ANDAMENTO' };
 }
 
+async function excluirCampeonato({ campeonatoId, guild, executadoPor = null }) {
+  const camp = await Campeonato.findById(campeonatoId);
+  if (!camp) throw new AdminError('Campeonato não encontrado.', 'CAMP_NAO_ENCONTRADO');
+  if (!guild) throw new AdminError('Guild não encontrada para excluir os canais.', 'GUILD_NAO_ENCONTRADA');
+
+  const canalIds = Object.values(camp.canais || {}).filter(Boolean);
+  for (const canalId of canalIds) {
+    const canal = await guild.channels.fetch(canalId).catch(() => null);
+    await canal?.delete(`Exclusão do campeonato por ${executadoPor || 'organização'}`).catch(() => {});
+  }
+  await Partida.deleteMany({ campeonatoId });
+  await Time.deleteMany({ campeonatoId });
+  await Campeonato.deleteOne({ _id: campeonatoId });
+  emitir(EVENTOS.CAMPEONATO_CANCELADO, { campeonatoId: String(campeonatoId), excluido: true, executadoPor });
+  return { ok: true, status: 'EXCLUIDO' };
+}
+
 async function desclassificarTime({ timeId, motivo = null, executadoPor = null }) {
   const time = await Time.findById(timeId);
   if (!time) throw new AdminError('Time não encontrado.', 'TIME_NAO_ENCONTRADO');
@@ -107,4 +124,4 @@ async function ajustarPlacar({ partidaId, novoPlacar, executadoPor = null, motiv
   return { ok: true, novoPlacar, vencedorId };
 }
 
-module.exports = { cancelarCampeonato, reabrirCampeonato, desclassificarTime, ajustarPlacar, AdminError };
+module.exports = { cancelarCampeonato, reabrirCampeonato, excluirCampeonato, desclassificarTime, ajustarPlacar, AdminError };

@@ -16,7 +16,8 @@ async function findCampeonatoPorCanal(canalId) {
       { 'canais.inscricoes': canalId },
       { 'canais.partidas': canalId },
       { 'canais.prints': canalId },
-      { 'canais.organizador': canalId }
+      { 'canais.organizador': canalId },
+      { 'canais.avisos': canalId }
     ]
   });
 }
