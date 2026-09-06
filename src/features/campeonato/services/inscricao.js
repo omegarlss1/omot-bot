@@ -1,6 +1,7 @@
 const Time = require('../../../db/models/time');
 const Campeonato = require('../../../db/models/campeonato');
 const PerfilMembro = require('../../../db/models/perfilMembro');
+const { randomUUID } = require('node:crypto');
 const { validarInscricao, InscricaoError } = require('../validators/inscricao');
 const { executarCorteCompleto } = require('../validators/corte');
 const { emitir, EVENTOS } = require('../events');
@@ -67,6 +68,45 @@ async function inscreverCapitao({ guild, member, campeonato, nomeTime }) {
   });
 
   return { time, dadosCapitao };
+}
+
+async function inscreverJogadorManual({ guild, campeonato, nomeJogador, nomeTime }) {
+  if (!campeonato) throw new InscricaoError('Campeonato não encontrado.', 'INSCRICAO_CAMP_NAO_ENCONTRADO');
+  if (campeonato.status !== 'INSCRICOES_ABERTAS') {
+    throw new InscricaoError('Inscrições não estão abertas.', 'INSCRICAO_FECHADAS');
+  }
+
+  const nickSnapshot = String(nomeJogador || '').trim();
+  if (!nickSnapshot || nickSnapshot.length > 80) {
+    throw new InscricaoError('Informe um nome de jogador válido (até 80 caracteres).', 'INSCRICAO_NOME_INVALIDO');
+  }
+
+  const userId = `externo:${randomUUID()}`;
+  const jogador = {
+    userId,
+    rankSnapshot: campeonato.rank,
+    nickSnapshot,
+    isSubstituto: false,
+    isCapitao: true,
+    partidasJogadas: 0
+  };
+  const time = await Time.create({
+    guildId: guild.id,
+    campeonatoId: campeonato._id,
+    capitaoId: userId,
+    jogadores: [jogador],
+    nome: String(nomeTime || '').trim() || `Time de ${nickSnapshot}`
+  });
+
+  emitir(EVENTOS.INSCRICAO_REALIZADA, {
+    timeId: time._id,
+    campeonatoId: campeonato._id,
+    capitaoId: userId,
+    rank: campeonato.rank,
+    origem: 'manual'
+  });
+
+  return { time, jogador };
 }
 
 async function fecharInscricoes(campeonatoId) {
@@ -139,6 +179,7 @@ module.exports = {
   listarInscricoes,
   jogadorJaInscrito,
   inscreverCapitao,
+  inscreverJogadorManual,
   fecharInscricoes,
   executarCorte,
   definirFormato

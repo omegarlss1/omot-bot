@@ -3,7 +3,7 @@ const config = require('../../config');
 const { embedCriarEvento, embedSelecionarRanks, embedEventoCriado, embedPainelInscricao, embedInscricaoConfirmada, embedResumoCorte, embedMenuFormato, embedPainelPartida, embedPlacarEnviado, embedDisputaOrganizador, embedBracket, embedClassificacao, embedCampeaoDefinido, embedPainelAdmin, embedCancelamentoConfirmado, embedReaberturaConfirmada, embedTimeDesclassificado, embedPlacarAjustado, toActionRows } = require('./embeds');
 const { criarEvento, EventoError } = require('./service');
 const { gerarDescricaoEvento } = require('./services/duracao');
-const { inscreverCapitao, fecharInscricoes, executarCorte, definirFormato, findCampeonatoPorCanalInscricao, listarInscricoes, InscricaoError } = require('./services/inscricao');
+const { inscreverCapitao, inscreverJogadorManual, fecharInscricoes, executarCorte, definirFormato, findCampeonatoPorCanalInscricao, listarInscricoes, InscricaoError } = require('./services/inscricao');
 const { InscricaoError: ValidacaoInscricaoError } = require('./validators/inscricao');
 const { CorteError } = require('./validators/corte');
 const { gerarBracket, BracketError } = require('./services/bracket');
@@ -362,6 +362,41 @@ async function onBotaoInscrever(interaction) {
   return interaction.showModal(modal);
 }
 
+async function onBotaoInscricaoManual(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.reply({ content: 'Apenas @OrganizadorCamps pode fazer inscrições manuais.', flags: 64 });
+  }
+  const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId);
+  if (!campeonato) {
+    return interaction.reply({ content: 'Este canal nao e de inscricao de campeonato.', flags: 64 });
+  }
+  if (campeonato.status !== 'INSCRICOES_ABERTAS') {
+    return interaction.reply({ content: 'Inscricoes nao estao abertas.', flags: 64 });
+  }
+  const modal = new ModalBuilder()
+    .setCustomId('modal_camp_inscricao_manual')
+    .setTitle('Inscrição manual');
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId('inscricao_manual_jogador')
+        .setLabel('Nome do jogador')
+        .setStyle(TextInputStyle.Short)
+        .setMaxLength(80)
+        .setRequired(true)
+    ),
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId('inscricao_manual_time')
+        .setLabel('Nome do time (opcional)')
+        .setStyle(TextInputStyle.Short)
+        .setMaxLength(40)
+        .setRequired(false)
+    )
+  );
+  return interaction.showModal(modal);
+}
+
 async function onSubmitInscricao(interaction) {
   await interaction.deferReply({ flags: 64 });
   const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId);
@@ -383,6 +418,29 @@ async function onSubmitInscricao(interaction) {
     }
     console.error('[campeonato.inscricao] erro:', error);
     return interaction.editReply({ content: 'Erro ao processar inscricao.' });
+  }
+}
+
+async function onSubmitInscricaoManual(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.reply({ content: 'Apenas @OrganizadorCamps pode fazer inscrições manuais.', flags: 64 });
+  }
+  await interaction.deferReply({ flags: 64 });
+  const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId);
+  if (!campeonato) return interaction.editReply({ content: 'Campeonato nao encontrado neste canal.' });
+
+  try {
+    const resultado = await inscreverJogadorManual({
+      guild: interaction.guild,
+      campeonato,
+      nomeJogador: interaction.fields.getTextInputValue('inscricao_manual_jogador'),
+      nomeTime: interaction.fields.getTextInputValue('inscricao_manual_time')
+    });
+    return interaction.editReply({ content: `Inscrição manual confirmada para **${resultado.jogador.nickSnapshot}**.` });
+  } catch (error) {
+    if (error instanceof InscricaoError) return interaction.editReply({ content: error.message });
+    console.error('[campeonato.inscricao_manual] erro:', error);
+    return interaction.editReply({ content: 'Erro ao processar inscricao manual.' });
   }
 }
 
@@ -975,7 +1033,9 @@ function register(registry) {
   registry.button('btn_camp_rank_confirmar', onConfirmarRanks);
   registry.modal('modal_criar_evento', onSubmitCriarEvento);
   registry.button('btn_camp_inscrever', onBotaoInscrever);
+  registry.button('btn_camp_inscricao_manual', onBotaoInscricaoManual);
   registry.modal('modal_camp_inscricao', onSubmitInscricao);
+  registry.modal('modal_camp_inscricao_manual', onSubmitInscricaoManual);
   registry.button('btn_camp_fechar_inscricoes', onBotaoFecharInscricoes);
   registry.button('btn_camp_cortar', onBotaoCortar);
   registry.button(/^btn_camp_formato_(round-robin|grupos-mata-mata|double-elimination|single-elimination)_[a-f0-9]{24}$/, onEscolherFormato);

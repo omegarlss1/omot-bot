@@ -191,9 +191,9 @@ test('handlers do módulo campeonato registrados', async (t) => {
       const interactions = require('../src/features/campeonato/interactions');
       const r = new InteractionRegistry();
       interactions.register(r);
-      assert.equal(r.buttons.length, 21);
+      assert.equal(r.buttons.length, 22);
       assert.equal(r.selects.length, 3);
-      assert.equal(r.modals.length, 4);
+      assert.equal(r.modals.length, 5);
     });
   });
 });
@@ -211,6 +211,7 @@ test('painel de inscrição', async (t) => {
       const payload = toActionRows(painel.components).map((row) => row.toJSON());
       assert.equal(payload[0].components[0].custom_id, 'btn_camp_inscrever');
       assert.equal(payload[0].components[0].label, '🎮 Inscrever Time');
+      assert.equal(payload[0].components[1].custom_id, 'btn_camp_inscricao_manual');
     });
   });
 });

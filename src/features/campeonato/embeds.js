@@ -40,8 +40,8 @@ function embedCriarEvento({ guild, organizador }) {
         { name: '🔐 Permissões', value: '`@everyone` não vê. Cada rank vê só seus canais. `@OrganizadorCamps` vê tudo.' }
       ]
     }],
-    components: [[
-      { type: 2, style: 1, label: '➕ Criar Evento', emoji: { name: '🏆' }, custom_id: 'btn_campeonato_criar_evento' }
+      components: [[
+        { type: 2, style: 1, label: '➕ Criar Evento', emoji: { name: '🏆' }, custom_id: 'btn_campeonato_criar_evento' }
     ]]
   };
 }
@@ -290,7 +290,8 @@ function embedPainelInscricao(campeonato, totalInscritos) {
       ]
     }],
     components: [[
-      { type: 2, style: 3, label: '🎮 Inscrever Time', custom_id: 'btn_camp_inscrever', emoji: { name: '🎮' } }
+      { type: 2, style: 3, label: '🎮 Inscrever Time', custom_id: 'btn_camp_inscrever', emoji: { name: '🎮' } },
+      { type: 2, style: 1, label: '📝 Inscrição manual', custom_id: 'btn_camp_inscricao_manual', emoji: { name: '📝' } }
     ]]
   };
 }
