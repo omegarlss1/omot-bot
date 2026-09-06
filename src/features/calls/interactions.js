@@ -50,7 +50,7 @@ async function responderNoPainel(interaction, { content, embeds, components, eph
 }
 
 async function confirmarNoPainel(interaction, status) {
-  await interaction.deferUpdate();
+  if (!interaction.deferred && !interaction.replied) await interaction.deferUpdate();
   const painel = await obterPainel(interaction);
   if (!painel) return;
   const dadosCall = interaction.client.stores.calls.get(interaction.channelId);

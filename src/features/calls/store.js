@@ -44,6 +44,7 @@ class CallsStore {
         donoNome: doc.donoNome,
         tipo: doc.tipo,
         jogo: doc.jogo,
+        panelMessageId: doc.panelMessageId,
         hidden: doc.hidden,
         bannedUserIds: [...(doc.bannedUserIds || [])]
       });
@@ -90,6 +91,7 @@ class CallsStore {
       donoNome: doc.donoNome,
       tipo: doc.tipo,
       jogo: doc.jogo,
+      panelMessageId: doc.panelMessageId,
       hidden: doc.hidden,
       bannedUserIds: [...(doc.bannedUserIds || [])]
     };
