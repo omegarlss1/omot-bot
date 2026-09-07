@@ -142,15 +142,6 @@ async function onSubmitCriarEvento(interaction) {
     return interaction.reply({ content: 'Data limite inválida. Ela deve ser igual ou anterior à data do evento.', flags: 64 });
   }
 
-  const diaIdx = new Date(dataInicio).getDay();
-  const permitidos = [5, 6, 0];
-  if (!permitidos.includes(diaIdx)) {
-    return interaction.reply({
-      content: 'Data de inicio invalida. Escolha SEXTA, SABADO ou DOMINGO.',
-      flags: 64
-    });
-  }
-
   selecaoRanks.set(`camp:selecao:${interaction.user.id}`, { nome, dataInicio, dataFim: dataInicio, dataLimiteInscricoes: dataLimite, horarioInicio, modo: null, tipoDupla: null, baseadoEmInscricoes: null, limiteInscricoes: null, modalidade: null, ranksSelecionados: [] });
   const select = new StringSelectMenuBuilder()
     .setCustomId('modal_config_modo')
@@ -1403,37 +1394,38 @@ async function onConfigSelect(interaction) {
   }
   if (customId === 'modal_config_baseado') {
     selecao.baseadoEmInscricoes = valor === 'SIM';
-    if (!selecao.baseadoEmInscricoes) {
-      const modalidade = new StringSelectMenuBuilder()
-        .setCustomId('modal_config_modalidade')
-        .setPlaceholder('Escolha a modalidade')
-        .addOptions([
-          { label: 'Single', value: 'single', description: 'Eliminatória simples' },
-          { label: 'Double', value: 'double', description: 'Eliminatória dupla' },
-          { label: 'Round Robin', value: 'round-robin', description: 'Todos contra todos' },
-          { label: 'Grupos + Mata-mata', value: 'grupos-mata-mata', description: 'Fase de grupos e eliminatória' }
-        ]);
-      selecaoRanks.set(`camp:selecao:${interaction.user.id}`, selecao);
-      return interaction.update({
-        content: 'Escolha a modalidade do campeonato sem inscrições:',
-        embeds: [],
-        components: [new ActionRowBuilder().addComponents(modalidade)]
-      });
-    }
     selecaoRanks.set(`camp:selecao:${interaction.user.id}`, selecao);
-  const [horaInicio, minutoInicio] = (selecao.horarioInicio || '19:00').split(':').map(Number);
-  const inicioDate = new Date(selecao.dataInicio);
-  const terminoDate = new Date(inicioDate);
-  terminoDate.setHours(horaInicio + 3, minutoInicio, 0, 0);
-  const duracaoMin = selecao.duracaoMin || 180;
-  const preview = gerarDescricaoEvento({
-    dataInicio: selecao.dataInicio,
-    duracaoMin,
-    numTimes: 0,
-    modo: selecao.modo || 'simples',
-    simultaneo: true,
-    horarioInicio: selecao.horarioInicio
-  });
+    const modalidade = new StringSelectMenuBuilder()
+      .setCustomId('modal_config_modalidade')
+      .setPlaceholder('Escolha a modalidade do campeonato')
+      .addOptions([
+        { label: 'Single', value: 'single', description: 'Eliminatória simples' },
+        { label: 'Double', value: 'double', description: 'Eliminatória dupla' },
+        { label: 'Round Robin', value: 'round-robin', description: 'Todos contra todos' },
+        { label: 'Grupos + Mata-mata', value: 'grupos-mata-mata', description: 'Fase de grupos e eliminatória' }
+      ]);
+    return interaction.update({
+      content: 'Escolha a modalidade do campeonato:',
+      embeds: [],
+      components: [new ActionRowBuilder().addComponents(modalidade)]
+    });
+  }
+  if (customId === 'modal_config_modalidade') {
+    selecao.modalidade = valor;
+    selecaoRanks.set(`camp:selecao:${interaction.user.id}`, selecao);
+    const [horaInicio, minutoInicio] = (selecao.horarioInicio || '19:00').split(':').map(Number);
+    const inicioDate = new Date(selecao.dataInicio);
+    const terminoDate = new Date(inicioDate);
+    terminoDate.setHours(horaInicio + 3, minutoInicio, 0, 0);
+    const duracaoMin = selecao.duracaoMin || 180;
+    const preview = gerarDescricaoEvento({
+      dataInicio: selecao.dataInicio,
+      duracaoMin,
+      numTimes: 0,
+      modo: selecao.modo || 'simples',
+      simultaneo: true,
+      horarioInicio: selecao.horarioInicio
+    });
     const embed = {
       title: '📋 Confira os dados do evento',
       description: '**Nome:** ' + selecao.nome + '\n' +

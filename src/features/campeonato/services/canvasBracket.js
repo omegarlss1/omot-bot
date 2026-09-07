@@ -90,7 +90,7 @@ function buildSvgString({ times = [], incluirTerceiroLugar = true, baseadoEmInsc
       linhas.push(`<text x="${pos.x + 12}" y="${pos.y + 47}" fill="#d1d5db" font-family="Arial" font-size="16">${nomeB}</text>`);
 
       if (r === 0 && horarioBase) {
-        const minutos = indexPartidaR1 * 30;
+        const minutos = indexPartidaR1 * 20;
         const h = new Date(horarioBase.getTime() + minutos * 60 * 1000);
         const horarioStr = String(h.getHours()).padStart(2, '0') + ':' + String(h.getMinutes()).padStart(2, '0');
         linhas.push(`<text x="${pos.x}" y="${pos.y + 68}" fill="#9ca3af" font-family="Arial" font-size="12">${horarioStr}</text>`);

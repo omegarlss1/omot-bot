@@ -64,7 +64,7 @@ function parearChaves(times, semente = Math.random) {
 
 function gerarJanelaCheckIn(partida, estimatedStartAt = new Date()) {
   const inicioPartida = new Date(estimatedStartAt);
-  const inicio = new Date(inicioPartida.getTime() - 30 * 60 * 1000);
+  const inicio = new Date(inicioPartida.getTime() - 5 * 60 * 1000);
   const fim = new Date(inicioPartida.getTime() + 5 * 60 * 1000);
   return { inicio, fim };
 }

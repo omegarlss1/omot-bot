@@ -212,6 +212,26 @@ function embedCampeaoDefinido({ vencedor, podio }) {
 }
 
 function embedPainelAdmin({ campeonato }) {
+  const botoes = [
+    [
+      { type: 2, style: 1, label: '📊 Classificação', custom_id: 'btn_camp_ver_classificacao', emoji: { name: '📊' } },
+      { type: 2, style: 1, label: '📣 Broadcast', custom_id: 'btn_camp_broadcast', emoji: { name: '📣' } }
+    ],
+    [
+      { type: 2, style: 1, label: '🎮 Gerar partidas', custom_id: 'btn_camp_gerar_bracket', emoji: { name: '🎮' } },
+      { type: 2, style: 1, label: '🔒 Encerrar inscrições', custom_id: 'btn_camp_fechar_inscricoes', emoji: { name: '🔒' } }
+    ]
+  ];
+  if (campeonato.status !== 'CANCELADO') {
+    botoes.push([
+      { type: 2, style: 3, label: '🏁 Finalizar', custom_id: 'btn_camp_finalizar_' + campeonato._id, emoji: { name: '🏁' } },
+      { type: 2, style: 4, label: '⛔ Cancelar', custom_id: 'btn_camp_cancelar_' + campeonato._id, emoji: { name: '⛔' } }
+    ]);
+  } else {
+    botoes.push([
+      { type: 2, style: 1, label: '♻️ Reabrir', custom_id: 'btn_camp_reabrir_' + campeonato._id, emoji: { name: '♻️' } }
+    ]);
+  }
   return {
     embeds: [{
       title: '🛠️ Painel Admin — ' + campeonato.rank.toUpperCase(),
@@ -221,14 +241,7 @@ function embedPainelAdmin({ campeonato }) {
         { name: '📌 Status', value: campeonato.status, inline: true }
       ]
     }],
-    components: [[
-      { type: 2, style: 1, label: '📊 Classificação', custom_id: 'btn_camp_ver_classificacao', emoji: { name: '📊' } },
-      { type: 2, style: 1, label: '📣 Broadcast', custom_id: 'btn_camp_broadcast', emoji: { name: '📣' } },
-      { type: 2, style: 1, label: '🏁 Finalizar', custom_id: 'btn_camp_finalizar_' + campeonato._id, emoji: { name: '🏁' } },
-      { type: 2, style: 4, label: '⛔ Cancelar', custom_id: 'btn_camp_cancelar_' + campeonato._id, emoji: { name: '⛔' } }
-    ], [
-      { type: 2, style: 1, label: '🎮 Gerar partidas', custom_id: 'btn_camp_gerar_bracket', emoji: { name: '🎮' } }
-    ]]
+    components: botoes
   };
 }
 
