@@ -12,7 +12,7 @@ const { enviarPlacar, validarPlacar, parsePlacar, PlacarError } = require('./ser
 const { placarEhValido } = require('./validators/placar');
 const { calcularClassificacao } = require('./services/classificacao');
 const { finalizarCampeonato, obterClassificacaoFinal, FinalizacaoError } = require('./services/finalizacao');
-const { cancelarCampeonato, reabrirCampeonato, excluirCampeonato, desclassificarTime, ajustarPlacar, AdminError } = require('./services/admin');
+const { cancelarCampeonato, reabrirCampeonato, excluirCampeonatos, desclassificarTime, ajustarPlacar, AdminError } = require('./services/admin');
 const { notificarCampeao, anunciarNoCanal } = require('./services/notificacoes');
 const Campeonato = require('../../db/models/campeonato');
 const Partida = require('../../db/models/partida');
@@ -20,6 +20,7 @@ const Time = require('../../db/models/time');
 const { buildPainelOrganizador } = require('../../bot/commands/painel-organizador');
 
 const selecaoRanks = new Map();
+const selecoesExclusao = new Map();
 
 function temPermissaoOrganizador(member) {
   if (!member) return false;
@@ -553,12 +554,14 @@ async function onSelectExcluirCampeonato(interaction) {
   if (!temPermissaoOrganizador(interaction.member)) {
     return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
   }
-  const campeonatoId = interaction.values[0];
+  const campeonatosSelecionados = interaction.values;
+  const chave = `${interaction.user.id}:${Date.now()}`;
+  selecoesExclusao.set(chave, campeonatosSelecionados);
   return interaction.update({
-    content: '⚠️ Esta ação é definitiva e remove canais, partidas e inscrições. Confirma?',
+    content: `⚠️ ${campeonatosSelecionados.length} campeonato(s) selecionado(s). Esta ação é definitiva e remove canais, partidas e inscrições. Confirma?`,
     components: [new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`btn_confirmar_exclusao_${campeonatoId}`).setLabel('Excluir definitivamente').setStyle(ButtonStyle.Danger),
-      new ButtonBuilder().setCustomId('btn_cancelar_exclusao').setLabel('Cancelar').setStyle(ButtonStyle.Secondary)
+      new ButtonBuilder().setCustomId(`btn_confirmar_exclusao_${chave}`).setLabel('Excluir definitivamente').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId(`btn_cancelar_exclusao_${chave}`).setLabel('Cancelar').setStyle(ButtonStyle.Secondary)
     )]
   });
 }
@@ -568,10 +571,12 @@ async function onConfirmarExclusao(interaction) {
     return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
   }
   await interaction.deferUpdate();
-  const campeonatoId = interaction.customId.replace('btn_confirmar_exclusao_', '');
+  const chave = interaction.customId.replace('btn_confirmar_exclusao_', '');
+  const campeonatoIds = selecoesExclusao.get(chave) || [];
   try {
-    await excluirCampeonato({ campeonatoId, guild: interaction.guild, executadoPor: interaction.user.id });
-    return interaction.editReply({ content: '✅ Campeonato, partidas, times e canais excluídos.', components: [] });
+    await excluirCampeonatos({ campeonatoIds, guild: interaction.guild, executadoPor: interaction.user.id });
+    selecoesExclusao.delete(chave);
+    return interaction.editReply({ content: `✅ ${campeonatoIds.length} campeonato(s), partidas, times e canais excluídos.`, components: [] });
   } catch (error) {
     if (error instanceof AdminError) return interaction.editReply({ content: error.message, components: [] });
     console.error('[excluir-campeonato] erro:', error);
@@ -580,6 +585,8 @@ async function onConfirmarExclusao(interaction) {
 }
 
 async function onCancelarExclusao(interaction) {
+  const chave = interaction.customId.replace('btn_cancelar_exclusao_', '');
+  selecoesExclusao.delete(chave);
   return interaction.update({ content: 'Exclusão cancelada.', components: [] });
 }
 
@@ -1292,8 +1299,8 @@ function register(registry) {
   registry.modal('modal_camp_inscricao', onSubmitInscricao);
   registry.modal('modal_camp_inscricao_manual', onSubmitInscricaoManual);
   registry.select('select_excluir_campeonato', onSelectExcluirCampeonato);
-  registry.button(/^btn_confirmar_exclusao_[a-f0-9]{24}$/, onConfirmarExclusao);
-  registry.button('btn_cancelar_exclusao', onCancelarExclusao);
+  registry.button(/^btn_confirmar_exclusao_\d+:\d+$/, onConfirmarExclusao);
+  registry.button(/^btn_cancelar_exclusao_\d+:\d+$/, onCancelarExclusao);
   registry.modal(/^modal_camp_capitao_[0-9]+$/, onSubmitCapitao);
   registry.select(/^select_camp_jogadores_[a-f0-9]{24}$/, onSelectJogadoresTime);
   registry.select('select_camp_capitao', onSelectCapitao);

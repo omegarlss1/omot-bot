@@ -11,8 +11,7 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('excluir-campeonato')
     .setDescription('Seleciona um campeonato criado por você para excluir')
-    .setDefaultMemberPermissions(null)
-    ,
+    .setDefaultMemberPermissions(null),
 
   async execute(interaction) {
     if (!temPermissaoOrganizador(interaction.member)) return interaction.reply({ content: 'Apenas @OrganizadorCamps ou administradores.', flags: 64 });
@@ -24,13 +23,15 @@ module.exports = {
     const menu = new StringSelectMenuBuilder()
       .setCustomId('select_excluir_campeonato')
       .setPlaceholder('Selecione o campeonato que deseja excluir')
+      .setMinValues(1)
+      .setMaxValues(Math.min(campeonatos.length, 25))
       .addOptions(campeonatos.slice(0, 25).map((campeonato) => ({
         label: String(campeonato.nome).slice(0, 100),
         value: String(campeonato._id),
         description: `${eventosMap.get(String(campeonato.eventoId))?.nome || 'Evento'} - ${campeonato.status}`.slice(0, 100)
       })));
     return interaction.reply({
-      content: '⚠️ Selecione um campeonato criado por você. A exclusão será definitiva.',
+      content: '⚠️ Selecione um ou mais campeonatos criados por você. A exclusão será definitiva.',
       components: [new ActionRowBuilder().addComponents(menu)],
       flags: 64
     });
