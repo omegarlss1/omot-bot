@@ -1,6 +1,7 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
 const config = require('../../config');
-const { excluirCampeonato, AdminError } = require('../../features/campeonato/services/admin');
+const Campeonato = require('../../db/models/campeonato');
+const Evento = require('../../db/models/evento');
 
 function temPermissaoOrganizador(member) {
   return Boolean(member?.permissions?.has?.('Administrator') || member?.roles?.cache?.has?.(config.campeonato.cargoOrganizacaoId));
@@ -9,22 +10,29 @@ function temPermissaoOrganizador(member) {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('excluir-campeonato')
-    .setDescription('Exclui um campeonato, seus dados e seus canais')
+    .setDescription('Seleciona um campeonato criado por você para excluir')
     .setDefaultMemberPermissions(null)
-    .addStringOption((option) => option.setName('campeonato_id').setDescription('ID do campeonato').setRequired(true))
-    .addBooleanOption((option) => option.setName('confirmar').setDescription('Confirma a exclusão definitiva').setRequired(true)),
+    ,
 
   async execute(interaction) {
     if (!temPermissaoOrganizador(interaction.member)) return interaction.reply({ content: 'Apenas @OrganizadorCamps ou administradores.', flags: 64 });
-    if (!interaction.options.getBoolean('confirmar')) return interaction.reply({ content: 'Exclusão não confirmada.', flags: 64 });
-    await interaction.deferReply({ flags: 64 });
-    try {
-      await excluirCampeonato({ campeonatoId: interaction.options.getString('campeonato_id'), guild: interaction.guild, executadoPor: interaction.user.id });
-      return interaction.editReply({ content: '✅ Campeonato, partidas, times e canais excluídos.' });
-    } catch (error) {
-      if (error instanceof AdminError) return interaction.editReply({ content: error.message });
-      console.error('[excluir-campeonato] erro:', error);
-      return interaction.editReply({ content: 'Erro ao excluir o campeonato.' });
-    }
+    const eventos = await Evento.find({ guildId: interaction.guildId, organizadorId: interaction.user.id }).select('_id nome').lean();
+    const campeonatos = await Campeonato.find({ eventoId: { $in: eventos.map((evento) => evento._id) } }).sort({ criadoEm: -1 }).lean();
+    if (!campeonatos.length) return interaction.reply({ content: 'Você não possui campeonatos criados para excluir.', flags: 64 });
+
+    const eventosMap = new Map(eventos.map((evento) => [String(evento._id), evento]));
+    const menu = new StringSelectMenuBuilder()
+      .setCustomId('select_excluir_campeonato')
+      .setPlaceholder('Selecione o campeonato que deseja excluir')
+      .addOptions(campeonatos.slice(0, 25).map((campeonato) => ({
+        label: String(campeonato.nome).slice(0, 100),
+        value: String(campeonato._id),
+        description: `${eventosMap.get(String(campeonato.eventoId))?.nome || 'Evento'} - ${campeonato.status}`.slice(0, 100)
+      })));
+    return interaction.reply({
+      content: '⚠️ Selecione um campeonato criado por você. A exclusão será definitiva.',
+      components: [new ActionRowBuilder().addComponents(menu)],
+      flags: 64
+    });
   }
 };

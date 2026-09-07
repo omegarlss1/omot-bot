@@ -191,8 +191,8 @@ test('handlers do módulo campeonato registrados', async (t) => {
       const interactions = require('../src/features/campeonato/interactions');
       const r = new InteractionRegistry();
       interactions.register(r);
-      assert.equal(r.buttons.length, 24);
-      assert.equal(r.selects.length, 5);
+      assert.equal(r.buttons.length, 26);
+      assert.equal(r.selects.length, 6);
       assert.equal(r.modals.length, 7);
     });
   });

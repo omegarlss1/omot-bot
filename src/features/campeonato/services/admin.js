@@ -1,6 +1,7 @@
 const Campeonato = require('../../../db/models/campeonato');
 const Time = require('../../../db/models/time');
 const Partida = require('../../../db/models/partida');
+const Evento = require('../../../db/models/evento');
 const { emitir, EVENTOS } = require('../events');
 
 class AdminError extends Error {
@@ -44,6 +45,11 @@ async function excluirCampeonato({ campeonatoId, guild, executadoPor = null }) {
   const camp = await Campeonato.findById(campeonatoId);
   if (!camp) throw new AdminError('Campeonato não encontrado.', 'CAMP_NAO_ENCONTRADO');
   if (!guild) throw new AdminError('Guild não encontrada para excluir os canais.', 'GUILD_NAO_ENCONTRADA');
+  const evento = await Evento.findOne({ _id: camp.eventoId, guildId: guild.id }).lean();
+  if (!evento) throw new AdminError('Evento do campeonato não encontrado.', 'EVENTO_NAO_ENCONTRADO');
+  if (evento.organizadorId !== executadoPor) {
+    throw new AdminError('Você só pode excluir campeonatos criados por você.', 'CAMP_SEM_AUTORIA');
+  }
 
   const canalIds = Object.values(camp.canais || {}).filter(Boolean);
   for (const canalId of canalIds) {

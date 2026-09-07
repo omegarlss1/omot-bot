@@ -12,7 +12,7 @@ const { enviarPlacar, validarPlacar, parsePlacar, PlacarError } = require('./ser
 const { placarEhValido } = require('./validators/placar');
 const { calcularClassificacao } = require('./services/classificacao');
 const { finalizarCampeonato, obterClassificacaoFinal, FinalizacaoError } = require('./services/finalizacao');
-const { cancelarCampeonato, reabrirCampeonato, desclassificarTime, ajustarPlacar, AdminError } = require('./services/admin');
+const { cancelarCampeonato, reabrirCampeonato, excluirCampeonato, desclassificarTime, ajustarPlacar, AdminError } = require('./services/admin');
 const { notificarCampeao, anunciarNoCanal } = require('./services/notificacoes');
 const Campeonato = require('../../db/models/campeonato');
 const Partida = require('../../db/models/partida');
@@ -547,6 +547,40 @@ async function onSubmitInscricaoManual(interaction) {
     console.error('[campeonato.inscricao_manual] erro:', error);
     return interaction.editReply({ content: 'Erro ao processar inscricao manual.' });
   }
+}
+
+async function onSelectExcluirCampeonato(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
+  }
+  const campeonatoId = interaction.values[0];
+  return interaction.update({
+    content: '⚠️ Esta ação é definitiva e remove canais, partidas e inscrições. Confirma?',
+    components: [new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`btn_confirmar_exclusao_${campeonatoId}`).setLabel('Excluir definitivamente').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId('btn_cancelar_exclusao').setLabel('Cancelar').setStyle(ButtonStyle.Secondary)
+    )]
+  });
+}
+
+async function onConfirmarExclusao(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
+  }
+  await interaction.deferUpdate();
+  const campeonatoId = interaction.customId.replace('btn_confirmar_exclusao_', '');
+  try {
+    await excluirCampeonato({ campeonatoId, guild: interaction.guild, executadoPor: interaction.user.id });
+    return interaction.editReply({ content: '✅ Campeonato, partidas, times e canais excluídos.', components: [] });
+  } catch (error) {
+    if (error instanceof AdminError) return interaction.editReply({ content: error.message, components: [] });
+    console.error('[excluir-campeonato] erro:', error);
+    return interaction.editReply({ content: 'Erro ao excluir o campeonato.', components: [] });
+  }
+}
+
+async function onCancelarExclusao(interaction) {
+  return interaction.update({ content: 'Exclusão cancelada.', components: [] });
 }
 
 async function onSelectJogadoresTime(interaction) {
@@ -1257,6 +1291,9 @@ function register(registry) {
   registry.button('btn_camp_selecionar_capitao', onBotaoSelecionarCapitao);
   registry.modal('modal_camp_inscricao', onSubmitInscricao);
   registry.modal('modal_camp_inscricao_manual', onSubmitInscricaoManual);
+  registry.select('select_excluir_campeonato', onSelectExcluirCampeonato);
+  registry.button(/^btn_confirmar_exclusao_[a-f0-9]{24}$/, onConfirmarExclusao);
+  registry.button('btn_cancelar_exclusao', onCancelarExclusao);
   registry.modal(/^modal_camp_capitao_[0-9]+$/, onSubmitCapitao);
   registry.select(/^select_camp_jogadores_[a-f0-9]{24}$/, onSelectJogadoresTime);
   registry.select('select_camp_capitao', onSelectCapitao);
