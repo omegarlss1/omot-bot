@@ -104,6 +104,11 @@ async function inscreverCapitao({ guild, member, campeonato, nomeTime }) {
 
   const capitao = await obterCapitaoInfo(member, perfil);
   const totalTimes = await Time.countDocuments({ campeonatoId: campeonato._id });
+  if (!campeonato.baseadoEmInscricoes && campeonato.limiteInscricoes) {
+    if (totalTimes >= campeonato.limiteInscricoes) {
+      throw new InscricaoError(`Limite atingido (${campeonato.limiteInscricoes} times). Inscrições fechadas.`, 'INSCRICAO_LIMITE_ATINGIDO');
+    }
+  }
   const nomeGerado = campeonato.tipoDupla === 'SORTEADA'
     ? `Time-${String(totalTimes + 1).padStart(2, '0')}`
     : (nomeTime?.trim() || `Time de ${perfil.nick_principal}`);
@@ -114,8 +119,20 @@ async function inscreverCapitao({ guild, member, campeonato, nomeTime }) {
     jogadores: [capitao],
     nome: nomeGerado
   });
+  if (!campeonato.baseadoEmInscricoes && campeonato.limiteInscricoes && totalTimes + 1 === campeonato.limiteInscricoes) {
+    campeonato.status = 'FECHADO_LOTADO';
+    await campeonato.save();
+    if (campeonato.canais?.geral && guild.channels?.fetch) {
+      const canalGeral = await guild.channels.fetch(campeonato.canais.geral).catch(() => null);
+      if (canalGeral?.isTextBased?.()) {
+        await canalGeral.send({
+          content: `🔒 @everyone Campeonato ${campeonato.nome} atingiu o limite de ${campeonato.limiteInscricoes} times! Inscrições encerradas. Organizador já pode gerar a chave em #painel-organizador`
+        }).catch(() => {});
+      }
+    }
+  }
   if (campeonato.categoriaId && guild.channels?.create) {
-    const canais = await criarCanaisTime(guild, campeonato.categoriaId, time.nome, [member.id], guild.members.me?.id || guild.client?.user?.id);
+    const canais = await criarCanaisTime(guild, campeonato.categoriaId, time.nome, [member.id], guild.members.me?.id || guild.client?.user?.id, campeonato.modo);
     time.canais = canais;
     await time.save();
   }
@@ -149,6 +166,11 @@ async function inscreverJogadorManual({ guild, campeonato, nomeJogador, nick, te
 
   const userId = `MANUAL_WHATSAPP_${telefoneNormalizado}`;
   const totalTimes = await Time.countDocuments({ campeonatoId: campeonato._id });
+  if (!campeonato.baseadoEmInscricoes && campeonato.limiteInscricoes) {
+    if (totalTimes >= campeonato.limiteInscricoes) {
+      throw new InscricaoError(`Limite atingido (${campeonato.limiteInscricoes} times). Inscrições fechadas.`, 'INSCRICAO_LIMITE_ATINGIDO');
+    }
+  }
   const nomeFinal = campeonato.tipoDupla === 'SORTEADA'
     ? `Time-${String(totalTimes + 1).padStart(2, '0')}`
     : (String(nomeTime || '').trim() || `Time de ${nickSnapshot}`);
@@ -170,8 +192,20 @@ async function inscreverJogadorManual({ guild, campeonato, nomeJogador, nick, te
     jogadores: [jogador],
     nome: nomeFinal
   });
+  if (!campeonato.baseadoEmInscricoes && campeonato.limiteInscricoes && totalTimes + 1 === campeonato.limiteInscricoes) {
+    campeonato.status = 'FECHADO_LOTADO';
+    await campeonato.save();
+    if (campeonato.canais?.geral && guild.channels?.fetch) {
+      const canalGeral = await guild.channels.fetch(campeonato.canais.geral).catch(() => null);
+      if (canalGeral?.isTextBased?.()) {
+        await canalGeral.send({
+          content: `🔒 @everyone Campeonato ${campeonato.nome} atingiu o limite de ${campeonato.limiteInscricoes} times! Inscrições encerradas. Organizador já pode gerar a chave em #painel-organizador`
+        }).catch(() => {});
+      }
+    }
+  }
   if (campeonato.categoriaId && guild.channels?.create) {
-    const canais = await criarCanaisTime(guild, campeonato.categoriaId, time.nome, [], guild.members.me?.id || guild.client?.user?.id);
+    const canais = await criarCanaisTime(guild, campeonato.categoriaId, time.nome, [], guild.members.me?.id || guild.client?.user?.id, campeonato.modo);
     time.canais = canais;
     await time.save();
   }

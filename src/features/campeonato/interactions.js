@@ -832,10 +832,10 @@ async function onBotaoGerarBracket(interaction) {
     });
   } catch (error) {
     if (error instanceof BracketError) {
-      return interaction.editReply({ content: error.message });
+      return safeReply(interaction, { content: error.message });
     }
     console.error('[campeonato.gerarBracket] erro:', error);
-    return interaction.editReply({ content: 'Erro ao gerar bracket.' });
+    return safeReply(interaction, { content: 'Erro ao gerar bracket.' });
   }
 }
 
@@ -1245,7 +1245,7 @@ async function onPainelOrganizadorTab(interaction) {
           title: '📋 ABA 1 - INSCRITOS',
           description: linhas,
           color: 0x00C2FF,
-          footer: { text: `Total: ${inscritos.length} time(s)` }
+          footer: { text: footerText }
         }],
         components: []
       });

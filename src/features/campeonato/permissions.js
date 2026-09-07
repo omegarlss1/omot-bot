@@ -140,7 +140,11 @@ async function criarCanaisRank(guild, categoria, rank, evento, botUserId) {
   return canais;
 }
 
-async function criarCanaisTime(guild, categoria, time, jogadorIds = [], botUserId) {
+async function criarCanaisTime(guild, categoria, time, jogadorIds = [], botUserId, modo = null) {
+  const numJogadores = parseInt(modo) || 3;
+  if (numJogadores < 3) {
+    return {};
+  }
   const ids = [...new Set(jogadorIds.filter((id) => String(id).startsWith('MANUAL_WHATSAPP_') === false))];
   const overwrites = [
     { id: guild.roles.everyone.id, deny: PERMISSOES_LEITURA },

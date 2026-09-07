@@ -146,11 +146,15 @@ async function gerarBracket(campeonatoId, { shuffle = true } = {}) {
       }));
     }
     const p = await Partida.create({
+      guildId: campeonato.guildId,
+      eventoId: campeonato.eventoId,
       campeonatoId,
       fase: chave.fase,
       rodada: chave.rodada,
-      timeA,
-      timeB,
+      timeA: timeA?._id || null,
+      timeB: timeB?._id || null,
+      timeAId: timeA?._id || null,
+      timeBId: timeB?._id || null,
       estimatedStartAt,
       janelaCheckIn: janela,
       status: 'AGUARDANDO_CHECKIN',
