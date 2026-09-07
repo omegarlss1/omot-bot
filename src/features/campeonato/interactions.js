@@ -636,7 +636,7 @@ async function onConfirmarExclusao(interaction) {
   try {
     await excluirCampeonatos({ campeonatoIds, guild: interaction.guild, executadoPor: interaction.user.id });
     selecoesExclusao.delete(chave);
-    return interaction.editReply({ content: `✅ ${campeonatoIds.length} campeonato(s), partidas, times e canais excluídos.`, components: [] });
+    return safeReply(interaction, { content: `✅ ${campeonatoIds.length} campeonato(s), partidas, times e canais excluídos.`, components: [] });
   } catch (error) {
     if (error instanceof AdminError) return safeReply(interaction, { content: error.message, components: [] });
     console.error('[excluir-campeonato] erro:', error);

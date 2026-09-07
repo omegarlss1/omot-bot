@@ -103,7 +103,7 @@ async function inscreverCapitao({ guild, member, campeonato, nomeTime }) {
   });
 
   const capitao = await obterCapitaoInfo(member, perfil);
-  const totalTimes = await Time.countDocuments({ campeonatoId: campeonato._id, eventoId: campeonato.eventoId });
+  const totalTimes = await Time.countDocuments({ campeonatoId: campeonato._id });
   console.log(`[Limite] totalTimes=${totalTimes} limite=${campeonato.limiteInscricoes} campeonatoId=${campeonato._id}`);
   if (!campeonato.baseadoEmInscricoes && campeonato.limiteInscricoes) {
     if (totalTimes >= campeonato.limiteInscricoes) {
@@ -166,7 +166,7 @@ async function inscreverJogadorManual({ guild, campeonato, nomeJogador, nick, te
   }
 
   const userId = `MANUAL_WHATSAPP_${telefoneNormalizado}`;
-  const totalTimes = await Time.countDocuments({ campeonatoId: campeonato._id, eventoId: campeonato.eventoId });
+  const totalTimes = await Time.countDocuments({ campeonatoId: campeonato._id });
   console.log(`[Limite] totalTimes=${totalTimes} limite=${campeonato.limiteInscricoes} campeonatoId=${campeonato._id}`);
   if (!campeonato.baseadoEmInscricoes && campeonato.limiteInscricoes) {
     if (totalTimes >= campeonato.limiteInscricoes) {

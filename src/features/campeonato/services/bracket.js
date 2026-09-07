@@ -174,7 +174,13 @@ async function gerarBracket(campeonatoId, { shuffle = true } = {}) {
   return {
     totalPartidas: partidas.length,
     partidas,
-    canvas: isCanvas ? await renderSingleBracketPng({ times, incluirTerceiroLugar: campeonato.temTerceiroLugar !== false }) : null
+    canvas: isCanvas ? await renderSingleBracketPng({
+      times,
+      incluirTerceiroLugar: campeonato.temTerceiroLugar !== false,
+      baseadoEmInscricoes: campeonato.baseadoEmInscricoes !== false,
+      limite: campeonato.limiteInscricoes || null,
+      horarioInicio: campeonato.dataEvento || campeonato.horarioInicio || null
+    }) : null
   };
 }
 

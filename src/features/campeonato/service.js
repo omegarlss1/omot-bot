@@ -79,6 +79,7 @@ async function criarEvento(guild, parametros) {
 
   const campeonatos = [];
   for (const rank of parametros.ranksSelecionados) {
+    console.log(`[Criacao] limite=${parametros.limiteInscricoes} baseado=${parametros.baseadoEmInscricoes} rank=${rank}`);
     const camp = await CampeonatoFactory.criar({
       eventoId: evento._id,
       guildId: guild.id,
