@@ -86,28 +86,34 @@ async function gerarBracket(campeonatoId, { shuffle = true } = {}) {
     throw new BracketError('Bracket R1 já existe. Limpe o campeonato antes de gerar novamente.', 'BRACKET_JA_EXISTE');
   }
 
-  const usarCanvas = times.length <= 16 && String(campeonato.modalidade || 'single').toLowerCase() === 'single';
-  if (!usarCanvas && !campeonato.startgg?.tournamentId) {
-    try {
-      const adapter = new StartGGAdapter();
-      const inicioStartGG = new Date(campeonato.dataEvento || campeonato.startAt || Date.now());
-      const torneio = await adapter.createTournament({
-        name: campeonato.nome,
-        slug: String(campeonato.nome).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
-        startAt: Math.floor(inicioStartGG.getTime() / 1000),
-        timezone: 'America/Sao_Paulo',
-        includeThirdPlace: campeonato.temTerceiroLugar !== false
-      });
-      if (!torneio?.id) throw new Error('Start.gg não retornou o ID do torneio.');
-      const participantes = times.flatMap((time) => (time.jogadores || []).map((jogador) => ({ gamerTag: jogador.nickSnapshot })));
-      await adapter.addParticipantsBulk(torneio.id, participantes);
-      await Campeonato.updateOne({ _id: campeonatoId }, { $set: {
-        'startgg.tournamentId': String(torneio.id),
-        'startgg.url': torneio.slug ? `https://start.gg/${torneio.slug}` : null,
-        startAt: inicioStartGG
-      } });
-    } catch (error) {
-      throw new BracketError(`Não foi possível preparar a chave no Start.gg: ${error.message}`, 'BRACKET_STARTGG');
+  const isSingle = ['single', '1v1', 'x1', '1x1'].includes(String(campeonato.modalidade || 'single').toLowerCase());
+  const isCanvas = times.length <= 16 && isSingle;
+  if (isCanvas) {
+    console.log(`[Bracket] Usando Canvas para ${times.length} times ${campeonato.modalidade}`);
+  } else {
+    console.log(`[Bracket] Usando Start.gg para ${times.length} times ${campeonato.modalidade}`);
+    if (!campeonato.startgg?.tournamentId) {
+      try {
+        const adapter = new StartGGAdapter();
+        const inicioStartGG = new Date(campeonato.dataEvento || campeonato.startAt || Date.now());
+        const torneio = await adapter.createTournament({
+          name: campeonato.nome,
+          slug: String(campeonato.nome).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
+          startAt: Math.floor(inicioStartGG.getTime() / 1000),
+          timezone: 'America/Sao_Paulo',
+          includeThirdPlace: campeonato.temTerceiroLugar !== false
+        });
+        if (!torneio?.id) throw new Error('Start.gg não retornou o ID do torneio.');
+        const participantes = times.flatMap((time) => (time.jogadores || []).map((jogador) => ({ gamerTag: jogador.nickSnapshot })));
+        await adapter.addParticipantsBulk(torneio.id, participantes);
+        await Campeonato.updateOne({ _id: campeonatoId }, { $set: {
+          'startgg.tournamentId': String(torneio.id),
+          'startgg.url': torneio.slug ? `https://start.gg/${torneio.slug}` : null,
+          startAt: inicioStartGG
+        } });
+      } catch (error) {
+        console.warn(`[Bracket] Start.gg indisponível, chave gerada localmente: ${error.message}`);
+      }
     }
   }
 
@@ -157,7 +163,7 @@ async function gerarBracket(campeonatoId, { shuffle = true } = {}) {
   return {
     totalPartidas: partidas.length,
     partidas,
-    canvas: usarCanvas ? renderSingleBracketCanvas({ times, incluirTerceiroLugar: campeonato.temTerceiroLugar !== false }) : null
+    canvas: isCanvas ? renderSingleBracketCanvas({ times, incluirTerceiroLugar: campeonato.temTerceiroLugar !== false }) : null
   };
 }
 

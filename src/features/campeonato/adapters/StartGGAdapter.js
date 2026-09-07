@@ -88,12 +88,14 @@ class StartGGAdapter {
   }
 
   async createTournament({ eventId = null, name, slug = null, startAt = null, timezone = 'America/Sao_Paulo', includeThirdPlace = true } = {}) {
-    const query = `mutation CreateTournament($input: CreateTournamentInput!) {
-      createTournament(input: $input) { id name slug }
+    const query = `mutation CreateTournament($name: String!, $slug: String, $startAt: Timestamp, $timezone: String, $includeThirdPlace: Boolean) {
+      createTournament(tournament: { name: $name, slug: $slug, startAt: $startAt, timezone: $timezone, includeThirdPlace: $includeThirdPlace }) {
+        id
+        name
+        slug
+      }
     }`;
-    const input = { name, slug, startAt, timezone, includeThirdPlace };
-    if (eventId) input.eventId = eventId;
-    const data = await this.request({ query, variables: { input } });
+    const data = await this.request({ query, variables: { name, slug, startAt, timezone, includeThirdPlace } });
     return data?.createTournament ?? null;
   }
 

@@ -156,6 +156,7 @@ async function inscreverJogadorManual({ guild, campeonato, nomeJogador, nick, te
     userId,
     rankSnapshot,
     nickSnapshot,
+    nome,
     isSubstituto: false,
     isCapitao: true,
     partidasJogadas: 0,

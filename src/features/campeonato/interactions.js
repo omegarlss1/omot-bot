@@ -53,6 +53,23 @@ function parseDataBR(texto) {
   return Number.isNaN(data.getTime()) ? null : data;
 }
 
+async function safeReply(interaction, options) {
+  try {
+    if (interaction.deferred && !interaction.replied) {
+      return await interaction.editReply(options);
+    }
+    if (interaction.replied) {
+      return await interaction.followUp(options);
+    }
+    return await interaction.reply(options);
+  } catch {
+    if (interaction.channel?.isTextBased?.()) {
+      const content = typeof options === 'string' ? options : options?.content || 'Erro ao responder interação.';
+      return await interaction.channel.send(content).catch(() => {});
+    }
+  }
+}
+
 async function onAbrirPainelCriacao(interaction) {
   if (!temPermissaoOrganizador(interaction.member)) {
     return interaction.reply({ content: 'Apenas @OrganizadorCamps pode criar eventos.', flags: 64 });
@@ -460,7 +477,7 @@ async function onBotaoInscricaoManual(interaction) {
     new ActionRowBuilder().addComponents(
       new TextInputBuilder()
         .setCustomId('inscricao_manual_jogador')
-        .setLabel('Nome completo')
+        .setLabel('Nome')
         .setStyle(TextInputStyle.Short)
         .setMaxLength(80)
         .setRequired(true)
@@ -470,9 +487,6 @@ async function onBotaoInscricaoManual(interaction) {
     ),
     new ActionRowBuilder().addComponents(
       new TextInputBuilder().setCustomId('inscricao_manual_telefone').setLabel('Nº celular / WhatsApp').setStyle(TextInputStyle.Short).setMaxLength(20).setRequired(true)
-    ),
-    new ActionRowBuilder().addComponents(
-      new TextInputBuilder().setCustomId('inscricao_manual_rank').setLabel('Rank').setStyle(TextInputStyle.Short).setPlaceholder(String(campeonato.rank)).setMaxLength(30).setRequired(true)
     ),
     new ActionRowBuilder().addComponents(
       new TextInputBuilder()
@@ -586,14 +600,13 @@ async function onSubmitInscricaoManual(interaction) {
       nomeJogador: interaction.fields.getTextInputValue('inscricao_manual_jogador'),
       nick: interaction.fields.getTextInputValue('inscricao_manual_nick'),
       telefone: interaction.fields.getTextInputValue('inscricao_manual_telefone'),
-      rank: interaction.fields.getTextInputValue('inscricao_manual_rank'),
       nomeTime: interaction.fields.getTextInputValue('inscricao_manual_time')
     });
     return interaction.editReply({ content: `Inscrição manual confirmada para **${resultado.jogador.nickSnapshot}**.` });
   } catch (error) {
-    if (error instanceof InscricaoError) return interaction.editReply({ content: error.message });
+    if (InscricaoError && error instanceof InscricaoError) return safeReply(interaction, { content: error.message });
     console.error('[campeonato.inscricao_manual] erro:', error);
-    return interaction.editReply({ content: 'Erro ao processar inscricao manual.' });
+    return safeReply(interaction, { content: 'Erro ao processar inscricao manual.' });
   }
 }
 
@@ -625,9 +638,9 @@ async function onConfirmarExclusao(interaction) {
     selecoesExclusao.delete(chave);
     return interaction.editReply({ content: `✅ ${campeonatoIds.length} campeonato(s), partidas, times e canais excluídos.`, components: [] });
   } catch (error) {
-    if (error instanceof AdminError) return interaction.editReply({ content: error.message, components: [] });
+    if (error instanceof AdminError) return safeReply(interaction, { content: error.message, components: [] });
     console.error('[excluir-campeonato] erro:', error);
-    return interaction.editReply({ content: 'Erro ao excluir o campeonato.', components: [] });
+    return safeReply(interaction, { content: 'Erro ao excluir o campeonato.', components: [] });
   }
 }
 
@@ -1189,9 +1202,44 @@ async function onPainelOrganizadorTab(interaction) {
   switch (tab) {
     case 'inscritos': {
       const inscritos = await listarInscricoes(campeonato._id);
-      const linhas = inscritos.map((t, i) =>
-        `${i + 1}. **${t.nome || 'Sem nome'}** — Capitão: <@${t.capitaoId}> (${t.jogadores?.length || 0} jogador(es))`
-      ).join('\n') || 'Nenhum inscrito.';
+      const isSingle = ['single', '1v1', 'x1', '1x1'].includes(String(campeonato.modalidade || 'single').toLowerCase());
+      const isFixa = campeonato.tipoDupla === 'FIXA';
+
+      const formatarTelefone = (tel) => {
+        if (!tel) return '—';
+        const digits = String(tel).replace(/\D/g, '');
+        if (digits.length <= 2) return digits;
+        if (digits.length <= 7) return `${digits.slice(0, 2)} ${digits.slice(2)}`;
+        return `${digits.slice(0, 2)} ${digits.slice(2, digits.length - 4)}-${digits.slice(-4)}`;
+      };
+
+      const mencionar = (j) => {
+        if (j.origem === 'WHATSAPP' || String(j.userId || '').startsWith('MANUAL_WHATSAPP_')) {
+          return j.nickSnapshot || '—';
+        }
+        return `<@${j.userId}>`;
+      };
+
+      const linhas = inscritos.map((t, i) => {
+        const jogadores = t.jogadores || [];
+        const totalJogs = jogadores.length;
+
+        if (isSingle && totalJogs === 1) {
+          const j = jogadores[0];
+          return `${i + 1}. Nick: ${j.nickSnapshot || '—'} | Nome: ${j.nome || '—'} | WhatsApp: ${formatarTelefone(j.telefone)}`;
+        }
+
+        if (isFixa) {
+          const jogadoresStr = jogadores.map(mencionar).join(' / ') || 'Sem jogadores';
+          const sufixo = totalJogs <= 1 ? '' : ` (${totalJogs} jogadores)`;
+          return `${i + 1}. **${t.nome || 'Sem nome'}**${sufixo}: ${jogadoresStr}`;
+        }
+
+        const capitao = jogadores[0];
+        const capitaoStr = capitao ? mencionar(capitao) : 'Sem capitão';
+        const tel = capitao ? formatarTelefone(capitao.telefone) : '—';
+        return `${i + 1}. **${t.nome || 'Sem nome'}** | Nick: ${capitao?.nickSnapshot || '—'} | Nome: ${capitao?.nome || '—'} | WhatsApp: ${tel}`;
+      }).join('\n') || 'Nenhum inscrito.';
       return atualizarPainelOrganizador(interaction, campeonato, 'inscritos', {
         embeds: [{
           title: '📋 ABA 1 - INSCRITOS',
@@ -1205,7 +1253,12 @@ async function onPainelOrganizadorTab(interaction) {
     case 'times': {
       const times = await Time.find({ campeonatoId: campeonato._id }).lean();
       const linhas = times.map((t, i) => {
-        const jogadores = (t.jogadores || []).map(j => `<@${j.userId}>`).join(', ') || 'Sem jogadores';
+        const jogadores = (t.jogadores || []).map(j => {
+          if (j.origem === 'WHATSAPP' || String(j.userId || '').startsWith('MANUAL_WHATSAPP_')) {
+            return j.nickSnapshot || '—';
+          }
+          return `<@${j.userId}>`;
+        }).join(', ') || 'Sem jogadores';
         return `${i + 1}. **${t.nome || 'Sem nome'}** — ${jogadores}`;
       }).join('\n') || 'Nenhum time definido.';
       return atualizarPainelOrganizador(interaction, campeonato, 'inscritos', {
@@ -1408,7 +1461,7 @@ async function onConfigSelect(interaction) {
     modal.addComponents(new ActionRowBuilder().addComponents(
       new TextInputBuilder()
         .setCustomId('limite_inscricoes')
-        .setLabel('Limite (16, 32, 64, 128, 256 ou 512)')
+         .setLabel('Limite (4, 8, 16, 32, 64 ou 128)')
         .setStyle(TextInputStyle.Short)
         .setRequired(true)
     ));
@@ -1422,8 +1475,9 @@ async function onSubmitLimite(interaction) {
   const selecao = selecaoRanks.get(`camp:selecao:${interaction.user.id}`);
   if (!selecao) return interaction.reply({ content: 'Sessao expirou. Clique em Criar Evento de novo.', flags: 64 });
   const limite = Number(interaction.fields.getTextInputValue('limite_inscricoes').trim());
-  if (![16, 32, 64, 128, 256, 512].includes(limite)) {
-    return interaction.reply({ content: 'Limite inválido. Escolha 16, 32, 64, 128, 256 ou 512.', flags: 64 });
+  const ehPotencia2 = Number.isInteger(limite) && limite > 0 && (limite & (limite - 1)) === 0;
+  if (!ehPotencia2 || limite < 4) {
+    return interaction.reply({ content: 'Limite inválido. Escolha 4, 8, 16, 32, 64 ou 128.', flags: 64 });
   }
   selecao.limiteInscricoes = limite;
   selecaoRanks.set(`camp:selecao:${interaction.user.id}`, selecao);

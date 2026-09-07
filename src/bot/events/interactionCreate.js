@@ -2,15 +2,21 @@ const mensagens = require('../../features/calls/messages');
 
 async function responderErro(interaction) {
   const payload = { content: mensagens.erroGenerico, flags: 64 };
-  if (interaction.deferred && !interaction.replied) {
-    await interaction.editReply(payload).catch(() => {});
-    return;
+  try {
+    if (interaction.deferred && !interaction.replied) {
+      await interaction.editReply(payload);
+      return;
+    }
+    if (interaction.replied) {
+      await interaction.followUp(payload);
+      return;
+    }
+    await interaction.reply(payload);
+  } catch {
+    if (interaction.channel?.isTextBased?.()) {
+      await interaction.channel.send(payload.content || 'Erro ao responder interação.').catch(() => {});
+    }
   }
-  if (interaction.replied) {
-    await interaction.followUp(payload).catch(() => {});
-    return;
-  }
-  await interaction.reply(payload).catch(() => {});
 }
 
 module.exports = {
