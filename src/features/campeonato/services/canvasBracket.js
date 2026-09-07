@@ -2,7 +2,7 @@ function escapeXml(value) {
   return String(value || '').replace(/[<>&'"]/g, (char) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[char]));
 }
 
-function renderSingleBracketCanvas({ times = [], incluirTerceiroLugar = true } = {}) {
+function buildSvgString({ times = [], incluirTerceiroLugar = true } = {}) {
   const total = Math.max(2, Math.min(16, times.length));
   const largura = 1500;
   const altura = Math.max(720, total * 70);
@@ -42,7 +42,19 @@ function renderSingleBracketCanvas({ times = [], incluirTerceiroLugar = true } =
     linhas.push(`<text x="${largura - 285}" y="${altura - 95}" fill="#d1d5db" font-family="Arial" font-size="15">Perdedores das semifinais</text>`);
   }
   linhas.push('</svg>');
-  return Buffer.from(linhas.join(''), 'utf8');
+  return linhas.join('');
 }
 
-module.exports = { renderSingleBracketCanvas, escapeXml };
+function renderSingleBracketCanvas({ times = [], incluirTerceiroLugar = true } = {}) {
+  const svg = buildSvgString({ times, incluirTerceiroLugar });
+  return Buffer.from(svg, 'utf8');
+}
+
+async function renderSingleBracketPng({ times = [], incluirTerceiroLugar = true } = {}) {
+  const sharp = require('sharp');
+  const svg = buildSvgString({ times, incluirTerceiroLugar });
+  const pngBuffer = await sharp(Buffer.from(svg)).png().toBuffer();
+  return pngBuffer;
+}
+
+module.exports = { renderSingleBracketCanvas, renderSingleBracketPng, escapeXml };

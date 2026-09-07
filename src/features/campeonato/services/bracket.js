@@ -2,7 +2,7 @@ const Partida = require('../../../db/models/partida');
 const Time = require('../../../db/models/time');
 const Campeonato = require('../../../db/models/campeonato');
 const { emitir, EVENTOS } = require('../events');
-const { renderSingleBracketCanvas } = require('./canvasBracket');
+const { renderSingleBracketPng } = require('./canvasBracket');
 const { StartGGAdapter } = require('../adapters/StartGGAdapter');
 
 class BracketError extends Error {
@@ -174,7 +174,7 @@ async function gerarBracket(campeonatoId, { shuffle = true } = {}) {
   return {
     totalPartidas: partidas.length,
     partidas,
-    canvas: isCanvas ? renderSingleBracketCanvas({ times, incluirTerceiroLugar: campeonato.temTerceiroLugar !== false }) : null
+    canvas: isCanvas ? await renderSingleBracketPng({ times, incluirTerceiroLugar: campeonato.temTerceiroLugar !== false }) : null
   };
 }
 

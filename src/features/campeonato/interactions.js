@@ -820,7 +820,7 @@ async function onBotaoGerarBracket(interaction) {
     if (resultado.canvas) {
       return interaction.editReply({
         content: `Bracket gerado! ${resultado.totalPartidas} partidas na R1.`,
-        files: [new AttachmentBuilder(resultado.canvas, { name: `bracket-${campeonato.rank}.svg` })],
+        files: [new AttachmentBuilder(resultado.canvas, { name: `bracket-${campeonato.rank}.png` })],
         embeds: [],
         components: []
       });

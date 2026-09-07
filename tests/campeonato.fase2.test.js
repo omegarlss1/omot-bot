@@ -81,6 +81,24 @@ test('bracket.parearChaves', async (t) => {
   });
 });
 
+test('canvasBracket.renderSingleBracketPng retorna PNG válido', async (t) => {
+  await t.test('4 times geram buffer com header PNG', async () => {
+    comEnv({}, async () => {
+      const { renderSingleBracketPng } = require('../src/features/campeonato/services/canvasBracket');
+      const times = [
+        { nome: 'Time-01' },
+        { nome: 'Time-02' },
+        { nome: 'Time-03' },
+        { nome: 'Time-04' }
+      ];
+      const png = await renderSingleBracketPng({ times, incluirTerceiroLugar: true });
+      assert.ok(Buffer.isBuffer(png));
+      assert.ok(png.length > 100);
+      assert.deepEqual(png.subarray(0, 4), Buffer.from([0x89, 0x50, 0x4E, 0x47]));
+    });
+  });
+});
+
 test('TwoTeamsTiebreaker - Regra 11.2', async (t) => {
   await t.test('2 times com mesmo pontos e vitorias → MD3', () => {
     comEnv({}, () => {
