@@ -22,6 +22,21 @@ const { buildPainelOrganizador } = require('../../bot/commands/painel-organizado
 const selecaoRanks = new Map();
 const selecoesExclusao = new Map();
 
+async function publicarPainelInscricao(canal, campeonato) {
+  if (!canal?.isTextBased?.()) throw new Error('Canal de inscrições inválido ou não é um canal de texto.');
+  const painel = embedPainelInscricao(campeonato, 0);
+  const mensagem = await canal.send({
+    content: '⬇️ Use os botões abaixo para inscrever o time ou solicitar uma inscrição manual.',
+    embeds: painel.embeds,
+    components: toActionRows(painel.components)
+  });
+  const temBotao = mensagem.components?.some((linha) =>
+    linha.components?.some((componente) => componente.customId === 'btn_camp_inscrever')
+  );
+  if (!temBotao) throw new Error('O Discord criou o painel sem o botão btn_camp_inscrever.');
+  return mensagem;
+}
+
 function temPermissaoOrganizador(member) {
   if (!member) return false;
   if (member.permissions?.has?.('Administrator')) return true;
@@ -1329,4 +1344,4 @@ function register(registry) {
   registry.select('painel_org_tab', onPainelOrganizadorTab);
 }
 
-module.exports = { register, temPermissaoOrganizador, parseDataBR };
+module.exports = { register, temPermissaoOrganizador, parseDataBR, publicarPainelInscricao };
