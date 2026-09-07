@@ -283,16 +283,17 @@ module.exports = {
 
 function embedPainelInscricao(campeonato, totalInscritos) {
   const rankLabel = String(campeonato.rank || '').toUpperCase();
+  const tipoDupla = campeonato.tipoDupla || 'NÃO SE APLICA';
   return {
     embeds: [{
       title: '🎮 Inscrições Abertas — ' + rankLabel,
-      description: 'Campeonato: **' + campeonato.nome + '**\nModo: **' + campeonato.modo + '** | Tipo: **' + campeonato.tipoDupla + '**\n\n' +
+      description: 'Campeonato: **' + campeonato.nome + '**\nModo: **' + campeonato.modo + '** | Tipo: **' + tipoDupla + '**\n\n' +
         'Clique no botão abaixo para inscrever seu time. Você deve ter o **cargo @' + rankLabel + '** no Discord e o rank correspondente na sua ficha.',
       color: 0x00C2FF,
       fields: [
         { name: '📊 Inscritos', value: String(totalInscritos || 0) + ' jogador(es)', inline: true },
         { name: '🎯 Modo', value: campeonato.modo, inline: true },
-        { name: '👥 Tipo', value: campeonato.tipoDupla, inline: true }
+        { name: '👥 Tipo', value: tipoDupla, inline: true }
       ]
     }],
     components: [[

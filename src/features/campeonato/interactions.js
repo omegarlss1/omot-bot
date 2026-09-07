@@ -296,7 +296,8 @@ async function onConfirmarCriacao(interaction) {
   dataInicio.setHours(horaInicio, minutoInicio, 0, 0);
   const dataFim = new Date(dataInicio);
   dataFim.setHours(dataFim.getHours() + 3);
-  await interaction.update({ content: 'Criando categoria, canais e campeonatos...', embeds: [], components: [] });
+  await interaction.deferUpdate();
+  await interaction.editReply({ content: 'Criando categoria, canais e campeonatos...', embeds: [], components: [] });
   try {
     const resultado = await criarEvento(interaction.guild, {
       nome: selecao.nome,
@@ -317,9 +318,8 @@ async function onConfirmarCriacao(interaction) {
     for (const camp of resultado.campeonatos) {
       const canal = await interaction.guild.channels.fetch(camp.canais.inscricoes).catch(() => null);
       if (canal && canal.isTextBased()) {
-        const painel = embedPainelInscricao(camp, 0);
         try {
-          await canal.send({ embeds: painel.embeds, components: toActionRows(painel.components) });
+          await publicarPainelInscricao(canal, camp);
         } catch (error) {
           console.error(`[campeonato.criarEvento] erro ao publicar painel de inscrição no canal ${canal.id}:`, {
             message: error?.message,
@@ -345,7 +345,7 @@ async function onConfirmarCriacao(interaction) {
           });
           mensagens[secao] = mensagem.id;
         }
-        const gestao = embedPainelAdmin(camp);
+        const gestao = embedPainelAdmin({ campeonato: camp });
         const mensagemGestao = await canalOrganizador.send({
           embeds: gestao.embeds,
           components: toActionRows(gestao.components)
