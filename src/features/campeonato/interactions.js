@@ -1204,6 +1204,10 @@ async function onPainelOrganizadorTab(interaction) {
       const inscritos = await listarInscricoes(campeonato._id);
       const isSingle = ['single', '1v1', 'x1', '1x1'].includes(String(campeonato.modalidade || 'single').toLowerCase());
       const isFixa = campeonato.tipoDupla === 'FIXA';
+      const totalInscritos = inscritos.length;
+      const limite = campeonato.limiteInscricoes;
+      const lotado = campeonato.status === 'INSCRICOES_FECHADAS' && campeonato.limiteInscricoes && totalInscritos >= campeonato.limiteInscricoes;
+      const footerText = lotado ? '🔒 LOTADO' : (limite ? `Inscritos: ${totalInscritos}/${limite}` : `Total: ${totalInscritos} time(s)`);
 
       const formatarTelefone = (tel) => {
         if (!tel) return '—';

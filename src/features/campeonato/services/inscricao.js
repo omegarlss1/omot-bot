@@ -103,7 +103,8 @@ async function inscreverCapitao({ guild, member, campeonato, nomeTime }) {
   });
 
   const capitao = await obterCapitaoInfo(member, perfil);
-  const totalTimes = await Time.countDocuments({ campeonatoId: campeonato._id });
+  const totalTimes = await Time.countDocuments({ campeonatoId: campeonato._id, eventoId: campeonato.eventoId });
+  console.log(`[Limite] totalTimes=${totalTimes} limite=${campeonato.limiteInscricoes} campeonatoId=${campeonato._id}`);
   if (!campeonato.baseadoEmInscricoes && campeonato.limiteInscricoes) {
     if (totalTimes >= campeonato.limiteInscricoes) {
       throw new InscricaoError(`Limite atingido (${campeonato.limiteInscricoes} times). Inscrições fechadas.`, 'INSCRICAO_LIMITE_ATINGIDO');
@@ -120,7 +121,7 @@ async function inscreverCapitao({ guild, member, campeonato, nomeTime }) {
     nome: nomeGerado
   });
   if (!campeonato.baseadoEmInscricoes && campeonato.limiteInscricoes && totalTimes + 1 === campeonato.limiteInscricoes) {
-    campeonato.status = 'FECHADO_LOTADO';
+    campeonato.status = 'INSCRICOES_FECHADAS';
     await campeonato.save();
     if (campeonato.canais?.geral && guild.channels?.fetch) {
       const canalGeral = await guild.channels.fetch(campeonato.canais.geral).catch(() => null);
@@ -165,7 +166,8 @@ async function inscreverJogadorManual({ guild, campeonato, nomeJogador, nick, te
   }
 
   const userId = `MANUAL_WHATSAPP_${telefoneNormalizado}`;
-  const totalTimes = await Time.countDocuments({ campeonatoId: campeonato._id });
+  const totalTimes = await Time.countDocuments({ campeonatoId: campeonato._id, eventoId: campeonato.eventoId });
+  console.log(`[Limite] totalTimes=${totalTimes} limite=${campeonato.limiteInscricoes} campeonatoId=${campeonato._id}`);
   if (!campeonato.baseadoEmInscricoes && campeonato.limiteInscricoes) {
     if (totalTimes >= campeonato.limiteInscricoes) {
       throw new InscricaoError(`Limite atingido (${campeonato.limiteInscricoes} times). Inscrições fechadas.`, 'INSCRICAO_LIMITE_ATINGIDO');
@@ -193,7 +195,7 @@ async function inscreverJogadorManual({ guild, campeonato, nomeJogador, nick, te
     nome: nomeFinal
   });
   if (!campeonato.baseadoEmInscricoes && campeonato.limiteInscricoes && totalTimes + 1 === campeonato.limiteInscricoes) {
-    campeonato.status = 'FECHADO_LOTADO';
+    campeonato.status = 'INSCRICOES_FECHADAS';
     await campeonato.save();
     if (campeonato.canais?.geral && guild.channels?.fetch) {
       const canalGeral = await guild.channels.fetch(campeonato.canais.geral).catch(() => null);

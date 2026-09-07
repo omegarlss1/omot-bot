@@ -76,6 +76,13 @@ function ehModoDuplasMescladas(modo) {
 async function gerarBracket(campeonatoId, { shuffle = true } = {}) {
   const campeonato = await Campeonato.findById(campeonatoId).lean();
   if (!campeonato) throw new BracketError('Campeonato não encontrado.', 'BRACKET_CAMP_NAO_ENCONTRADO');
+  let guildId = campeonato.guildId;
+  if (!guildId && campeonato.eventoId) {
+    const Evento = require('../../../db/models/evento');
+    const evento = await Evento.findById(campeonato.eventoId).lean();
+    guildId = evento?.guildId;
+  }
+  if (!guildId) throw new BracketError('guildId não encontrado no campeonato nem no evento.', 'BRACKET_GUILD_MISSING');
   const times = await Time.find({ campeonatoId }).lean();
   if (times.length < 2) {
     throw new BracketError('Mínimo de 2 times para gerar bracket.', 'BRACKET_MIN_TIMES');
@@ -146,7 +153,7 @@ async function gerarBracket(campeonatoId, { shuffle = true } = {}) {
       }));
     }
     const p = await Partida.create({
-      guildId: campeonato.guildId,
+      guildId,
       eventoId: campeonato.eventoId,
       campeonatoId,
       fase: chave.fase,
