@@ -54,6 +54,20 @@ async function registrarCheckIn(partidaId, timeId, userId) {
   return { ok: true, lado: ehTimeA ? 'A' : 'B', partidaIniciada: Boolean(outroCampo?.fez) };
 }
 
+async function registrarCheckInOrganizador(partidaId, lado, organizadorId) {
+  const partida = await Partida.findById(partidaId);
+  if (!partida) throw new CheckinError('Partida não encontrada.', 'CHECKIN_PARTIDA_NAO_ENCONTRADA');
+  if (partida.status !== 'AGUARDANDO_CHECKIN') throw new CheckinError('Partida não está aguardando check-in.', 'CHECKIN_STATUS_INCORRETO');
+  if (!['A', 'B'].includes(lado)) throw new CheckinError('Lado inválido.', 'CHECKIN_LADO_INVALIDO');
+  const campo = lado === 'A' ? 'checkIns.timeA' : 'checkIns.timeB';
+  const outroCampo = lado === 'A' ? partida.checkIns?.timeB : partida.checkIns?.timeA;
+  const atualizacao = { [campo]: { fez: true, timestamp: new Date(), porUserId: organizadorId } };
+  if (outroCampo?.fez) atualizacao.status = 'AGUARDANDO_PLACAR';
+  await Partida.updateOne({ _id: partidaId }, { $set: atualizacao });
+  emitir(EVENTOS.CHECKIN_REALIZADO, { partidaId, lado, porOrganizador: organizadorId, partidaIniciada: Boolean(outroCampo?.fez) });
+  return { ok: true, partidaIniciada: Boolean(outroCampo?.fez) };
+}
+
 async function verificarAdversarioFaltou(partidaId, timeReclamanteId, userId) {
   const partida = await Partida.findById(partidaId);
   if (!partida) throw new CheckinError('Partida não encontrada.', 'CHECKIN_PARTIDA_NAO_ENCONTRADA');
@@ -104,6 +118,7 @@ async function registrarWO({ partidaId, timeVencedorId, motivo, declaranteId, ju
 
 module.exports = {
   registrarCheckIn,
+  registrarCheckInOrganizador,
   verificarAdversarioFaltou,
   registrarWO,
   dentroDaJanela,

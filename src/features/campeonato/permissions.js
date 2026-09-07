@@ -140,6 +140,32 @@ async function criarCanaisRank(guild, categoria, rank, evento, botUserId) {
   return canais;
 }
 
+async function criarCanaisTime(guild, categoria, time, jogadorIds = [], botUserId) {
+  const ids = [...new Set(jogadorIds.filter((id) => String(id).startsWith('MANUAL_WHATSAPP_') === false))];
+  const overwrites = [
+    { id: guild.roles.everyone.id, deny: PERMISSOES_LEITURA },
+    permOrgao(),
+    permBot(botUserId),
+    ...ids.map((id) => ({ id, allow: PERMISSOES_GERAL }))
+  ];
+  const nome = String(time || 'time').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '').slice(0, 80) || 'time';
+  const texto = await guild.channels.create({
+    name: `🎮｜${nome}`,
+    type: ChannelType.GuildText,
+    parent: categoria,
+    permissionOverwrites: overwrites,
+    reason: `Canal do ${time}`
+  });
+  const voz = await guild.channels.create({
+    name: `🔊｜${nome}`,
+    type: ChannelType.GuildVoice,
+    parent: categoria,
+    permissionOverwrites: overwrites,
+    reason: `Sala do ${time}`
+  });
+  return { texto: texto.id, voz: voz.id };
+}
+
 function gerarPainelPermissoes(overwrites) {
   return overwrites.map((ow) => ({
     id: ow.id,
@@ -152,6 +178,7 @@ module.exports = {
   criarCategoriaEvento,
   criarCanalGeral,
   criarCanaisRank,
+  criarCanaisTime,
   gerarPainelPermissoes,
   permOrgao,
   permBot,

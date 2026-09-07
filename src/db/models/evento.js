@@ -13,11 +13,13 @@ const eventoSchema = new mongoose.Schema({
   },
   dataInicio: { type: Date, required: true },
   dataFim: { type: Date, required: true },
+  dataLimiteInscricoes: { type: Date, default: null },
   organizadorId: { type: String, required: true },
   categoriaId: { type: String, default: null },
   descricao: { type: String, default: null },
   duracaoMin: { type: Number, default: 180, min: 60, max: 240 },
   simultaneo: { type: Boolean, default: true },
+  temTerceiroLugar: { type: Boolean, default: true },
   criadoEm: { type: Date, default: Date.now }
 }, { timestamps: true });
 

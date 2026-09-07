@@ -1,4 +1,4 @@
-const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder, UserSelectMenuBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder, UserSelectMenuBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } = require('discord.js');
 const config = require('../../config');
 const { embedCriarEvento, embedSelecionarRanks, embedEventoCriado, embedPainelInscricao, embedInscricaoConfirmada, embedResumoCorte, embedMenuFormato, embedPainelPartida, embedPlacarEnviado, embedDisputaOrganizador, embedBracket, embedClassificacao, embedCampeaoDefinido, embedPainelAdmin, embedCancelamentoConfirmado, embedReaberturaConfirmada, embedTimeDesclassificado, embedPlacarAjustado, toActionRows } = require('./embeds');
 const { criarEvento, EventoError } = require('./service');
@@ -7,7 +7,7 @@ const { inscreverCapitao, inscreverJogadorManual, fecharInscricoes, executarCort
 const { validarInscricao, InscricaoError: ValidacaoInscricaoError } = require('./validators/inscricao');
 const { CorteError } = require('./validators/corte');
 const { gerarBracket, BracketError } = require('./services/bracket');
-const { registrarCheckIn, verificarAdversarioFaltou, registrarWO, CheckinError } = require('./services/checkin');
+const { registrarCheckIn, registrarCheckInOrganizador, verificarAdversarioFaltou, registrarWO, CheckinError } = require('./services/checkin');
 const { enviarPlacar, validarPlacar, parsePlacar, PlacarError } = require('./services/placar');
 const { placarEhValido } = require('./validators/placar');
 const { calcularClassificacao } = require('./services/classificacao');
@@ -21,6 +21,7 @@ const { buildPainelOrganizador } = require('../../bot/commands/painel-organizado
 
 const selecaoRanks = new Map();
 const selecoesExclusao = new Map();
+const wosPendentes = new Map();
 
 async function publicarPainelInscricao(canal, campeonato) {
   if (!canal?.isTextBased?.()) throw new Error('Canal de inscrições inválido ou não é um canal de texto.');
@@ -89,6 +90,14 @@ async function onBotaoCriarEvento(interaction) {
     ),
     new ActionRowBuilder().addComponents(
       new TextInputBuilder()
+        .setCustomId('evento_data_limite')
+        .setLabel('Data limite das inscrições (DD/MM/AAAA)')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('30/11/2026')
+        .setRequired(true)
+    ),
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
         .setCustomId('evento_horario_inicio')
         .setLabel('Horario de inicio (HH:MM)')
         .setStyle(TextInputStyle.Short)
@@ -106,10 +115,14 @@ async function onSubmitCriarEvento(interaction) {
   const nome = interaction.fields.getTextInputValue('evento_nome');
   const dataInicioStr = interaction.fields.getTextInputValue('evento_data_inicio') || '';
   const dataInicio = parseDataBR(dataInicioStr);
+  const dataLimite = parseDataBR(interaction.fields.getTextInputValue('evento_data_limite') || '');
   const horarioInicio = interaction.fields.getTextInputValue('evento_horario_inicio')?.trim() || '19:00';
 
   if (!dataInicio) {
     return interaction.reply({ content: 'Data invalida. Use o formato DD/MM/AAAA.', flags: 64 });
+  }
+  if (!dataLimite || dataLimite > dataInicio) {
+    return interaction.reply({ content: 'Data limite inválida. Ela deve ser igual ou anterior à data do evento.', flags: 64 });
   }
 
   const diaIdx = new Date(dataInicio).getDay();
@@ -121,7 +134,7 @@ async function onSubmitCriarEvento(interaction) {
     });
   }
 
-  selecaoRanks.set(`camp:selecao:${interaction.user.id}`, { nome, dataInicio, dataFim: dataInicio, horarioInicio, modo: null, tipoDupla: null, baseadoEmInscricoes: null, ranksSelecionados: [] });
+  selecaoRanks.set(`camp:selecao:${interaction.user.id}`, { nome, dataInicio, dataFim: dataInicio, dataLimiteInscricoes: dataLimite, horarioInicio, modo: null, tipoDupla: null, baseadoEmInscricoes: null, limiteInscricoes: null, modalidade: null, ranksSelecionados: [] });
   const select = new StringSelectMenuBuilder()
     .setCustomId('modal_config_modo')
     .setPlaceholder('Configure o evento')
@@ -295,7 +308,7 @@ async function onConfirmarCriacao(interaction) {
   const dataInicio = new Date(selecao.dataInicio);
   dataInicio.setHours(horaInicio, minutoInicio, 0, 0);
   const dataFim = new Date(dataInicio);
-  dataFim.setHours(dataFim.getHours() + 3);
+  dataFim.setMinutes(dataFim.getMinutes() + (selecao.duracaoMin || 180));
   await interaction.deferUpdate();
   await interaction.editReply({ content: 'Criando categoria, canais e campeonatos...', embeds: [], components: [] });
   try {
@@ -308,6 +321,9 @@ async function onConfirmarCriacao(interaction) {
       modo: selecao.modo,
       tipoDupla: selecao.tipoDupla,
       baseadoEmInscricoes: selecao.baseadoEmInscricoes,
+      limiteInscricoes: selecao.limiteInscricoes,
+      modalidade: selecao.modalidade,
+      dataLimiteInscricoes: selecao.dataLimiteInscricoes,
       simultaneo: true,
       duracaoMin: 180,
       temTerceiroLugar: true,
@@ -400,6 +416,16 @@ async function onBotaoInscrever(interaction) {
   if (campeonato.status !== 'INSCRICOES_ABERTAS') {
     return interaction.reply({ content: 'Inscricoes nao estao abertas.', flags: 64 });
   }
+  if (campeonato.modo === '1v1') {
+    await interaction.deferReply({ flags: 64 });
+    try {
+      const { time, dadosCapitao } = await inscreverCapitao({ guild: interaction.guild, member: interaction.member, campeonato });
+      return interaction.editReply(embedInscricaoConfirmada({ time, capitao: dadosCapitao }));
+    } catch (error) {
+      if (error instanceof InscricaoError || error instanceof ValidacaoInscricaoError) return interaction.editReply({ content: error.message });
+      throw error;
+    }
+  }
   const modal = new ModalBuilder()
     .setCustomId('modal_camp_inscricao')
     .setTitle('Inscricao - ' + String(campeonato.rank || '').toUpperCase());
@@ -434,10 +460,19 @@ async function onBotaoInscricaoManual(interaction) {
     new ActionRowBuilder().addComponents(
       new TextInputBuilder()
         .setCustomId('inscricao_manual_jogador')
-        .setLabel('Nome do jogador')
+        .setLabel('Nome completo')
         .setStyle(TextInputStyle.Short)
         .setMaxLength(80)
         .setRequired(true)
+    ),
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder().setCustomId('inscricao_manual_nick').setLabel('Nick do jogador').setStyle(TextInputStyle.Short).setMaxLength(20).setRequired(true)
+    ),
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder().setCustomId('inscricao_manual_telefone').setLabel('Nº celular / WhatsApp').setStyle(TextInputStyle.Short).setMaxLength(20).setRequired(true)
+    ),
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder().setCustomId('inscricao_manual_rank').setLabel('Rank').setStyle(TextInputStyle.Short).setPlaceholder(String(campeonato.rank)).setMaxLength(30).setRequired(true)
     ),
     new ActionRowBuilder().addComponents(
       new TextInputBuilder()
@@ -524,13 +559,7 @@ async function onSubmitInscricao(interaction) {
     const resposta = embedInscricaoConfirmada({ time, capitao: dadosCapitao });
     const vagas = Math.max(0, Number(campeonato.maxJogadoresPorTime || 1) - 1);
     if (vagas > 0) {
-      const menu = new UserSelectMenuBuilder()
-        .setCustomId(`select_camp_jogadores_${time._id}`)
-        .setPlaceholder(`Selecione até ${vagas} jogador(es) do time`)
-        .setMinValues(0)
-        .setMaxValues(Math.min(vagas, 25));
-      resposta.content = `Capitão confirmado. Selecione os jogadores do **${time.nome}**.`;
-      resposta.components = [new ActionRowBuilder().addComponents(menu)];
+      resposta.content = `Capitão confirmado. Adicione até ${vagas} jogador(es) usando **/adicionar-jogador** e o autocomplete de nick.`;
     }
     return interaction.editReply(resposta);
   } catch (error) {
@@ -555,6 +584,9 @@ async function onSubmitInscricaoManual(interaction) {
       guild: interaction.guild,
       campeonato,
       nomeJogador: interaction.fields.getTextInputValue('inscricao_manual_jogador'),
+      nick: interaction.fields.getTextInputValue('inscricao_manual_nick'),
+      telefone: interaction.fields.getTextInputValue('inscricao_manual_telefone'),
+      rank: interaction.fields.getTextInputValue('inscricao_manual_rank'),
       nomeTime: interaction.fields.getTextInputValue('inscricao_manual_time')
     });
     return interaction.editReply({ content: `Inscrição manual confirmada para **${resultado.jogador.nickSnapshot}**.` });
@@ -644,6 +676,17 @@ async function onSelectJogadoresTime(interaction) {
   }
   time.jogadores = jogadores;
   await time.save();
+  for (const canalId of [time.canais?.texto, time.canais?.voz].filter(Boolean)) {
+    const canal = await interaction.guild.channels.fetch(canalId).catch(() => null);
+    for (const jogador of jogadores.filter((item) => !item.userId.startsWith('MANUAL_WHATSAPP_'))) {
+      await canal?.permissionOverwrites.edit(jogador.userId, {
+        ViewChannel: true,
+        Connect: true,
+        SendMessages: true,
+        ReadMessageHistory: true
+      }).catch(() => {});
+    }
+  }
   return interaction.editReply({ content: `✅ Time **${time.nome}** atualizado com ${jogadores.length} jogador(es).` });
 }
 
@@ -654,6 +697,18 @@ async function onBotaoBroadcast(interaction) {
     new TextInputBuilder().setCustomId('broadcast_mensagem').setLabel('Mensagem para os canais do campeonato').setStyle(TextInputStyle.Paragraph).setMaxLength(1000).setRequired(true)
   ));
   return interaction.showModal(modal);
+}
+
+async function onSelectCheckInOrganizador(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
+  const [partidaId, lado] = interaction.values[0].split(':');
+  try {
+    const resultado = await registrarCheckInOrganizador(partidaId, lado, interaction.user.id);
+    return interaction.reply({ content: resultado.partidaIniciada ? '✅ Check-in registrado. Partida liberada para placar.' : '✅ Check-in manual registrado.', flags: 64 });
+  } catch (error) {
+    if (error instanceof CheckinError) return interaction.reply({ content: error.message, flags: 64 });
+    throw error;
+  }
 }
 
 async function onSubmitBroadcast(interaction) {
@@ -749,6 +804,14 @@ async function onBotaoGerarBracket(interaction) {
   await interaction.deferReply({ flags: 64 });
   try {
     const resultado = await gerarBracket(campeonato._id);
+    if (resultado.canvas) {
+      return interaction.editReply({
+        content: `Bracket gerado! ${resultado.totalPartidas} partidas na R1.`,
+        files: [new AttachmentBuilder(resultado.canvas, { name: `bracket-${campeonato.rank}.svg` })],
+        embeds: [],
+        components: []
+      });
+    }
     return interaction.editReply({
       content: 'Bracket gerado! ' + resultado.totalPartidas + ' partidas na R1. Veja em <#' + campeonato.canais.partidas + '>.',
       embeds: [],
@@ -793,27 +856,43 @@ async function onBotaoCheckIn(interaction) {
 }
 
 async function onBotaoAdversarioFaltou(interaction) {
-  if (!temPermissaoOrganizador(interaction.member)) {
-    return interaction.reply({ content: 'Apenas @OrganizadorCamps pode declarar WO.', flags: 64 });
-  }
   const partidaId = interaction.customId.replace('btn_camp_adversario_faltou_', '');
-  await interaction.deferReply({ flags: 64 });
-  try {
-    const partida = await Partida.findById(partidaId);
-    if (!partida) return interaction.editReply({ content: 'Partida nao encontrada.' });
-    const vencedorId = partida.timeA;
-    await registrarWO({
-      partidaId,
-      timeVencedorId: vencedorId,
-      motivo: 'Adversario nao compareceu (declarado por staff)',
-      declaranteId: interaction.user.id,
-      juiz: true
-    });
-    return interaction.editReply({ content: 'W.O. registrado a favor do Time A. Disputa encerrada.', embeds: [], components: [] });
-  } catch (error) {
-    console.error('[campeonato.wo] erro:', error);
-    return interaction.editReply({ content: 'Erro ao registrar WO.' });
+  const partida = await Partida.findById(partidaId);
+  const time = partida && await Time.findOne({ campeonatoId: partida.campeonatoId, capitaoId: interaction.user.id });
+  if (!partida || !time || (String(partida.timeA) !== String(time._id) && String(partida.timeB) !== String(time._id))) {
+    return interaction.reply({ content: 'Apenas o capitão de um time desta partida pode solicitar W.O.', flags: 64 });
   }
+  const chave = `${interaction.user.id}:${partidaId}`;
+  wosPendentes.set(chave, { partidaId, timeId: time._id });
+  return interaction.reply({
+    content: '⚠️ Confirme que o adversário não compareceu. O W.O. será registrado para o seu time.',
+    components: [new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`btn_confirmar_wo_${partidaId}`).setLabel('Confirmar W.O.').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId(`btn_negar_wo_${partidaId}`).setLabel('Negar').setStyle(ButtonStyle.Secondary)
+    )],
+    flags: 64
+  });
+}
+
+async function onConfirmarWO(interaction) {
+  const partidaId = interaction.customId.replace('btn_confirmar_wo_', '');
+  const chave = `${interaction.user.id}:${partidaId}`;
+  const pendente = wosPendentes.get(chave);
+  if (!pendente) return interaction.reply({ content: 'Solicitação de W.O. expirada.', flags: 64 });
+  try {
+    await registrarWO({ partidaId, timeVencedorId: pendente.timeId, motivo: 'Adversário não compareceu', declaranteId: interaction.user.id, juiz: false });
+    wosPendentes.delete(chave);
+    return interaction.update({ content: '✅ W.O. registrado para o seu time.', components: [] });
+  } catch (error) {
+    if (error instanceof CheckinError) return interaction.update({ content: error.message, components: [] });
+    throw error;
+  }
+}
+
+async function onNegarWO(interaction) {
+  const partidaId = interaction.customId.replace('btn_negar_wo_', '');
+  wosPendentes.delete(`${interaction.user.id}:${partidaId}`);
+  return interaction.update({ content: 'Solicitação de W.O. cancelada.', components: [] });
 }
 
 async function onBotaoEnviarPlacar(interaction) {
@@ -1170,6 +1249,10 @@ async function onPainelOrganizadorTab(interaction) {
       const timesIds = partidas.flatMap((p) => [p.timeA, p.timeB]).filter(Boolean);
       const times = await Time.find({ _id: { $in: timesIds } }).lean();
       const timesMap = new Map(times.map((t) => [String(t._id), t.nome || 'Sem nome']));
+      const opcoesCheckin = partidas.flatMap((p) => [
+        !p.checkIns?.timeA?.fez ? { label: `${timesMap.get(String(p.timeA)) || 'TBD'} - confirmar`, value: `${p._id}:A` } : null,
+        !p.checkIns?.timeB?.fez ? { label: `${timesMap.get(String(p.timeB)) || 'TBD'} - confirmar`, value: `${p._id}:B` } : null
+      ]).filter(Boolean).slice(0, 25);
       const linhas = partidas.map((p, i) => {
         const checkA = p.checkIns?.timeA?.fez ? '✅' : '⏳';
         const checkB = p.checkIns?.timeB?.fez ? '✅' : '⏳';
@@ -1183,7 +1266,9 @@ async function onPainelOrganizadorTab(interaction) {
           color: 0x00C2FF,
           footer: { text: 'Quando os dois times confirmam, a partida fica EM ANDAMENTO.' }
         }],
-        components: []
+        components: opcoesCheckin.length
+          ? [new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('select_camp_checkin_manual').setPlaceholder('Registrar check-in manual').addOptions(opcoesCheckin))]
+          : []
       });
     }
     case 'gestao': {
@@ -1261,6 +1346,23 @@ async function onConfigSelect(interaction) {
   }
   if (customId === 'modal_config_baseado') {
     selecao.baseadoEmInscricoes = valor === 'SIM';
+    if (!selecao.baseadoEmInscricoes) {
+      const modalidade = new StringSelectMenuBuilder()
+        .setCustomId('modal_config_modalidade')
+        .setPlaceholder('Escolha a modalidade')
+        .addOptions([
+          { label: 'Single', value: 'single', description: 'Eliminatória simples' },
+          { label: 'Double', value: 'double', description: 'Eliminatória dupla' },
+          { label: 'Round Robin', value: 'round-robin', description: 'Todos contra todos' },
+          { label: 'Grupos + Mata-mata', value: 'grupos-mata-mata', description: 'Fase de grupos e eliminatória' }
+        ]);
+      selecaoRanks.set(`camp:selecao:${interaction.user.id}`, selecao);
+      return interaction.update({
+        content: 'Escolha a modalidade do campeonato sem inscrições:',
+        embeds: [],
+        components: [new ActionRowBuilder().addComponents(modalidade)]
+      });
+    }
     selecaoRanks.set(`camp:selecao:${interaction.user.id}`, selecao);
   const [horaInicio, minutoInicio] = (selecao.horarioInicio || '19:00').split(':').map(Number);
   const inicioDate = new Date(selecao.dataInicio);
@@ -1299,7 +1401,41 @@ async function onConfigSelect(interaction) {
       components: toActionRows(components)
     });
   }
+  if (customId === 'modal_config_modalidade') {
+    selecao.modalidade = valor;
+    selecaoRanks.set(`camp:selecao:${interaction.user.id}`, selecao);
+    const modal = new ModalBuilder().setCustomId('modal_config_limite').setTitle('Limite de participantes');
+    modal.addComponents(new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId('limite_inscricoes')
+        .setLabel('Limite (16, 32, 64, 128, 256 ou 512)')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+    ));
+    return interaction.showModal(modal);
+  }
   return interaction.update({ content: 'Opção inválida.', embeds: [], components: [] });
+}
+
+async function onSubmitLimite(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
+  const selecao = selecaoRanks.get(`camp:selecao:${interaction.user.id}`);
+  if (!selecao) return interaction.reply({ content: 'Sessao expirou. Clique em Criar Evento de novo.', flags: 64 });
+  const limite = Number(interaction.fields.getTextInputValue('limite_inscricoes').trim());
+  if (![16, 32, 64, 128, 256, 512].includes(limite)) {
+    return interaction.reply({ content: 'Limite inválido. Escolha 16, 32, 64, 128, 256 ou 512.', flags: 64 });
+  }
+  selecao.limiteInscricoes = limite;
+  selecaoRanks.set(`camp:selecao:${interaction.user.id}`, selecao);
+  const fim = new Date(selecao.dataInicio);
+  fim.setHours(fim.getHours() + 3);
+  return interaction.reply({
+    content: `Confira: **${selecao.nome}** | ${selecao.modo} | ${selecao.modalidade} | limite ${limite} | ranks ${selecao.ranksSelecionados.join(', ')}`,
+    components: toActionRows([[
+      { type: 2, style: 3, label: '✅ Confirmar e Criar Evento', custom_id: 'btn_camp_confirmar_criacao' },
+      { type: 2, style: 4, label: '❌ Cancelar', custom_id: 'btn_camp_cancelar_criacao' }
+    ]])
+  });
 }
 
 function register(registry) {
@@ -1317,14 +1453,16 @@ function register(registry) {
   registry.button(/^btn_confirmar_exclusao_\d+:\d+$/, onConfirmarExclusao);
   registry.button(/^btn_cancelar_exclusao_\d+:\d+$/, onCancelarExclusao);
   registry.modal(/^modal_camp_capitao_[0-9]+$/, onSubmitCapitao);
-  registry.select(/^select_camp_jogadores_[a-f0-9]{24}$/, onSelectJogadoresTime);
   registry.select('select_camp_capitao', onSelectCapitao);
+  registry.select('select_camp_checkin_manual', onSelectCheckInOrganizador);
   registry.button('btn_camp_fechar_inscricoes', onBotaoFecharInscricoes);
   registry.button('btn_camp_cortar', onBotaoCortar);
   registry.button(/^btn_camp_formato_(round-robin|grupos-mata-mata|double-elimination|single-elimination)_[a-f0-9]{24}$/, onEscolherFormato);
   registry.button('btn_camp_gerar_bracket', onBotaoGerarBracket);
   registry.button(/^btn_camp_checkin_[a-f0-9]{24}$/, onBotaoCheckIn);
   registry.button(/^btn_camp_adversario_faltou_[a-f0-9]{24}$/, onBotaoAdversarioFaltou);
+  registry.button(/^btn_confirmar_wo_[a-f0-9]{24}$/, onConfirmarWO);
+  registry.button(/^btn_negar_wo_[a-f0-9]{24}$/, onNegarWO);
   registry.button(/^btn_camp_enviar_placar_[a-f0-9]{24}$/, onBotaoEnviarPlacar);
   registry.select(/^modal_camp_placar_dupla_[a-f0-9]{24}$/, onSelectDueloPlacar);
   registry.modal(/^modal_camp_placar_(?:dupla_submit_)?[a-f0-9]{24}(?:_\d+)?$/, onSubmitEnviarPlacar);
@@ -1339,6 +1477,8 @@ function register(registry) {
   registry.button(/^btn_camp_reabrir_[a-f0-9]{24}$/, onBotaoReabrir);
   registry.modal(/^modal_camp_desclassificar_[a-f0-9]{24}$/, onSubmitDesclassificar);
   registry.select(/^modal_config_(modo|tipo_dupla|baseado)$/, onConfigSelect);
+  registry.select('modal_config_modalidade', onConfigSelect);
+  registry.modal('modal_config_limite', onSubmitLimite);
   registry.button('btn_camp_confirmar_criacao', onConfirmarCriacao);
   registry.button('btn_camp_cancelar_criacao', onCancelarCriacao);
   registry.select('painel_org_tab', onPainelOrganizadorTab);

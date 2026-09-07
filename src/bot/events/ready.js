@@ -1,10 +1,18 @@
 const { syncGuildGames } = require('../../features/games/catalog');
+const { StartGGAdapter } = require('../../features/campeonato/adapters/StartGGAdapter');
 
 module.exports = {
   name: 'clientReady',
   once: true,
   async execute(client) {
     console.log(`🤖 Ômot online como ${client.user.tag}!`);
+
+    try {
+      const contaStartGG = await new StartGGAdapter().validarContaOmega();
+      console.log(`✅ Conectado Start.gg como: ${contaStartGG.slug || contaStartGG.name || contaStartGG.id}`);
+    } catch (error) {
+      console.warn(`⚠️ Start.gg indisponível: ${error.message}`);
+    }
 
     await client.stores.gatilhos.load();
     await client.stores.calls.load(client);

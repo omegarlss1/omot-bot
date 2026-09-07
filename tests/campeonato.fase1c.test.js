@@ -271,9 +271,9 @@ test('handlers da Fase 1C registrados', async (t) => {
       const interactions = require('../src/features/campeonato/interactions');
       const r = new InteractionRegistry();
       interactions.register(r);
-      assert.equal(r.buttons.length, 26);
-      assert.equal(r.selects.length, 6);
-      assert.equal(r.modals.length, 7);
+      assert.equal(r.buttons.length, 28);
+      assert.equal(r.selects.length, 7);
+      assert.equal(r.modals.length, 8);
     });
   });
 

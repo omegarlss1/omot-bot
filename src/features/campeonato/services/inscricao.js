@@ -1,17 +1,27 @@
 const Time = require('../../../db/models/time');
 const Campeonato = require('../../../db/models/campeonato');
 const PerfilMembro = require('../../../db/models/perfilMembro');
-const { randomUUID } = require('node:crypto');
 const { validarInscricao, InscricaoError } = require('../validators/inscricao');
 const { executarCorteCompleto } = require('../validators/corte');
 const { emitir, EVENTOS } = require('../events');
+const { criarCanaisTime } = require('../permissions');
 
 async function findCampeonatoPorCanalInscricao(canalId) {
-  return Campeonato.findOne({ 'canais.inscricoes': canalId });
+  const campeonato = await Campeonato.findOne({ 'canais.inscricoes': canalId });
+  await fecharPorPrazo(campeonato);
+  return campeonato;
+}
+
+async function fecharPorPrazo(campeonato) {
+  if (campeonato?.status !== 'INSCRICOES_ABERTAS' || !campeonato.dataLimiteInscricoes || new Date() <= campeonato.dataLimiteInscricoes) return campeonato;
+  campeonato.status = 'INSCRICOES_FECHADAS';
+  await campeonato.save();
+  emitir(EVENTOS.INSCRICOES_FECHADAS, { campeonatoId: campeonato._id, motivo: 'PRAZO_ENCERRADO' });
+  return campeonato;
 }
 
 async function findCampeonatoPorCanal(canalId) {
-  return Campeonato.findOne({
+  const campeonato = await Campeonato.findOne({
     $or: [
       { 'canais.inscricoes': canalId },
       { 'canais.partidas': canalId },
@@ -20,6 +30,7 @@ async function findCampeonatoPorCanal(canalId) {
       { 'canais.avisos': canalId }
     ]
   });
+  return fecharPorPrazo(campeonato);
 }
 
 async function listarInscricoes(campeonatoId) {
@@ -35,6 +46,34 @@ async function jogadorJaInscrito(campeonatoId, userId) {
     ]
   }).lean();
   return Boolean(time);
+}
+
+async function buscarNicks(guildId, termo = '') {
+  const filtro = String(termo || '').trim();
+  const regex = filtro ? new RegExp(filtro.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') : /.*/;
+  return PerfilMembro.find({ guildId, $or: [{ nick_principal: regex }, { nicks_secundarios: regex }] })
+    .select('userId nick_principal nicks_secundarios')
+    .limit(25)
+    .lean();
+}
+
+async function adicionarJogadorAoTime({ guild, campeonato, time, capitaoId, member }) {
+  if (!campeonato || !time || !member) throw new InscricaoError('Dados do jogador incompletos.', 'INSCRICAO_DADOS_INVALIDOS');
+  if (time.capitaoId !== capitaoId) throw new InscricaoError('Apenas o capitão pode adicionar jogadores.', 'INSCRICAO_NAO_CAPITAO');
+  if (time.jogadores.length >= campeonato.maxJogadoresPorTime) throw new InscricaoError('O time já está completo.', 'TIME_COMPLETO');
+  if (await jogadorJaInscrito(campeonato._id, member.id)) throw new InscricaoError('Este jogador já está inscrito neste campeonato.', 'INSCRICAO_DUPLICADA');
+  const perfil = await PerfilMembro.findOne({ guildId: guild.id, userId: member.id });
+  const dados = validarInscricao({ member, perfil, ranksDisponiveis: [campeonato.rank] });
+  time.jogadores.push({
+    userId: member.id,
+    rankSnapshot: dados.capitaoRankSnapshot,
+    nickSnapshot: dados.capitaoNick,
+    isSubstituto: false,
+    isCapitao: false,
+    partidasJogadas: 0
+  });
+  await time.save();
+  return time;
 }
 
 async function obterCapitaoInfo(member, perfil) {
@@ -64,13 +103,22 @@ async function inscreverCapitao({ guild, member, campeonato, nomeTime }) {
   });
 
   const capitao = await obterCapitaoInfo(member, perfil);
+  const totalTimes = await Time.countDocuments({ campeonatoId: campeonato._id });
+  const nomeGerado = campeonato.tipoDupla === 'SORTEADA'
+    ? `Time-${String(totalTimes + 1).padStart(2, '0')}`
+    : (nomeTime?.trim() || `Time de ${perfil.nick_principal}`);
   const time = await Time.create({
     guildId: guild.id,
     campeonatoId: campeonato._id,
     capitaoId: member.id,
     jogadores: [capitao],
-    nome: nomeTime?.trim() || `Time de ${perfil.nick_principal}`
+    nome: nomeGerado
   });
+  if (campeonato.categoriaId && guild.channels?.create) {
+    const canais = await criarCanaisTime(guild, campeonato.categoriaId, time.nome, [member.id], guild.members.me?.id || guild.client?.user?.id);
+    time.canais = canais;
+    await time.save();
+  }
 
   emitir(EVENTOS.INSCRICAO_REALIZADA, {
     timeId: time._id,
@@ -82,33 +130,50 @@ async function inscreverCapitao({ guild, member, campeonato, nomeTime }) {
   return { time, dadosCapitao };
 }
 
-async function inscreverJogadorManual({ guild, campeonato, nomeJogador, nomeTime }) {
+async function inscreverJogadorManual({ guild, campeonato, nomeJogador, nick, telefone, rank, nomeTime }) {
   if (!campeonato) throw new InscricaoError('Campeonato não encontrado.', 'INSCRICAO_CAMP_NAO_ENCONTRADO');
   if (campeonato.status !== 'INSCRICOES_ABERTAS') {
     throw new InscricaoError('Inscrições não estão abertas.', 'INSCRICAO_FECHADAS');
   }
 
-  const nickSnapshot = String(nomeJogador || '').trim();
-  if (!nickSnapshot || nickSnapshot.length > 80) {
-    throw new InscricaoError('Informe um nome de jogador válido (até 80 caracteres).', 'INSCRICAO_NOME_INVALIDO');
+  const nome = String(nomeJogador || '').trim();
+  const nickSnapshot = String(nick || nome).trim();
+  const telefoneNormalizado = String(telefone || '').replace(/\D/g, '');
+  const rankSnapshot = String(rank || campeonato.rank || '').trim().toLowerCase();
+  if (!nome || nome.length > 80 || !nickSnapshot || nickSnapshot.length > 20 || !telefoneNormalizado) {
+    throw new InscricaoError('Informe nome, nick (até 20 caracteres) e telefone válidos.', 'INSCRICAO_MANUAL_INVALIDA');
+  }
+  if (rankSnapshot !== String(campeonato.rank).toLowerCase()) {
+    throw new InscricaoError('O rank informado não corresponde ao campeonato.', 'INSCRICAO_RANK_DIVERGENTE');
   }
 
-  const userId = `externo:${randomUUID()}`;
+  const userId = `MANUAL_WHATSAPP_${telefoneNormalizado}`;
+  const totalTimes = await Time.countDocuments({ campeonatoId: campeonato._id });
+  const nomeFinal = campeonato.tipoDupla === 'SORTEADA'
+    ? `Time-${String(totalTimes + 1).padStart(2, '0')}`
+    : (String(nomeTime || '').trim() || `Time de ${nickSnapshot}`);
   const jogador = {
     userId,
-    rankSnapshot: campeonato.rank,
+    rankSnapshot,
     nickSnapshot,
     isSubstituto: false,
     isCapitao: true,
-    partidasJogadas: 0
+    partidasJogadas: 0,
+    origem: 'WHATSAPP',
+    telefone: telefoneNormalizado
   };
   const time = await Time.create({
     guildId: guild.id,
     campeonatoId: campeonato._id,
     capitaoId: userId,
     jogadores: [jogador],
-    nome: String(nomeTime || '').trim() || `Time de ${nickSnapshot}`
+    nome: nomeFinal
   });
+  if (campeonato.categoriaId && guild.channels?.create) {
+    const canais = await criarCanaisTime(guild, campeonato.categoriaId, time.nome, [], guild.members.me?.id || guild.client?.user?.id);
+    time.canais = canais;
+    await time.save();
+  }
 
   emitir(EVENTOS.INSCRICAO_REALIZADA, {
     timeId: time._id,
@@ -189,8 +254,11 @@ async function definirFormato(campeonatoId, formato) {
 module.exports = {
   findCampeonatoPorCanalInscricao,
   findCampeonatoPorCanal,
+  fecharPorPrazo,
   listarInscricoes,
   jogadorJaInscrito,
+  buscarNicks,
+  adicionarJogadorAoTime,
   inscreverCapitao,
   inscreverJogadorManual,
   fecharInscricoes,

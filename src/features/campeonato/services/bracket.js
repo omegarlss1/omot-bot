@@ -1,6 +1,9 @@
 const Partida = require('../../../db/models/partida');
 const Time = require('../../../db/models/time');
+const Campeonato = require('../../../db/models/campeonato');
 const { emitir, EVENTOS } = require('../events');
+const { renderSingleBracketCanvas } = require('./canvasBracket');
+const { StartGGAdapter } = require('../adapters/StartGGAdapter');
 
 class BracketError extends Error {
   constructor(mensagem, code) {
@@ -59,11 +62,10 @@ function parearChaves(times, semente = Math.random) {
   return partidas;
 }
 
-function gerarJanelaCheckIn(partida) {
-  const agora = new Date();
-  const minutosJanela = 30;
-  const inicio = new Date(agora.getTime() + 1000);
-  const fim = new Date(agora.getTime() + minutosJanela * 60 * 1000);
+function gerarJanelaCheckIn(partida, estimatedStartAt = new Date()) {
+  const inicioPartida = new Date(estimatedStartAt);
+  const inicio = new Date(inicioPartida.getTime() - 30 * 60 * 1000);
+  const fim = new Date(inicioPartida.getTime() + 5 * 60 * 1000);
   return { inicio, fim };
 }
 
@@ -72,6 +74,8 @@ function ehModoDuplasMescladas(modo) {
 }
 
 async function gerarBracket(campeonatoId, { shuffle = true } = {}) {
+  const campeonato = await Campeonato.findById(campeonatoId).lean();
+  if (!campeonato) throw new BracketError('Campeonato não encontrado.', 'BRACKET_CAMP_NAO_ENCONTRADO');
   const times = await Time.find({ campeonatoId }).lean();
   if (times.length < 2) {
     throw new BracketError('Mínimo de 2 times para gerar bracket.', 'BRACKET_MIN_TIMES');
@@ -82,16 +86,44 @@ async function gerarBracket(campeonatoId, { shuffle = true } = {}) {
     throw new BracketError('Bracket R1 já existe. Limpe o campeonato antes de gerar novamente.', 'BRACKET_JA_EXISTE');
   }
 
+  const usarCanvas = times.length <= 16 && String(campeonato.modalidade || 'single').toLowerCase() === 'single';
+  if (!usarCanvas && !campeonato.startgg?.tournamentId) {
+    try {
+      const adapter = new StartGGAdapter();
+      const inicioStartGG = new Date(campeonato.dataEvento || campeonato.startAt || Date.now());
+      const torneio = await adapter.createTournament({
+        name: campeonato.nome,
+        slug: String(campeonato.nome).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
+        startAt: Math.floor(inicioStartGG.getTime() / 1000),
+        timezone: 'America/Sao_Paulo',
+        includeThirdPlace: campeonato.temTerceiroLugar !== false
+      });
+      if (!torneio?.id) throw new Error('Start.gg não retornou o ID do torneio.');
+      const participantes = times.flatMap((time) => (time.jogadores || []).map((jogador) => ({ gamerTag: jogador.nickSnapshot })));
+      await adapter.addParticipantsBulk(torneio.id, participantes);
+      await Campeonato.updateOne({ _id: campeonatoId }, { $set: {
+        'startgg.tournamentId': String(torneio.id),
+        'startgg.url': torneio.slug ? `https://start.gg/${torneio.slug}` : null,
+        startAt: inicioStartGG
+      } });
+    } catch (error) {
+      throw new BracketError(`Não foi possível preparar a chave no Start.gg: ${error.message}`, 'BRACKET_STARTGG');
+    }
+  }
+
   const chavesR1 = parearChaves(times, shuffle ? Math.random : () => 0.5);
+  const inicioBase = new Date(campeonato.dataEvento || campeonato.startAt || Date.now());
+  const intervaloMs = Number(campeonato.intervaloPartidasMin || 20) * 60 * 1000;
   const partidas = [];
   for (const chave of chavesR1) {
-    const janela = gerarJanelaCheckIn(chave);
+    const estimatedStartAt = new Date(inicioBase.getTime() + Math.max(0, chave.rodada - 1) * intervaloMs);
+    const janela = gerarJanelaCheckIn(chave, estimatedStartAt);
     const timeA = chave.timeA?._id || null;
     const timeB = chave.timeB?._id || null;
     const timeADoc = chave.timeA || null;
     const timeBDoc = chave.timeB || null;
     let duelos = [];
-    const modo = timeADoc?.modo || timeBDoc?.modo || null;
+    const modo = campeonato.modo;
     if (timeADoc && timeBDoc && ehModoDuplasMescladas(modo)) {
       const duplasA = gerarDuplas(timeADoc.jogadores || []);
       const duplasB = gerarDuplas(timeBDoc.jogadores || []);
@@ -113,6 +145,7 @@ async function gerarBracket(campeonatoId, { shuffle = true } = {}) {
       rodada: chave.rodada,
       timeA,
       timeB,
+      estimatedStartAt,
       janelaCheckIn: janela,
       status: 'AGUARDANDO_CHECKIN',
       duelos
@@ -121,7 +154,11 @@ async function gerarBracket(campeonatoId, { shuffle = true } = {}) {
     emitir(EVENTOS.PARTIDA_CRIADA, { partidaId: p._id, fase: chave.fase, duelos: duelos.length });
   }
 
-  return { totalPartidas: partidas.length, partidas };
+  return {
+    totalPartidas: partidas.length,
+    partidas,
+    canvas: usarCanvas ? renderSingleBracketCanvas({ times, incluirTerceiroLugar: campeonato.temTerceiroLugar !== false }) : null
+  };
 }
 
 module.exports = { gerarBracket, parearChaves, proximaPotenciaDe2, BracketError, gerarDuplas, ehModoDuplasMescladas };

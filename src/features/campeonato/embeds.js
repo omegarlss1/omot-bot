@@ -109,10 +109,14 @@ function embedPainelPartida({ partida, timeA, timeB }) {
     AGUARDANDO_CHECKIN: '⏰', AGUARDANDO_PLACAR: '🎮', AGUARDANDO_VALIDACAO: '⏳',
     EM_DISPUTA_ORGANIZADOR: '⚖️', FINALIZADA: '🏆', CANCELADA: '❌', WO: '🚫'
   }[partida.status] || '❓';
+  const estimatedStartAt = partida.estimatedStartAt
+    ? new Date(partida.estimatedStartAt).toLocaleString('pt-BR')
+    : 'Não definido';
   const fields = [
     { name: '🟦 Time A', value: (timeA?.nome || 'A definir') + ' ' + checkA, inline: true },
     { name: '🟥 Time B', value: (timeB?.nome || 'A definir') + ' ' + checkB, inline: true },
-    { name: '🕐 Janela check-in', value: new Date(partida.janelaCheckIn.inicio).toLocaleString('pt-BR') + ' → ' + new Date(partida.janelaCheckIn.fim).toLocaleString('pt-BR'), inline: false }
+    { name: '🕐 Horário estimado', value: estimatedStartAt, inline: true },
+    { name: '✅ Janela check-in', value: new Date(partida.janelaCheckIn.inicio).toLocaleString('pt-BR') + ' → ' + new Date(partida.janelaCheckIn.fim).toLocaleString('pt-BR'), inline: true }
   ];
   if (partida.duelos && partida.duelos.length > 0) {
     const linhas = partida.duelos.map((d, idx) => {

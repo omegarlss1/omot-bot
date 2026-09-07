@@ -31,7 +31,7 @@ class RateLimiter {
 }
 
 class StartGGAdapter {
-  constructor({ token = config.startgg.token, apiUrl = config.startgg.apiUrl, fetchImpl = globalThis.fetch } = {}) {
+  constructor({ token = process.env.STARTGG_TOKEN, apiUrl = config.startgg.apiUrl, fetchImpl = globalThis.fetch } = {}) {
     if (!token) throw new Error('[StartGGAdapter] STARTGG_TOKEN ausente. Verifique .env.');
     this.token = token;
     this.apiUrl = apiUrl;
@@ -77,15 +77,23 @@ class StartGGAdapter {
   }
 
   async ping() {
-    const data = await this.request({ query: 'query { currentUser { id name } }' });
+    const data = await this.request({ query: 'query { currentUser { id name slug } }' });
     return data?.currentUser ?? null;
   }
 
-  async createTournament({ eventId, name }) {
-    const query = `mutation CreateTournament($eventId: ID!, $name: String!) {
-      createTournament(eventId: $eventId, name: $name) { id name slug }
+  async validarContaOmega() {
+    const conta = await this.ping();
+    if (!conta?.id) throw new Error('[StartGGAdapter] A API não retornou uma conta autenticada.');
+    return conta;
+  }
+
+  async createTournament({ eventId = null, name, slug = null, startAt = null, timezone = 'America/Sao_Paulo', includeThirdPlace = true } = {}) {
+    const query = `mutation CreateTournament($input: CreateTournamentInput!) {
+      createTournament(input: $input) { id name slug }
     }`;
-    const data = await this.request({ query, variables: { eventId, name } });
+    const input = { name, slug, startAt, timezone, includeThirdPlace };
+    if (eventId) input.eventId = eventId;
+    const data = await this.request({ query, variables: { input } });
     return data?.createTournament ?? null;
   }
 
@@ -99,7 +107,7 @@ class StartGGAdapter {
       const lote = participants.slice(i, i + 50);
       operations.push({ query: mutation, variables: { tournamentId, participants: lote } });
     }
-    return this.queryMany(operations.map((op) => ({ query: op.query, variables: op.variables })));
+    return Promise.all(operations.map((op) => this.request({ query: op.query, variables: op.variables })));
   }
 
   async reportScore({ setId, winnerId, gameNum = 1 }) {
@@ -108,6 +116,30 @@ class StartGGAdapter {
     }`;
     const data = await this.request({ query: mutation, variables: { setId, winnerId, gameNum } });
     return data?.reportScore ?? null;
+  }
+
+  async fetchStandingsMetrics(tournamentId) {
+    if (!tournamentId) return new Map();
+    const query = `query TournamentStandings($tournamentId: ID!) {
+      tournament(id: $tournamentId) {
+        events { standings(query: { page: 1, perPage: 100 }) {
+          nodes { placement entrant { id } stats { score { value } } }
+        } }
+      }
+    }`;
+    const data = await this.request({ query, variables: { tournamentId } });
+    const metrics = new Map();
+    for (const event of data?.tournament?.events || []) {
+      for (const node of event?.standings?.nodes || []) {
+        const entrantId = node?.entrant?.id;
+        if (entrantId) metrics.set(String(entrantId), {
+          gameWinPercent: Number(node?.stats?.score?.value ?? null),
+          buchholz: null,
+          placement: node.placement
+        });
+      }
+    }
+    return metrics;
   }
 
   static diagnostic() {

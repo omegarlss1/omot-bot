@@ -61,10 +61,12 @@ async function criarEvento(guild, parametros) {
     ranksSelecionados: parametros.ranksSelecionados,
     dataInicio: params.dataInicio,
     dataFim: params.dataFim,
+    dataLimiteInscricoes: parametros.dataLimiteInscricoes || null,
     organizadorId: parametros.organizadorId,
     descricao: descricaoEvento.descricao,
     duracaoMin: parametros.duracaoMin || 180,
     simultaneo: parametros.simultaneo !== false
+    , temTerceiroLugar: parametros.temTerceiroLugar !== false
   });
   emitir(EVENTOS.EVENTO_CRIADO, { eventoId: evento._id, guildId: guild.id });
 
@@ -73,7 +75,7 @@ async function criarEvento(guild, parametros) {
   evento.categoriaId = categoria.id;
   await evento.save();
 
-  await criarCanalGeral(guild, categoria, parametros.ranksSelecionados, { nome: evento.nome, sufixoNumero: sufixo }, botUserId);
+  const canalGeral = await criarCanalGeral(guild, categoria, parametros.ranksSelecionados, { nome: evento.nome, sufixoNumero: sufixo }, botUserId);
 
   const campeonatos = [];
   for (const rank of parametros.ranksSelecionados) {
@@ -87,7 +89,10 @@ async function criarEvento(guild, parametros) {
       baseadoEmInscricoes: parametros.baseadoEmInscricoes,
       limiteInscricoes: parametros.limiteInscricoes || null,
       modalidade: parametros.modalidade || null,
-      temTerceiroLugar: parametros.temTerceiroLugar !== false
+      temTerceiroLugar: parametros.temTerceiroLugar !== false,
+      dataEvento: params.dataInicio,
+      dataLimiteInscricoes: parametros.dataLimiteInscricoes || null,
+      intervaloPartidasMin: parametros.intervaloPartidasMin || 20
     });
     const canais = await criarCanaisRank(guild, categoria, rank, { nome: evento.nome, sufixoNumero: sufixo }, botUserId);
     camp.canais = {
@@ -95,7 +100,8 @@ async function criarEvento(guild, parametros) {
       partidas: canais.partidas.id,
       prints: canais.prints.id,
       organizador: canais.organizador.id,
-      avisos: canais.avisos.id
+      avisos: canais.avisos.id,
+      geral: canalGeral.id
     };
     camp.categoriaId = categoria.id;
     await camp.save();

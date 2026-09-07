@@ -26,6 +26,11 @@ const campeonatoSchema = new mongoose.Schema({
   limiteInscricoes: { type: Number, default: null, min: 2 },
   modalidade: { type: String, enum: ['single', 'double', 'round-robin', 'grupos-mata-mata'], default: null },
   temTerceiroLugar: { type: Boolean, default: true },
+  dataEvento: { type: Date, default: null },
+  dataLimiteInscricoes: { type: Date, default: null },
+  intervaloPartidasMin: { type: Number, default: 20, min: 1, max: 120 },
+  fasesEstimadas: { type: Number, default: null },
+  startAt: { type: Date, default: null },
   canais: {
     inscricoes: { type: String, default: null },
     partidas: { type: String, default: null },

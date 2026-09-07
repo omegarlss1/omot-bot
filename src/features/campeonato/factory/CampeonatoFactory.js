@@ -17,7 +17,7 @@ function modoPadrao(rank) {
   return '3v3';
 }
 
-function criar({ eventoId, guildId, rank, sufixoNumero, modo = modoPadrao(), tipoDupla = 'SORTEADA', formato = 'single-elimination', baseadoEmInscricoes = true, limiteInscricoes = null, modalidade = null, temTerceiroLugar = true } = {}) {
+function criar({ eventoId, guildId, rank, sufixoNumero, modo = modoPadrao(), tipoDupla = 'SORTEADA', formato = 'single-elimination', baseadoEmInscricoes = true, limiteInscricoes = null, modalidade = null, temTerceiroLugar = true, dataEvento = null, dataLimiteInscricoes = null, intervaloPartidasMin = 20 } = {}) {
   if (!eventoId) throw new Error('[CampeonatoFactory] eventoId obrigatório.');
   if (!guildId) throw new Error('[CampeonatoFactory] guildId obrigatório.');
   if (!rank) throw new Error('[CampeonatoFactory] rank obrigatório.');
@@ -42,6 +42,10 @@ function criar({ eventoId, guildId, rank, sufixoNumero, modo = modoPadrao(), tip
     limiteInscricoes,
     modalidade,
     temTerceiroLugar,
+    dataEvento,
+    dataLimiteInscricoes,
+    intervaloPartidasMin,
+    startAt: dataEvento,
     status: 'INSCRICOES_ABERTAS'
   });
 }

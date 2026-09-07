@@ -16,7 +16,11 @@ module.exports = {
     if (!temPermissaoOrganizador(interaction.member)) {
       return interaction.reply({ content: 'Apenas @OrganizadorCamps ou administradores.', flags: 64 });
     }
-    const campeonatos = await Campeonato.find({ status: 'INSCRICOES_ABERTAS', guildId: interaction.guildId }).sort({ criadoEm: -1 }).lean();
+    const campeonatos = await Campeonato.find({
+      status: 'INSCRICOES_ABERTAS',
+      guildId: interaction.guildId,
+      $or: [{ dataLimiteInscricoes: null }, { dataLimiteInscricoes: { $gte: new Date() } }]
+    }).sort({ criadoEm: -1 }).lean();
     const linhas = campeonatos.map((camp) =>
       `• **${camp.nome}** | ID: \`${camp._id}\` | Rank: **${camp.rank}** | Inscrições: <#${camp.canais?.inscricoes || '—'}> | Avisos: <#${camp.canais?.avisos || '—'}>`
     );

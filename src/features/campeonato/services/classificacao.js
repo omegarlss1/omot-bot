@@ -1,5 +1,7 @@
 const Time = require('../../../db/models/time');
 const Partida = require('../../../db/models/partida');
+const Campeonato = require('../../../db/models/campeonato');
+const { StartGGAdapter } = require('../adapters/StartGGAdapter');
 const regulamento = require('../../../config/regulamento');
 const { emitir, EVENTOS } = require('../events');
 const TwoTeamsTiebreaker = require('../strategies/TwoTeamsTiebreaker');
@@ -32,6 +34,9 @@ function construirPontuacaoBase(times, partidas) {
       derrotas: 0,
       woTomados: 0,
       woDados: 0,
+      gameWinPercent: t.gameWinPercent,
+      buchholz: t.buchholz,
+      penalidades: t.penalidades || 0,
       partidasAnuladasPorWO: [],
       partidasFinalizadas: 0
     });
@@ -101,16 +106,51 @@ async function calcularClassificacao(campeonatoId) {
   }
   const partidas = await Partida.find({ campeonatoId }).lean();
   const pontuacao = construirPontuacaoBase(times, partidas);
+  const campeonato = await Campeonato.findById(campeonatoId).lean();
+  let startggMetrics = new Map();
+  if (campeonato?.startgg?.tournamentId && times.some((time) => time.startggEntrantId)) {
+    try {
+      startggMetrics = await new StartGGAdapter().fetchStandingsMetrics(campeonato.startgg.tournamentId);
+      for (const item of pontuacao) {
+        const time = times.find((candidate) => String(candidate._id) === item.timeId);
+        const metric = time?.startggEntrantId && startggMetrics.get(String(time.startggEntrantId));
+        if (metric) Object.assign(item, metric);
+      }
+    } catch (error) {
+      console.warn(`[classificacao] Start.gg indisponível, usando fallback local: ${error.message}`);
+    }
+  }
 
   const ordenado = [...pontuacao].sort((a, b) => {
     if (b.pontos !== a.pontos) return b.pontos - a.pontos;
     if (b.vitorias !== a.vitorias) return b.vitorias - a.vitorias;
+    if ((b.gameWinPercent ?? -1) !== (a.gameWinPercent ?? -1)) return (b.gameWinPercent ?? -1) - (a.gameWinPercent ?? -1);
+    if (a.woTomados + a.penalidades !== b.woTomados + b.penalidades) return (a.woTomados + a.penalidades) - (b.woTomados + b.penalidades);
+    if ((b.buchholz ?? -1) !== (a.buchholz ?? -1)) return (b.buchholz ?? -1) - (a.buchholz ?? -1);
     return a.nome.localeCompare(b.nome);
   });
 
   const strategies = getStrategies();
   const desempatesPendentes = [];
   const grupos = detectarEmpates(ordenado);
+
+  for (const grupo of grupos.filter((item) => item.length === 2)) {
+    const ids = new Set(grupo.map((item) => item.timeId));
+    const confronto = partidas.find((partida) => {
+      if (partida.status !== 'FINALIZADA' || !partida.vencedorId) return false;
+      return ids.has(String(partida.timeA)) && ids.has(String(partida.timeB));
+    });
+    if (confronto) {
+      const vencedorId = String(confronto.vencedorId);
+      const vencedor = grupo.find((item) => item.timeId === vencedorId);
+      const perdedor = grupo.find((item) => item.timeId !== vencedorId);
+      if (vencedor && perdedor) {
+        const inicio = ordenado.findIndex((item) => item.timeId === vencedor.timeId);
+        const fim = ordenado.findIndex((item) => item.timeId === perdedor.timeId);
+        if (inicio > fim) [ordenado[inicio], ordenado[fim]] = [ordenado[fim], ordenado[inicio]];
+      }
+    }
+  }
 
   for (const grupo of grupos) {
     if (strategies.tresMais.podeAplicar(grupo)) {
@@ -127,7 +167,7 @@ async function calcularClassificacao(campeonatoId) {
     } else if (strategies.dois.podeAplicar(grupo)) {
       const r = strategies.dois.resolver(grupo);
       if (r.precisaMD3) {
-        desempatesPendentes.push({ tipo: 'MD3', times: grupo.map((g) => g.timeId) });
+        desempatesPendentes.push({ tipo: 'MD3', precisaMD3: true, times: grupo.map((g) => g.timeId) });
         emitir(EVENTOS.DESEMPATE_NECESSARIO, { tipo: 'MD3', times: grupo.map((g) => g.timeId), campeonatoId });
       } else if (r.desempate) {
         reordenar(ordenado, r);

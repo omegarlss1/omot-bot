@@ -38,6 +38,7 @@ const partidaSchema = new mongoose.Schema({
   campeonatoId: { type: mongoose.Schema.Types.ObjectId, ref: 'Campeonato', required: true, index: true },
   fase: { type: String, required: true },
   rodada: { type: Number, default: 1 },
+  estimatedStartAt: { type: Date, default: null },
   timeA: { type: mongoose.Schema.Types.ObjectId, ref: 'Time', default: null },
   timeB: { type: mongoose.Schema.Types.ObjectId, ref: 'Time', default: null },
   janelaCheckIn: {
