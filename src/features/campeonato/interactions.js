@@ -49,7 +49,7 @@ function parseDataBR(texto) {
   const match = String(texto || '').trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (!match) return null;
   const [, dd, mm, yyyy] = match;
-  const data = new Date(Number(yyyy), Number(mm) - 1, Number(dd), 12, 0, 0);
+  const data = new Date(Number(yyyy), Number(mm) - 1, Number(dd), 23, 59, 59);
   return Number.isNaN(data.getTime()) ? null : data;
 }
 
