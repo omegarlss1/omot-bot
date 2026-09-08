@@ -732,17 +732,32 @@ async function onSubmitBroadcast(interaction) {
 
 async function onBotaoFecharInscricoes(interaction) {
   if (!temPermissaoOrganizador(interaction.member)) {
-    return interaction.reply({ content: 'Apenas @OrganizadorCamps pode fechar inscricoes.', flags: 64 });
+    return safeReply(interaction, { content: 'Apenas @OrganizadorCamps pode fechar inscricoes.', flags: 64 });
   }
   const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId);
   if (!campeonato) {
-    return interaction.reply({ content: 'Campeonato nao encontrado.', flags: 64 });
+    return safeReply(interaction, { content: 'Campeonato nao encontrado.', flags: 64 });
   }
   const inscricoes = await listarInscricoes(campeonato._id);
   await fecharInscricoes(campeonato._id);
-  return interaction.reply({
-    content: 'Inscricoes fechadas. ' + inscricoes.length + ' time(s) inscrito(s).',
-    flags: 64
+  console.log('[Finalizar] campeonatoId', campeonato._id, 'status INSCRICOES_FECHADAS');
+  // Atualizar painel do organizador se estiver aberto
+  const canalOrgao = campeonato.canais?.organizador;
+  if (canalOrgao) {
+    try {
+      const canal = await interaction.guild.channels.fetch(canalOrgao);
+      if (canal) {
+        const campAtualizado = await Campeonato.findById(campeonato._id).lean();
+        const { atualizarPainelOrganizador } = require('./services/painel');
+        await atualizarPainelOrganizador(canal, campAtualizado, 'gestao');
+      }
+    } catch (e) {
+      console.warn('[Finalizar] falha ao atualizar painel:', e.message);
+    }
+  }
+  return safeReply(interaction, { 
+    content: 'Inscricoes fechadas. ' + inscricoes.length + ' time(s) inscrito(s).', 
+    flags: 64 
   });
 }
 
@@ -797,6 +812,43 @@ async function onEscolherFormato(interaction) {
   });
 }
 
+async function onDefinirFormato(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
+  }
+  const campeonatoId = interaction.customId.replace('btn_camp_definir_formato_', '');
+  const select = new StringSelectMenuBuilder()
+    .setCustomId('modal_camp_definir_formato_select_' + campeonatoId)
+    .setPlaceholder('Escolha o formato do campeonato')
+    .addOptions([
+      { label: 'Single Elimination', value: 'single-elimination', description: 'Eliminatória simples' },
+      { label: 'Double Elimination', value: 'double-elimination', description: 'Eliminatória dupla' },
+      { label: 'Round Robin', value: 'round-robin', description: 'Todos contra todos' },
+      { label: 'Grupos + Mata-mata', value: 'grupos-mata-mata', description: 'Fase de grupos + eliminatória' }
+    ]);
+  return interaction.update({
+    content: 'Selecione o formato do campeonato:',
+    embeds: [],
+    components: [new ActionRowBuilder().addComponents(select)]
+  });
+}
+
+async function onDefinirFormatoSelect(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
+  }
+  const match = interaction.customId.match(/^modal_camp_definir_formato_select_([a-f0-9]{24})$/);
+  if (!match) return;
+  const [, campeonatoId] = match;
+  const formato = interaction.values[0];
+  await definirFormato(campeonatoId, formato);
+  return interaction.update({
+    content: 'Formato definido como ' + formato + '. Agora você pode gerar o bracket.',
+    embeds: [],
+    components: []
+  });
+}
+
 async function onBotaoGerarBracket(interaction) {
   if (!temPermissaoOrganizador(interaction.member)) {
     return interaction.reply({ content: 'Apenas @OrganizadorCamps pode gerar bracket.', flags: 64 });
@@ -808,9 +860,31 @@ async function onBotaoGerarBracket(interaction) {
   await interaction.deferReply({ flags: 64 });
   try {
     const resultado = await gerarBracket(campeonato._id);
+    
+    // Post bracket to #partidas channel
+    if (campeonato.canais?.partidas && resultado.canvas) {
+      try {
+        const canalPartidas = await interaction.guild.channels.fetch(campeonato.canais.partidas);
+        if (canalPartidas?.isTextBased?.()) {
+          const base = new Date(campeonato.dataEvento || campeonato.startAt || Date.now());
+          const intervalo = Number(campeonato.intervaloPartidasMin || 20);
+          const horarioStr = `<t:${Math.floor(base.getTime() / 1000)}:F>`;
+          const formatoStr = campeonato.modalidade || 'Single Elimination';
+          
+          await canalPartidas.send({
+            content: `📣 **Bracket gerado!** ${campeonato.nome} - ${formatoStr} - ${resultado.totalPartidas} partidas\n` +
+                     `R1 começa ${horarioStr} | Intervalo ${intervalo}min | Check-in [H-5min, H+5min]`,
+            files: [new AttachmentBuilder(resultado.canvas, { name: `bracket-${campeonato.rank}.png` })]
+          });
+        }
+      } catch (e) {
+        console.warn('[gerarBracket] Falha ao postar no canal #partidas:', e.message);
+      }
+    }
+    
     if (resultado.canvas) {
       return interaction.editReply({
-        content: `Bracket gerado! ${resultado.totalPartidas} partidas na R1.`,
+        content: `Bracket gerado! ${resultado.totalPartidas} partidas na R1. Postado em <#${campeonato.canais?.partidas}>.`,
         files: [new AttachmentBuilder(resultado.canvas, { name: `bracket-${campeonato.rank}.png` })],
         embeds: [],
         components: []
@@ -1256,6 +1330,26 @@ async function onPainelOrganizadorTab(interaction) {
         }).join(', ') || 'Sem jogadores';
         return `${i + 1}. **${t.nome || 'Sem nome'}** — ${jogadores}`;
       }).join('\n') || 'Nenhum time definido.';
+      
+      // Select menu for team actions
+      const opcoesTimes = times.slice(0, 25).map(t => ({
+        label: t.nome || 'Sem nome',
+        value: String(t._id),
+        description: `${t.jogadores?.length || 0} jogador(es)`
+      }));
+      
+      const components = [];
+      if (opcoesTimes.length > 0) {
+        components.push(
+          new ActionRowBuilder().addComponents(
+            new StringSelectMenuBuilder()
+              .setCustomId('select_camp_time_acao_' + campeonato._id)
+              .setPlaceholder('Selecione um time para gerenciar')
+              .addOptions(opcoesTimes)
+          )
+        );
+      }
+      
       return atualizarPainelOrganizador(interaction, campeonato, 'inscritos', {
         embeds: [{
           title: '👥 ABA 2 - TIMES DEFINIDOS',
@@ -1263,7 +1357,7 @@ async function onPainelOrganizadorTab(interaction) {
           color: 0x00FF00,
           footer: { text: `Total: ${times.length} time(s)` }
         }],
-        components: []
+        components: components
       });
     }
     case 'partidas': {
@@ -1486,6 +1580,149 @@ async function onSubmitLimite(interaction) {
   });
 }
 
+async function onSelectTimeAcao(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
+  }
+  const campeonatoId = interaction.customId.replace('select_camp_time_acao_', '');
+  const timeId = interaction.values[0];
+  const time = await Time.findById(timeId).lean();
+  if (!time) {
+    return interaction.update({ content: 'Time nao encontrado.', embeds: [], components: [] });
+  }
+  const jogadores = time.jogadores || [];
+  const opcoesJogadores = jogadores.map(j => ({
+    label: j.nickSnapshot || j.nome || 'Sem nome',
+    value: String(j.userId),
+    description: j.origem === 'WHATSAPP' ? 'WhatsApp' : 'Discord'
+  }));
+  const components = [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('btn_camp_excluir_time_' + campeonatoId)
+        .setLabel('🗑️ Excluir Time')
+        .setStyle(ButtonStyle.Danger)
+    ),
+    new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId('select_camp_jogador_excluir_' + campeonatoId)
+        .setPlaceholder('Selecione jogador para excluir')
+        .addOptions(opcoesJogadores)
+    ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('btn_camp_excluir_jogador_' + campeonatoId)
+        .setLabel('👤 Excluir Jogador')
+        .setStyle(ButtonStyle.Secondary)
+    ),
+    new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId('select_camp_jogador_capitao_' + campeonatoId)
+        .setPlaceholder('Selecione novo capitão')
+        .addOptions(opcoesJogadores)
+    ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('btn_camp_trocar_capitao_' + campeonatoId)
+        .setLabel('👑 Trocar Capitão')
+        .setStyle(ButtonStyle.Primary)
+    )
+  ];
+  return interaction.update({
+    content: `Gerenciando time: **${time.nome || 'Sem nome'}**`,
+    embeds: [],
+    components: components
+  });
+}
+
+async function onExcluirTime(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return safeReply(interaction, { content: 'Sem permissao.', flags: 64 });
+  }
+  const campeonatoId = interaction.customId.replace('btn_camp_excluir_time_', '');
+  const time = await Time.findOneAndDelete({ campeonatoId });
+  if (!time) {
+    return safeReply(interaction, { content: 'Time nao encontrado.', flags: 64 });
+  }
+  console.log('[Time] excluido', time._id, 'campeonatoId', campeonatoId);
+  // Atualizar painel
+  const campeonato = await Campeonato.findById(campeonatoId).lean();
+  const { atualizarPainelOrganizador } = require('./services/painel');
+  const canalOrgao = campeonato?.canais?.organizador;
+  if (canalOrgao) {
+    try {
+      const canal = await interaction.guild.channels.fetch(canalOrgao);
+      if (canal) await atualizarPainelOrganizador(canal, campeonato, 'times');
+    } catch (e) {}
+  }
+  return safeReply(interaction, { content: `Time **${time.nome || 'Sem nome'}** excluido.`, flags: 64 });
+}
+
+async function onSelectJogadorExcluir(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
+  }
+  // Store selected player for next button
+  interaction.client._selectedJogadorExcluir = interaction.values[0];
+  return interaction.update({ content: 'Jogador selecionado. Clique em Excluir Jogador para confirmar.', embeds: [], components: [] });
+}
+
+async function onExcluirJogador(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return safeReply(interaction, { content: 'Sem permissao.', flags: 64 });
+  }
+  const campeonatoId = interaction.customId.replace('btn_camp_excluir_jogador_', '');
+  const jogadorId = interaction.client._selectedJogadorExcluir;
+  if (!jogadorId) {
+    return safeReply(interaction, { content: 'Nenhum jogador selecionado.', flags: 64 });
+  }
+  const time = await Time.findOneAndUpdate(
+    { campeonatoId, 'jogadores.userId': jogadorId },
+    { $pull: { jogadores: { userId: jogadorId } } },
+    { new: true }
+  );
+  if (!time) {
+    return safeReply(interaction, { content: 'Jogador nao encontrado no time.', flags: 64 });
+  }
+  // If 1x1 and no players left, delete the team
+  const modo = (await Campeonato.findById(campeonatoId).lean())?.modo || '1v1';
+  if (['1v1', '2v2'].includes(modo) && time.jogadores.length === 0) {
+    await Time.findByIdAndDelete(time._id);
+    console.log('[Time] excluido por ficar vazio apos remover jogador', time._id);
+  }
+  console.log('[Jogador] excluido', jogadorId, 'do time', time._id);
+  return safeReply(interaction, { content: 'Jogador excluido do time.', flags: 64 });
+}
+
+async function onSelectJogadorCapitao(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
+  }
+  interaction.client._selectedJogadorCapitao = interaction.values[0];
+  return interaction.update({ content: 'Novo capitão selecionado. Clique em Trocar Capitão para confirmar.', embeds: [], components: [] });
+}
+
+async function onTrocarCapitao(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return safeReply(interaction, { content: 'Sem permissao.', flags: 64 });
+  }
+  const campeonatoId = interaction.customId.replace('btn_camp_trocar_capitao_', '');
+  const novoCapitaoId = interaction.client._selectedJogadorCapitao;
+  if (!novoCapitaoId) {
+    return safeReply(interaction, { content: 'Nenhum jogador selecionado.', flags: 64 });
+  }
+  const time = await Time.findOneAndUpdate(
+    { campeonatoId },
+    { $set: { capitaoId: novoCapitaoId } },
+    { new: true }
+  );
+  if (!time) {
+    return safeReply(interaction, { content: 'Time nao encontrado.', flags: 64 });
+  }
+  console.log('[Capitao] trocado para', novoCapitaoId, 'no time', time._id);
+  return safeReply(interaction, { content: 'Capitão trocado com sucesso.', flags: 64 });
+}
+
 function register(registry) {
   registry.button('btn_campeonato_criar', onAbrirPainelCriacao);
   registry.button('btn_campeonato_criar_evento', onBotaoCriarEvento);
@@ -1506,6 +1743,8 @@ function register(registry) {
   registry.button('btn_camp_fechar_inscricoes', onBotaoFecharInscricoes);
   registry.button('btn_camp_cortar', onBotaoCortar);
   registry.button(/^btn_camp_formato_(round-robin|grupos-mata-mata|double-elimination|single-elimination)_[a-f0-9]{24}$/, onEscolherFormato);
+  registry.button(/^btn_camp_definir_formato_[a-f0-9]{24}$/, onDefinirFormato);
+  registry.select(/^modal_camp_definir_formato_select_[a-f0-9]{24}$/, onDefinirFormatoSelect);
   registry.button('btn_camp_gerar_bracket', onBotaoGerarBracket);
   registry.button(/^btn_camp_checkin_[a-f0-9]{24}$/, onBotaoCheckIn);
   registry.button(/^btn_camp_adversario_faltou_[a-f0-9]{24}$/, onBotaoAdversarioFaltou);
@@ -1530,6 +1769,12 @@ function register(registry) {
   registry.button('btn_camp_confirmar_criacao', onConfirmarCriacao);
   registry.button('btn_camp_cancelar_criacao', onCancelarCriacao);
   registry.select('painel_org_tab', onPainelOrganizadorTab);
+  registry.select(/^select_camp_time_acao_[a-f0-9]{24}$/, onSelectTimeAcao);
+  registry.button(/^btn_camp_excluir_time_[a-f0-9]{24}$/, onExcluirTime);
+  registry.button(/^btn_camp_excluir_jogador_[a-f0-9]{24}$/, onExcluirJogador);
+  registry.button(/^btn_camp_trocar_capitao_[a-f0-9]{24}$/, onTrocarCapitao);
+  registry.select(/^select_camp_jogador_excluir_[a-f0-9]{24}$/, onSelectJogadorExcluir);
+  registry.select(/^select_camp_jogador_capitao_[a-f0-9]{24}$/, onSelectJogadorCapitao);
 }
 
 module.exports = { register, temPermissaoOrganizador, parseDataBR, publicarPainelInscricao };

@@ -46,37 +46,49 @@ test('placar.parsePlacar / placarEhValido', async (t) => {
 });
 
 test('bracket.parearChaves', async (t) => {
-  await t.test('4 times → 2 chaves, 8 times → 4 chaves', () => {
+  await t.test('4 times → R1=2, FINAL=1 (total 3)', () => {
     comEnv({}, () => {
       const { parearChaves } = require('../src/features/campeonato/services/bracket');
       const t4 = [{ _id: 'a' }, { _id: 'b' }, { _id: 'c' }, { _id: 'd' }];
       const c4 = parearChaves(t4, () => 0.5);
-      assert.equal(c4.length, 2);
-      assert.equal(c4[0].fase, 'R1');
-      const t8 = Array.from({ length: 8 }, (_, i) => ({ _id: 't' + i }));
-      const c8 = parearChaves(t8, () => 0.5);
-      assert.equal(c8.length, 4);
+      // 4 times (power of 2): R1=2, FINAL=1 = 3 total (N-1)
+      assert.equal(c4.length, 3);
+      const r1 = c4.filter(p => p.fase === 'R1');
+      assert.equal(r1.length, 2);
+      assert.equal(r1[0].fase, 'R1');
     });
   });
 
-  await t.test('3 times → 4 chaves (1 BYE)', () => {
+  await t.test('3 times → R1=1, FINAL=1 (total 2, no BYE vs BYE)', () => {
     comEnv({}, () => {
       const { parearChaves } = require('../src/features/campeonato/services/bracket');
       const t3 = [{ _id: 'a' }, { _id: 'b' }, { _id: 'c' }];
       const c = parearChaves(t3, () => 0.5);
+      // 3 times: nextPow2=4, BYEs=1, R1=1 match, FINAL=1 match = 2 total (N-1)
       assert.equal(c.length, 2);
-      const totalSlots = c.reduce((acc, p) => acc + (p.timeA ? 1 : 0) + (p.timeB ? 1 : 0), 0);
-      assert.equal(totalSlots, 3);
+      const r1 = c.filter(p => p.fase === 'R1');
+      assert.equal(r1.length, 1);
+      // No R1/R2 match should have both teams null (BYE vs BYE)
+      const byeVsBye = c.filter(p => (p.fase === 'R1' || p.fase === 'R2') && !p.timeA && !p.timeB);
+      assert.equal(byeVsBye.length, 0);
     });
   });
 
-  await t.test('5 times → 8 chaves (3 BYE)', () => {
+  await t.test('5 times → R1=1, R2=2, FINAL=1 (total 4, no BYE vs BYE)', () => {
     comEnv({}, () => {
       const { parearChaves, proximaPotenciaDe2 } = require('../src/features/campeonato/services/bracket');
       assert.equal(proximaPotenciaDe2(5), 8);
       const t5 = Array.from({ length: 5 }, (_, i) => ({ _id: 't' + i }));
       const c = parearChaves(t5, () => 0.5);
+      // 5 times: nextPow2=8, BYEs=3, R1=1, R2=2, FINAL=1 = 4 total (N-1)
       assert.equal(c.length, 4);
+      const r1 = c.filter(p => p.fase === 'R1');
+      assert.equal(r1.length, 1);
+      const r2 = c.filter(p => p.fase === 'R2');
+      assert.equal(r2.length, 2);
+      // No R1/R2 match should have both teams null (BYE vs BYE)
+      const byeVsBye = c.filter(p => (p.fase === 'R1' || p.fase === 'R2') && !p.timeA && !p.timeB);
+      assert.equal(byeVsBye.length, 0);
     });
   });
 });
@@ -265,14 +277,14 @@ test('classificacao.detectarEmpates', async (t) => {
 });
 
 test('handlers da Fase 2 registrados', async (t) => {
-  await t.test('30 handlers: 22 botões + 3 selects + 5 modais', () => {
+  await t.test('34 handlers: 26 botões + 7 selects + 5 modais', () => {
     comEnv({}, () => {
       const { InteractionRegistry } = require('../src/interactions/registry');
       const interactions = require('../src/features/campeonato/interactions');
       const r = new InteractionRegistry();
       interactions.register(r);
-      assert.equal(r.buttons.length, 28);
-      assert.equal(r.selects.length, 7);
+      assert.equal(r.buttons.length, 32);
+      assert.equal(r.selects.length, 11);
       assert.equal(r.modals.length, 8);
     });
   });

@@ -222,6 +222,14 @@ function embedPainelAdmin({ campeonato }) {
       { type: 2, style: 1, label: '🔒 Encerrar inscrições', custom_id: 'btn_camp_fechar_inscricoes', emoji: { name: '🔒' } }
     ]
   ];
+  
+  // Botão para definir formato quando baseado em inscrições e ainda não tem formato
+  if (campeonato.baseadoEmInscricoes && !campeonato.modalidade && campeonato.status === 'INSCRICOES_ABERTAS') {
+    botoes.push([
+      { type: 2, style: 3, label: '📋 Definir Formato', custom_id: 'btn_camp_definir_formato_' + campeonato._id, emoji: { name: '📋' } }
+    ]);
+  }
+  
   if (campeonato.status !== 'CANCELADO') {
     botoes.push([
       { type: 2, style: 3, label: '🏁 Finalizar', custom_id: 'btn_camp_finalizar_' + campeonato._id, emoji: { name: '🏁' } },

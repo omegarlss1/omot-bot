@@ -9,7 +9,13 @@ function proximaPotenciaDe2(n) {
 }
 
 function calcularBracketLayout(totalTimes) {
-  const rounds = Math.log2(totalTimes);
+  const N = totalTimes;
+  const nextPow2 = proximaPotenciaDe2(N);
+  const numByes = nextPow2 - N;
+  const r1Matches = Math.floor((N - numByes) / 2);
+  const r2Matches = nextPow2 / 2;
+  const rounds = Math.log2(nextPow2);
+  
   const layout = [];
   const larguraPartida = 220;
   const alturaPartida = 58;
@@ -18,8 +24,20 @@ function calcularBracketLayout(totalTimes) {
   const alturaTotal = 600;
   const margemSuperior = 100;
 
-  for (let r = 0; r < rounds; r++) {
-    const partidas = totalTimes / (2 ** (r + 1));
+  // R1: only matches between non-BYE teams
+  if (r1Matches > 0) {
+    const posicoes = [];
+    for (let p = 0; p < r1Matches; p++) {
+      const espaco = alturaTotal / (r1Matches + 1);
+      const y = margemSuperior + espaco * (p + 1) - alturaPartida / 2;
+      posicoes.push({ x: inicioX, y, largura: larguraPartida, altura: alturaPartida });
+    }
+    layout.push({ nome: 'R1', x: inicioX, partidas: posicoes });
+  }
+
+  // R2 and beyond
+  for (let r = 1; r < rounds; r++) {
+    const partidas = nextPow2 / (2 ** (r + 1));
     const x = inicioX + r * (larguraPartida + espacoEntreRounds);
     const posicoes = [];
     for (let p = 0; p < partidas; p++) {
@@ -36,10 +54,12 @@ function calcularBracketLayout(totalTimes) {
   return layout;
 }
 
-function buildSvgString({ times = [], incluirTerceiroLugar = true, baseadoEmInscricoes = true, limite = null, horarioInicio = null } = {}) {
+function buildSvgString({ times = [], incluirTerceiroLugar = true, baseadoEmInscricoes = true, limite = null, horarioInicio = null, intervaloPartidasMin = 20 } = {}) {
   const total = Math.max(2, Math.min(16, times.length));
   const isPotencia2 = total > 0 && (total & (total - 1)) === 0;
-  const totalSlots = isPotencia2 ? total : proximaPotenciaDe2(total);
+  const nextPow2 = isPotencia2 ? total : proximaPotenciaDe2(total);
+  const numByes = nextPow2 - total;
+  const r2MatchCount = nextPow2 / 2;
 
   const nomes = times.slice(0, 16).map((time) => {
     const primeiroJogador = (time.jogadores && time.jogadores[0]) || {};
@@ -55,12 +75,22 @@ function buildSvgString({ times = [], incluirTerceiroLugar = true, baseadoEmInsc
     throw new Error(`Limite é ${limite} mas tem ${total} inscritos. Remova o excedente.`);
   }
 
-  const slots = [...nomes];
-  if (baseadoEmInscricoes && !isPotencia2) {
-    while (slots.length < totalSlots) slots.push('BYE');
-  }
+  // Shuffle for display (same seed as bracket for consistency)
+  const shuffled = [...nomes].sort(() => Math.random() - 0.5);
+  
+  // BYE teams (top seeds) advance directly to R2
+  const timesComBye = shuffled.slice(0, numByes);
+  const timesSemBye = shuffled.slice(numByes);
+  
+  // R1 slots: only non-BYE teams
+  const r1Slots = [...timesSemBye];
+  while (r1Slots.length < (total - numByes)) r1Slots.push('TBD');
+  
+  // R2 slots: BYE teams + R1 winners (TBD)
+  const r2Slots = [...timesComBye];
+  while (r2Slots.length < r2MatchCount) r2Slots.push('TBD');
 
-  const layout = calcularBracketLayout(isPotencia2 ? total : totalSlots);
+  const layout = calcularBracketLayout(total);
   const linhas = [];
   const cores = ['#00c2ff', '#7c3aed', '#f59e0b', '#ef4444', '#22c55e'];
   const larguraSvg = layout[layout.length - 1].x + 300;
@@ -80,17 +110,40 @@ function buildSvgString({ times = [], incluirTerceiroLugar = true, baseadoEmInsc
 
     for (let p = 0; p < round.partidas.length; p++) {
       const pos = round.partidas[p];
-      const idxA = p * 2;
-      const idxB = p * 2 + 1;
-      const nomeA = r === 0 ? (slots[idxA] || 'TBD') : 'Vencedor ' + layout[r - 1].nome + ' ' + (p * 2 + 1);
-      const nomeB = r === 0 ? (slots[idxB] || 'TBD') : 'Vencedor ' + layout[r - 1].nome + ' ' + (p * 2 + 2);
+      
+      let nomeA, nomeB;
+      if (r === 0) {
+        // R1: from r1Slots
+        const idxA = p * 2;
+        const idxB = p * 2 + 1;
+        nomeA = r1Slots[idxA] || 'TBD';
+        nomeB = r1Slots[idxB] || 'TBD';
+      } else if (r === 1) {
+        // R2: from r2Slots
+        const idxA = p;
+        const idxB = p + r2MatchCount;
+        if (idxA < r2Slots.length) {
+          nomeA = r2Slots[idxA] || 'TBD';
+        } else {
+          nomeA = 'Vencedor R1 ' + (p * 2 + 1);
+        }
+        if (idxB < r2Slots.length) {
+          nomeB = r2Slots[idxB] || 'TBD';
+        } else {
+          nomeB = 'Vencedor R1 ' + (p * 2 + 2);
+        }
+      } else {
+        // Later rounds
+        nomeA = 'Vencedor ' + layout[r - 1].nome + ' ' + (p * 2 + 1);
+        nomeB = 'Vencedor ' + layout[r - 1].nome + ' ' + (p * 2 + 2);
+      }
 
       linhas.push(`<rect x="${pos.x}" y="${pos.y}" width="${pos.largura}" height="${pos.altura}" rx="6" fill="#1f2937" stroke="${cor}"/>`);
       linhas.push(`<text x="${pos.x + 12}" y="${pos.y + 24}" fill="#ffffff" font-family="Arial" font-size="16">${nomeA}</text>`);
       linhas.push(`<text x="${pos.x + 12}" y="${pos.y + 47}" fill="#d1d5db" font-family="Arial" font-size="16">${nomeB}</text>`);
 
       if (r === 0 && horarioBase) {
-        const minutos = indexPartidaR1 * 20;
+        const minutos = indexPartidaR1 * intervaloPartidasMin;
         const h = new Date(horarioBase.getTime() + minutos * 60 * 1000);
         const horarioStr = String(h.getHours()).padStart(2, '0') + ':' + String(h.getMinutes()).padStart(2, '0');
         linhas.push(`<text x="${pos.x}" y="${pos.y + 68}" fill="#9ca3af" font-family="Arial" font-size="12">${horarioStr}</text>`);

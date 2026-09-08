@@ -19,10 +19,10 @@ function proximaPotenciaDe2(n) {
   return p;
 }
 
-function embaralhar(array) {
+function embaralhar(array, semente = Math.random) {
   const arr = [...array];
   for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(semente() * (i + 1));
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
   return arr;
@@ -51,14 +51,71 @@ function gerarDuplas(jogadores) {
 }
 
 function parearChaves(times, semente = Math.random) {
-  const embaralhado = embaralhar(times);
-  const total = proximaPotenciaDe2(embaralhado.length);
-  const byes = total - embaralhado.length;
-  const slots = [...embaralhado, ...Array(byes).fill(null)];
+  const embaralhado = embaralhar(times, semente);
+  const N = embaralhado.length;
+  if (N < 2) return [];
+  
+  const nextPow2 = proximaPotenciaDe2(N);
+  const numByes = nextPow2 - N;
+  
+  // Top seeds get BYEs (advance directly to R2)
+  const timesComBye = embaralhado.slice(0, numByes);
+  const timesSemBye = embaralhado.slice(numByes);
+  
+  // R1: only teams without BYE play
   const partidas = [];
-  for (let i = 0; i < slots.length; i += 2) {
-    partidas.push({ rodada: 1, fase: 'R1', timeA: slots[i], timeB: slots[i + 1] });
+  for (let i = 0; i < timesSemBye.length; i += 2) {
+    partidas.push({ 
+      rodada: 1, 
+      fase: 'R1', 
+      timeA: timesSemBye[i], 
+      timeB: timesSemBye[i + 1],
+      timeAHasBye: false,
+      timeBHasBye: false
+    });
   }
+  
+  // R2: BYE teams + winners from R1 (placeholder for now, will be filled after R1)
+  // R2 has nextPow2/2 total slots, paired as nextPow2/4 matches
+  const r2TotalSlots = nextPow2 / 2;
+  const r2MatchCount = nextPow2 / 4;
+  
+  // Build R2 slots: BYE teams first, then R1 winners (null placeholders)
+  const r2Slots = [...timesComBye];
+  while (r2Slots.length < r2TotalSlots) r2Slots.push(null);
+  
+  for (let i = 0; i < r2MatchCount; i++) {
+    const timeA = r2Slots[i];
+    const timeB = r2Slots[r2MatchCount + i];
+    partidas.push({ 
+      rodada: 2, 
+      fase: 'R2', 
+      timeA, 
+      timeB,
+      timeAHasBye: !timeA,
+      timeBHasBye: !timeB
+    });
+  }
+  
+  // Subsequent rounds (semifinals, final, etc.)
+  let currentRound = 3;
+  let matchesInPrevRound = r2MatchCount;
+  while (matchesInPrevRound > 1) {
+    const matchesThisRound = matchesInPrevRound / 2;
+    for (let i = 0; i < matchesThisRound; i++) {
+      partidas.push({ 
+        rodada: currentRound, 
+        fase: currentRound === Math.log2(nextPow2) ? 'FINAL' : `R${currentRound}`,
+        timeA: null, // will be filled by previous round winner
+        timeB: null,
+        timeAHasBye: false,
+        timeBHasBye: false
+      });
+    }
+    matchesInPrevRound = matchesThisRound;
+    currentRound++;
+  }
+  
   return partidas;
 }
 
@@ -124,17 +181,33 @@ async function gerarBracket(campeonatoId, { shuffle = true } = {}) {
     }
   }
 
-  const chavesR1 = parearChaves(times, shuffle ? Math.random : () => 0.5);
+  const todasChaves = parearChaves(times, shuffle ? Math.random : () => 0.5);
   const inicioBase = new Date(campeonato.dataEvento || campeonato.startAt || Date.now());
   const intervaloMs = Number(campeonato.intervaloPartidasMin || 20) * 60 * 1000;
   const partidas = [];
-  for (const chave of chavesR1) {
+  
+  for (const chave of todasChaves) {
     const estimatedStartAt = new Date(inicioBase.getTime() + Math.max(0, chave.rodada - 1) * intervaloMs);
     const janela = gerarJanelaCheckIn(chave, estimatedStartAt);
+    
     const timeA = chave.timeA?._id || null;
     const timeB = chave.timeB?._id || null;
     const timeADoc = chave.timeA || null;
     const timeBDoc = chave.timeB || null;
+    
+    // BYE teams skip check-in entirely
+    const isByeMatch = !timeA && !timeB;
+    const isPartialBye = (!timeA || !timeB) && (timeA || timeB);
+    
+    let status = 'AGUARDANDO_CHECKIN';
+    if (isByeMatch) {
+      status = 'CANCELADA'; // BYE vs BYE shouldn't exist, but safety
+    } else if (isPartialBye) {
+      status = 'AGUARDANDO_CHECKIN'; // One team has BYE, other needs check-in? Actually BYE team auto-advances
+    }
+    
+    // For R1, all matches have both teams (no BYE in R1)
+    // For R2+, some teams are BYE (auto-advance)
     let duelos = [];
     const modo = campeonato.modo;
     if (timeADoc && timeBDoc && ehModoDuplasMescladas(modo)) {
@@ -152,6 +225,7 @@ async function gerarBracket(campeonatoId, { shuffle = true } = {}) {
         foiWO: false
       }));
     }
+    
     const p = await Partida.create({
       guildId,
       eventoId: campeonato.eventoId,
@@ -164,7 +238,7 @@ async function gerarBracket(campeonatoId, { shuffle = true } = {}) {
       timeBId: timeB?._id || null,
       estimatedStartAt,
       janelaCheckIn: janela,
-      status: 'AGUARDANDO_CHECKIN',
+      status: status === 'CANCELADA' ? 'CANCELADA' : 'AGUARDANDO_CHECKIN',
       duelos
     });
     partidas.push(p);
@@ -179,7 +253,8 @@ async function gerarBracket(campeonatoId, { shuffle = true } = {}) {
       incluirTerceiroLugar: campeonato.temTerceiroLugar !== false,
       baseadoEmInscricoes: campeonato.baseadoEmInscricoes !== false,
       limite: campeonato.limiteInscricoes || null,
-      horarioInicio: campeonato.dataEvento || campeonato.horarioInicio || null
+      horarioInicio: campeonato.dataEvento || campeonato.horarioInicio || null,
+      intervaloPartidasMin: campeonato.intervaloPartidasMin || 20
     }) : null
   };
 }
