@@ -1395,6 +1395,44 @@ async function onConfigSelect(interaction) {
   if (customId === 'modal_config_baseado') {
     selecao.baseadoEmInscricoes = valor === 'SIM';
     selecaoRanks.set(`camp:selecao:${interaction.user.id}`, selecao);
+    if (selecao.baseadoEmInscricoes) {
+      const [horaInicio, minutoInicio] = (selecao.horarioInicio || '19:00').split(':').map(Number);
+      const inicioDate = new Date(selecao.dataInicio);
+      const terminoDate = new Date(inicioDate);
+      terminoDate.setHours(horaInicio + 3, minutoInicio, 0, 0);
+      const duracaoMin = selecao.duracaoMin || 180;
+      const preview = gerarDescricaoEvento({
+        dataInicio: selecao.dataInicio,
+        duracaoMin,
+        numTimes: 0,
+        modo: selecao.modo || 'simples',
+        simultaneo: true,
+        horarioInicio: selecao.horarioInicio
+      });
+      const embed = {
+        title: '📋 Confira os dados do evento',
+        description: '**Nome:** ' + selecao.nome + '\n' +
+          '**Data de início:** ' + new Date(selecao.dataInicio).toLocaleDateString('pt-BR') + '\n' +
+          '**Horário:** ' + (selecao.horarioInicio || '19:00') + ' às ' + String(terminoDate.getHours()).padStart(2, '0') + ':' + String(terminoDate.getMinutes()).padStart(2, '0') + '\n' +
+          '**Modo:** ' + selecao.modo + '\n' +
+          '**Tipo Dupla:** ' + (selecao.tipoDupla || '—') + '\n' +
+          '**Baseado em Inscrições:** SIM\n' +
+          '**Ranks:** ' + (selecao.ranksSelecionados.length ? selecao.ranksSelecionados.map((r) => r.toUpperCase()).join(', ') : '—') + '\n' +
+          '**3º Lugar:** SIM (padrão)\n\n' +
+          '**Previsão:** ' + preview.horaInicio + ' às ' + preview.horaFim + '\n' +
+          preview.descricao,
+        color: 0xFF6B00
+      };
+      const components = [[
+        { type: 2, style: 3, label: '✅ Confirmar e Criar Evento', custom_id: 'btn_camp_confirmar_criacao', emoji: { name: '✅' } },
+        { type: 2, style: 4, label: '❌ Cancelar', custom_id: 'btn_camp_cancelar_criacao', emoji: { name: '❌' } }
+      ]];
+      return interaction.update({
+        content: 'Confira os dados do evento antes de criar:',
+        embeds: [embed],
+        components: toActionRows(components)
+      });
+    }
     const modalidade = new StringSelectMenuBuilder()
       .setCustomId('modal_config_modalidade')
       .setPlaceholder('Escolha a modalidade do campeonato')
@@ -1408,46 +1446,6 @@ async function onConfigSelect(interaction) {
       content: 'Escolha a modalidade do campeonato:',
       embeds: [],
       components: [new ActionRowBuilder().addComponents(modalidade)]
-    });
-  }
-  if (customId === 'modal_config_modalidade') {
-    selecao.modalidade = valor;
-    selecaoRanks.set(`camp:selecao:${interaction.user.id}`, selecao);
-    const [horaInicio, minutoInicio] = (selecao.horarioInicio || '19:00').split(':').map(Number);
-    const inicioDate = new Date(selecao.dataInicio);
-    const terminoDate = new Date(inicioDate);
-    terminoDate.setHours(horaInicio + 3, minutoInicio, 0, 0);
-    const duracaoMin = selecao.duracaoMin || 180;
-    const preview = gerarDescricaoEvento({
-      dataInicio: selecao.dataInicio,
-      duracaoMin,
-      numTimes: 0,
-      modo: selecao.modo || 'simples',
-      simultaneo: true,
-      horarioInicio: selecao.horarioInicio
-    });
-    const embed = {
-      title: '📋 Confira os dados do evento',
-      description: '**Nome:** ' + selecao.nome + '\n' +
-        '**Data de início:** ' + new Date(selecao.dataInicio).toLocaleDateString('pt-BR') + '\n' +
-        '**Horário:** ' + (selecao.horarioInicio || '19:00') + ' às ' + String(terminoDate.getHours()).padStart(2, '0') + ':' + String(terminoDate.getMinutes()).padStart(2, '0') + '\n' +
-        '**Modo:** ' + selecao.modo + '\n' +
-        '**Tipo Dupla:** ' + (selecao.tipoDupla || '—') + '\n' +
-        '**Baseado em Inscrições:** ' + (selecao.baseadoEmInscricoes ? 'SIM' : 'NÃO') + '\n' +
-        '**Ranks:** ' + (selecao.ranksSelecionados.length ? selecao.ranksSelecionados.map((r) => r.toUpperCase()).join(', ') : '—') + '\n' +
-        '**3º Lugar:** SIM (padrão)\n\n' +
-        '**Previsão:** ' + preview.horaInicio + ' às ' + preview.horaFim + '\n' +
-        preview.descricao,
-      color: 0xFF6B00
-    };
-    const components = [[
-      { type: 2, style: 3, label: '✅ Confirmar e Criar Evento', custom_id: 'btn_camp_confirmar_criacao', emoji: { name: '✅' } },
-      { type: 2, style: 4, label: '❌ Cancelar', custom_id: 'btn_camp_cancelar_criacao', emoji: { name: '❌' } }
-    ]];
-    return interaction.update({
-      content: 'Confira os dados do evento antes de criar:',
-      embeds: [embed],
-      components: toActionRows(components)
     });
   }
   if (customId === 'modal_config_modalidade') {
