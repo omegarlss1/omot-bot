@@ -734,9 +734,12 @@ async function onBotaoFecharInscricoes(interaction) {
   if (!temPermissaoOrganizador(interaction.member)) {
     return safeReply(interaction, { content: 'Apenas @OrganizadorCamps pode fechar inscricoes.', flags: 64 });
   }
-  const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId);
+  // Extrair campeonatoId do customId (btn_camp_fechar_inscricoes_<id>)
+  const campeonatoId = interaction.customId.replace('btn_camp_fechar_inscricoes_', '');
+  const campeonato = await Campeonato.findById(campeonatoId);
   if (!campeonato) {
-    return safeReply(interaction, { content: 'Campeonato nao encontrado.', flags: 64 });
+    console.error('[Encerrar] Campeonato não encontrado, ID extraído:', campeonatoId);
+    return safeReply(interaction, { content: `❌ Campeonato não encontrado (ID: ${campeonatoId}). Tente reabrir o painel /painel-organizador`, flags: 64 });
   }
   const inscricoes = await listarInscricoes(campeonato._id);
   await fecharInscricoes(campeonato._id);
@@ -842,10 +845,45 @@ async function onDefinirFormatoSelect(interaction) {
   const [, campeonatoId] = match;
   const formato = interaction.values[0];
   await definirFormato(campeonatoId, formato);
+  
+  const campeonato = await Campeonato.findById(campeonatoId);
+  if (!campeonato) {
+    return interaction.update({ content: 'Campeonato não encontrado.', embeds: [], components: [] });
+  }
+  
+  // Re-criar os botões do painel mantendo o select de formato com o valor selecionado
+  const rowFormato = new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+     .setCustomId(`modal_camp_definir_formato_select_${campeonato._id}`)
+     .setPlaceholder(`Formato atual: ${formato}`)
+     .addOptions([
+        { label: 'Single Elimination', value: 'single-elimination', default: formato==='single-elimination' },
+        { label: 'Double Elimination', value: 'double-elimination', default: formato==='double-elimination' },
+        { label: 'Round Robin', value: 'round-robin', default: formato==='round-robin' },
+        { label: 'Grupos + Mata-mata', value: 'grupos-mata-mata', default: formato==='grupos-mata-mata' }
+      ])
+  );
+
+  const rowAcoes = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`btn_camp_gerar_bracket_${campeonato._id}`)
+      .setLabel('🎯 Gerar Bracket')
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`btn_camp_fechar_inscricoes_${campeonato._id}`)
+      .setLabel('🔒 Encerrar Inscrições')
+      .setStyle(ButtonStyle.Danger)
+      .setDisabled(campeonato.status==='INSCRICOES_FECHADAS'),
+    new ButtonBuilder()
+      .setCustomId(`btn_camp_gerenciar_times_${campeonato._id}`)
+      .setLabel('👥 Gerenciar Times')
+      .setStyle(ButtonStyle.Secondary)
+  );
+
+  // IMPORTANTE: usar update, não reply, para manter mensagem
   return interaction.update({
-    content: 'Formato definido como ' + formato + '. Agora você pode gerar o bracket.',
-    embeds: [],
-    components: []
+    content: `✅ Formato definido: **${formato.toUpperCase()}** para **${campeonato.nome}**.\nAgora clique em Gerar Bracket.`,
+    components: [rowFormato, rowAcoes]
   });
 }
 
@@ -853,7 +891,14 @@ async function onBotaoGerarBracket(interaction) {
   if (!temPermissaoOrganizador(interaction.member)) {
     return interaction.reply({ content: 'Apenas @OrganizadorCamps pode gerar bracket.', flags: 64 });
   }
-  const campeonato = await findCampeonatoPorCanal(interaction.channelId);
+  // Try to get campeonato ID from customId first (btn_camp_gerar_bracket_<id>)
+  let campeonato;
+  const match = interaction.customId.match(/^btn_camp_gerar_bracket_([a-f0-9]{24})$/);
+  if (match) {
+    campeonato = await Campeonato.findById(match[1]);
+  } else {
+    campeonato = await findCampeonatoPorCanal(interaction.channelId);
+  }
   if (!campeonato) {
     return interaction.reply({ content: 'Campeonato nao encontrado.', flags: 64 });
   }
@@ -1740,12 +1785,13 @@ function register(registry) {
   registry.modal(/^modal_camp_capitao_[0-9]+$/, onSubmitCapitao);
   registry.select('select_camp_capitao', onSelectCapitao);
   registry.select('select_camp_checkin_manual', onSelectCheckInOrganizador);
-  registry.button('btn_camp_fechar_inscricoes', onBotaoFecharInscricoes);
+  registry.button(/^btn_camp_fechar_inscricoes_[a-f0-9]{24}$/, onBotaoFecharInscricoes);
   registry.button('btn_camp_cortar', onBotaoCortar);
   registry.button(/^btn_camp_formato_(round-robin|grupos-mata-mata|double-elimination|single-elimination)_[a-f0-9]{24}$/, onEscolherFormato);
   registry.button(/^btn_camp_definir_formato_[a-f0-9]{24}$/, onDefinirFormato);
   registry.select(/^modal_camp_definir_formato_select_[a-f0-9]{24}$/, onDefinirFormatoSelect);
   registry.button('btn_camp_gerar_bracket', onBotaoGerarBracket);
+  registry.button(/^btn_camp_gerar_bracket_[a-f0-9]{24}$/, onBotaoGerarBracket);
   registry.button(/^btn_camp_checkin_[a-f0-9]{24}$/, onBotaoCheckIn);
   registry.button(/^btn_camp_adversario_faltou_[a-f0-9]{24}$/, onBotaoAdversarioFaltou);
   registry.button(/^btn_confirmar_wo_[a-f0-9]{24}$/, onConfirmarWO);

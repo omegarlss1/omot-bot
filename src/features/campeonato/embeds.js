@@ -219,7 +219,7 @@ function embedPainelAdmin({ campeonato }) {
     ],
     [
       { type: 2, style: 1, label: '🎮 Gerar partidas', custom_id: 'btn_camp_gerar_bracket', emoji: { name: '🎮' } },
-      { type: 2, style: 1, label: '🔒 Encerrar inscrições', custom_id: 'btn_camp_fechar_inscricoes', emoji: { name: '🔒' } }
+      { type: 2, style: 1, label: '🔒 Encerrar inscrições', custom_id: 'btn_camp_fechar_inscricoes_' + campeonato._id, emoji: { name: '🔒' } }
     ]
   ];
   
@@ -227,6 +227,13 @@ function embedPainelAdmin({ campeonato }) {
   if (campeonato.baseadoEmInscricoes && !campeonato.modalidade && campeonato.status === 'INSCRICOES_ABERTAS') {
     botoes.push([
       { type: 2, style: 3, label: '📋 Definir Formato', custom_id: 'btn_camp_definir_formato_' + campeonato._id, emoji: { name: '📋' } }
+    ]);
+  }
+  
+  // Botão gerar bracket quando já tem formato definido
+  if (campeonato.baseadoEmInscricoes && campeonato.modalidade && campeonato.status === 'INSCRICOES_FECHADAS') {
+    botoes.push([
+      { type: 2, style: 3, label: '🎯 Gerar Bracket', custom_id: 'btn_camp_gerar_bracket_' + campeonato._id, emoji: { name: '🎯' } }
     ]);
   }
   
