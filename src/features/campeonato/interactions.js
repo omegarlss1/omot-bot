@@ -1771,6 +1771,7 @@ async function onTrocarCapitao(interaction) {
 function register(registry) {
   registry.button('btn_campeonato_criar', onAbrirPainelCriacao);
   registry.button('btn_campeonato_criar_evento', onBotaoCriarEvento);
+  registry.button('btn_novo_campeonato', onBotaoCriarEvento);
   registry.button(/^btn_camp_rank_toggle_(bronze|prata|ouro|platina|diamante|champion|grand_champion|omega_champion)$/, onToggleRank);
   registry.button('btn_camp_rank_confirmar', onConfirmarRanks);
   registry.modal('modal_criar_evento', onSubmitCriarEvento);

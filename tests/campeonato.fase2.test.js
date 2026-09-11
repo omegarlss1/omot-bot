@@ -277,13 +277,13 @@ test('classificacao.detectarEmpates', async (t) => {
 });
 
 test('handlers da Fase 2 registrados', async (t) => {
-  await t.test('35 handlers: 27 botões + 7 selects + 5 modais', () => {
+  await t.test('36 handlers: 28 botões + 7 selects + 5 modais', () => {
     comEnv({}, () => {
       const { InteractionRegistry } = require('../src/interactions/registry');
       const interactions = require('../src/features/campeonato/interactions');
       const r = new InteractionRegistry();
       interactions.register(r);
-      assert.equal(r.buttons.length, 33);
+      assert.equal(r.buttons.length, 34);
       assert.equal(r.selects.length, 11);
       assert.equal(r.modals.length, 8);
     });

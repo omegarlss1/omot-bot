@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { embedCriarEvento } = require('../../features/campeonato/embeds');
+const { embedCentralCampeonatos } = require('../../features/campeonato/embeds');
 const config = require('../../config');
 
 function temPermissaoOrganizador(member) {
@@ -9,8 +9,8 @@ function temPermissaoOrganizador(member) {
   return member.roles?.cache?.has?.(orgRoleId) || false;
 }
 
-function buildPayload(guild, organizador) {
-  const e = embedCriarEvento({ guild, organizador });
+function buildPayload() {
+  const e = embedCentralCampeonatos();
   const components = (e.components || []).map((row) => {
     const actionRow = new ActionRowBuilder();
     for (const btn of row) {
@@ -18,7 +18,7 @@ function buildPayload(guild, organizador) {
         new ButtonBuilder()
           .setCustomId(btn.custom_id)
           .setLabel(btn.label)
-          .setStyle(ButtonStyle.Primary)
+          .setStyle(ButtonStyle.Success)
           .setEmoji(btn.emoji?.name || '')
       );
     }
@@ -47,15 +47,9 @@ module.exports = {
     }
     await interaction.deferReply({ flags: 64 });
     try {
-      const silencioso = interaction.options.getBoolean('silencioso') || false;
-      const payload = buildPayload(interaction.guild, interaction.member);
-      const mensagem = await interaction.channel.send(payload);
-      if (silencioso) {
-        return interaction.deleteReply().catch(() => {});
-      }
-      return interaction.editReply({
-        content: `✅ Painel postado em ${interaction.channel} (mensagem \`${mensagem.id}\`).`
-      });
+      const payload = buildPayload();
+      await interaction.channel.send(payload);
+      return interaction.deleteReply().catch(() => {});
     } catch (err) {
       console.error('ERRO /painel-campeonato:', err);
       return interaction.editReply({ content: `❌ Erro: ${err.message}`, flags: 64 });

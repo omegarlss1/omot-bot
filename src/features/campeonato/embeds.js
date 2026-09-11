@@ -29,6 +29,20 @@ function corRank(rank) {
   return CORES[rank] || '#5865F2';
 }
 
+function embedCentralCampeonatos() {
+  return {
+    embeds: [{
+      title: '🏆 Central de Campeonatos',
+      description: 'Gerencie seus campeonatos aqui. Clique em Novo Campeonato para começar.',
+      color: 0xFF6B00,
+      footer: { text: 'Ômega Bot - painel fixo' }
+    }],
+    components: [[
+      { type: 2, style: 3, label: '🏆 Novo Campeonato', emoji: { name: '🏆' }, custom_id: 'btn_novo_campeonato' }
+    ]]
+  };
+}
+
 function embedCriarEvento({ guild, organizador }) {
   return {
     embeds: [{
