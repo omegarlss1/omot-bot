@@ -303,6 +303,7 @@ function embedPlacarAjustado({ novoPlacar, vencedorNome }) {
 }
 
 module.exports = {
+  embedCentralCampeonatos,
   embedCriarEvento,
   embedSelecionarRanks,
   botoesSelecionarRanks,
