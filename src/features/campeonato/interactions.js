@@ -1616,7 +1616,7 @@ async function onSubmitLimite(interaction) {
   selecaoRanks.set(`camp:selecao:${interaction.user.id}`, selecao);
   const fim = new Date(selecao.dataInicio);
   fim.setHours(fim.getHours() + 3);
-  return interaction.reply({
+  return interaction.update({
     content: `Confira: **${selecao.nome}** | ${selecao.modo} | ${selecao.modalidade} | limite ${limite} | ranks ${selecao.ranksSelecionados.join(', ')}`,
     components: toActionRows([[
       { type: 2, style: 3, label: '✅ Confirmar e Criar Evento', custom_id: 'btn_camp_confirmar_criacao' },

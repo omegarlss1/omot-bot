@@ -178,9 +178,9 @@ function renderSingleBracketCanvas({ times = [], incluirTerceiroLugar = true } =
   return Buffer.from(svg, 'utf8');
 }
 
-async function renderSingleBracketPng({ times = [], incluirTerceiroLugar = true } = {}) {
+async function renderSingleBracketPng({ times = [], incluirTerceiroLugar = true, baseadoEmInscricoes = true, limite = null, horarioInicio = null, intervaloPartidasMin = 20 } = {}) {
   const sharp = require('sharp');
-  const svg = buildSvgString({ times, incluirTerceiroLugar });
+  const svg = buildSvgString({ times, incluirTerceiroLugar, baseadoEmInscricoes, limite, horarioInicio, intervaloPartidasMin });
   const pngBuffer = await sharp(Buffer.from(svg)).png().toBuffer();
   return pngBuffer;
 }
