@@ -234,6 +234,9 @@ function embedPainelAdmin({ campeonato }) {
     [
       { type: 2, style: 1, label: '🎮 Gerar partidas', custom_id: 'btn_camp_gerar_bracket', emoji: { name: '🎮' } },
       { type: 2, style: 1, label: '🔒 Encerrar inscrições', custom_id: 'btn_camp_fechar_inscricoes_' + campeonato._id, emoji: { name: '🔒' } }
+    ],
+    [
+      { type: 2, style: 1, label: '👥 Gerenciar Times', custom_id: 'btn_camp_gerenciar_times_' + campeonato._id, emoji: { name: '👥' } }
     ]
   ];
   

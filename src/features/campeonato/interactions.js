@@ -74,7 +74,7 @@ async function onAbrirPainelCriacao(interaction) {
   if (!temPermissaoOrganizador(interaction.member)) {
     return interaction.reply({ content: 'Apenas @OrganizadorCamps pode criar eventos.', flags: 64 });
   }
-  return interaction.reply({
+  return interaction.update({
     ...embedCriarEvento({ guild: interaction.guild, organizador: interaction.member }),
     flags: 64
   });
@@ -800,6 +800,90 @@ async function onBotaoCortar(interaction) {
   }
 }
 
+async function onGerenciarTimes(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return safeReply(interaction, { content: 'Apenas @OrganizadorCamps.', flags: 64 });
+  }
+  const campeonatoId = interaction.customId.replace('btn_camp_gerenciar_times_', '');
+  const campeonato = await Campeonato.findById(campeonatoId).lean();
+  if (!campeonato) {
+    return safeReply(interaction, { content: 'Campeonato não encontrado.', flags: 64 });
+  }
+  // Find the painel organizador message and update it to show 'times' tab
+  const canalOrgao = campeonato.canais?.organizador;
+  if (!canalOrgao) {
+    return safeReply(interaction, { content: 'Canal de organizador não configurado.', flags: 64 });
+  }
+  try {
+    const canal = await interaction.guild.channels.fetch(canalOrgao);
+    if (!canal) {
+      return safeReply(interaction, { content: 'Canal de organizador não encontrado.', flags: 64 });
+    }
+    // Get the painel organizador message
+    const messageId = campeonato.painelOrganizador?.mensagens?.times || campeonato.painelOrganizador?.dinamicaMessageId;
+    let mensagem = messageId ? await canal.messages.fetch(messageId).catch(() => null) : null;
+    
+    // If no existing message, we'll create one by calling the 'times' tab logic
+    const times = await Time.find({ campeonatoId }).lean();
+    const linhas = times.map((t, i) => {
+      const jogadores = (t.jogadores || []).map(j => {
+        if (j.origem === 'WHATSAPP' || String(j.userId || '').startsWith('MANUAL_WHATSAPP_')) {
+          return j.nickSnapshot || '—';
+        }
+        return `<@${j.userId}>`;
+      }).join(', ') || 'Sem jogadores';
+      return `${i + 1}. **${t.nome || 'Sem nome'}** — ${jogadores}`;
+    }).join('\n') || 'Nenhum time definido.';
+    
+    const opcoesTimes = times.slice(0, 25).map(t => ({
+      label: t.nome || 'Sem nome',
+      value: String(t._id),
+      description: `${t.jogadores?.length || 0} jogador(es)`
+    }));
+    
+    const components = [];
+    if (opcoesTimes.length > 0) {
+      components.push(
+        new ActionRowBuilder().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId('select_camp_time_acao_' + campeonatoId)
+            .setPlaceholder('Selecione um time para gerenciar')
+            .addOptions(opcoesTimes)
+        )
+      );
+    }
+    
+    const payload = {
+      embeds: [{
+        title: '👥 ABA 2 - TIMES DEFINIDOS',
+        description: linhas,
+        color: 0x00FF00,
+        footer: { text: `Total: ${times.length} time(s)` }
+      }],
+      components: components
+    };
+    
+    if (mensagem) {
+      await mensagem.edit(payload);
+      await Campeonato.updateOne(
+        { _id: campeonatoId },
+        { $set: { 'painelOrganizador.mensagens.times': mensagem.id } }
+      );
+    } else {
+      mensagem = await canal.send(payload);
+      await Campeonato.updateOne(
+        { _id: campeonatoId },
+        { $set: { 'painelOrganizador.mensagens.times': mensagem.id } }
+      );
+    }
+    
+    return safeReply(interaction, { content: 'Painel de times atualizado no canal de organizador.', flags: 64 });
+  } catch (e) {
+    console.error('[GerenciarTimes] erro:', e);
+    return safeReply(interaction, { content: 'Erro ao atualizar painel de times.', flags: 64 });
+  }
+}
+
 async function onEscolherFormato(interaction) {
   if (!temPermissaoOrganizador(interaction.member)) {
     return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
@@ -1395,7 +1479,7 @@ async function onPainelOrganizadorTab(interaction) {
         );
       }
       
-      return atualizarPainelOrganizador(interaction, campeonato, 'inscritos', {
+      return atualizarPainelOrganizador(interaction, campeonato, 'times', {
         embeds: [{
           title: '👥 ABA 2 - TIMES DEFINIDOS',
           description: linhas,
@@ -1787,6 +1871,7 @@ function register(registry) {
   registry.select('select_camp_capitao', onSelectCapitao);
   registry.select('select_camp_checkin_manual', onSelectCheckInOrganizador);
   registry.button(/^btn_camp_fechar_inscricoes_[a-f0-9]{24}$/, onBotaoFecharInscricoes);
+  registry.button(/^btn_camp_gerenciar_times_[a-f0-9]{24}$/, onGerenciarTimes);
   registry.button('btn_camp_cortar', onBotaoCortar);
   registry.button(/^btn_camp_formato_(round-robin|grupos-mata-mata|double-elimination|single-elimination)_[a-f0-9]{24}$/, onEscolherFormato);
   registry.button(/^btn_camp_definir_formato_[a-f0-9]{24}$/, onDefinirFormato);
