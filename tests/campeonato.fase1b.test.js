@@ -185,15 +185,15 @@ test('service.validarParametros', async (t) => {
 });
 
 test('handlers do módulo campeonato registrados', async (t) => {
-  await t.test('35 handlers: 28 botões + 7 selects + 4 modais', () => {
+  await t.test('53 handlers: 46 botões + 9 selects + 6 modais', () => {
     comEnv({}, () => {
       const { InteractionRegistry } = require('../src/interactions/registry');
       const interactions = require('../src/features/campeonato/interactions');
       const r = new InteractionRegistry();
       interactions.register(r);
-      assert.equal(r.buttons.length, 35);
-      assert.equal(r.selects.length, 11);
-      assert.equal(r.modals.length, 8);
+      assert.equal(r.buttons.length, 53);
+      assert.equal(r.selects.length, 14);
+      assert.equal(r.modals.length, 11);
     });
   });
 });

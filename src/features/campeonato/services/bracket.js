@@ -259,4 +259,62 @@ async function gerarBracket(campeonatoId, { shuffle = true } = {}) {
   };
 }
 
-module.exports = { gerarBracket, parearChaves, proximaPotenciaDe2, BracketError, gerarDuplas, ehModoDuplasMescladas };
+async function previewBracket(campeonatoId) {
+  const campeonato = await Campeonato.findById(campeonatoId).lean();
+  if (!campeonato) throw new BracketError('Campeonato não encontrado.', 'BRACKET_CAMP_NAO_ENCONTRADO');
+  const times = await Time.find({ campeonatoId }).lean();
+  if (times.length < 2) {
+    throw new BracketError('Mínimo de 2 times para gerar bracket.', 'BRACKET_MIN_TIMES');
+  }
+
+  const isSingle = ['single', '1v1', 'x1', '1x1'].includes(String(campeonato.modalidade || 'single').toLowerCase());
+  const isCanvas = times.length <= 16 && isSingle;
+  
+  if (!isCanvas) {
+    throw new BracketError('Preview apenas disponível para eliminatória simples (≤16 times).', 'BRACKET_PREVIEW_UNAVAILABLE');
+  }
+
+  const todasChaves = parearChaves(times, () => 0.5); // deterministic for preview
+  const inicioBase = new Date(campeonato.dataEvento || campeonato.startAt || Date.now());
+  const intervaloMs = Number(campeonato.intervaloPartidasMin || 20) * 60 * 1000;
+
+  const previewPartidas = todasChaves.map((chave, idx) => {
+    const estimatedStartAt = new Date(inicioBase.getTime() + Math.max(0, chave.rodada - 1) * intervaloMs);
+    const timeA = chave.timeA ? { _id: chave.timeA._id, nome: chave.timeA.nome } : null;
+    const timeB = chave.timeB ? { _id: chave.timeB._id, nome: chave.timeB.nome } : null;
+    const isBye = !timeA && !timeB;
+    const isPartialBye = (!timeA || !timeB) && (timeA || timeB);
+    return {
+      index: idx + 1,
+      rodada: chave.rodada,
+      fase: chave.fase,
+      timeA: timeA?.nome || (timeA ? 'BYE' : 'TBD'),
+      timeB: timeB?.nome || (timeB ? 'BYE' : 'TBD'),
+      timeAHasBye: !timeA && timeB,
+      timeBHasBye: !timeB && timeA,
+      estimatedStartAt,
+      isByeMatch: isBye,
+      isPartialBye
+    };
+  });
+
+  const canvas = await renderSingleBracketPng({
+    times,
+    incluirTerceiroLugar: campeonato.temTerceiroLugar !== false,
+    baseadoEmInscricoes: campeonato.baseadoEmInscricoes !== false,
+    limite: campeonato.limiteInscricoes || null,
+    horarioInicio: campeonato.dataEvento || campeonato.horarioInicio || null,
+    intervaloPartidasMin: campeonato.intervaloPartidasMin || 20
+  });
+
+  return {
+    totalPartidas: previewPartidas.length,
+    partidas: previewPartidas,
+    canvas,
+    formato: campeonato.modalidade,
+    modo: campeonato.modo,
+    intervalo: campeonato.intervaloPartidasMin || 20
+  };
+}
+
+module.exports = { gerarBracket, parearChaves, proximaPotenciaDe2, BracketError, gerarDuplas, ehModoDuplasMescladas, previewBracket };

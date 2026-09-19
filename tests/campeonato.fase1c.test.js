@@ -265,15 +265,15 @@ test('inscricao.validarInscricao', async (t) => {
 });
 
 test('handlers da Fase 1C registrados', async (t) => {
-  await t.test('37 handlers: 29 botões + 7 selects + 5 modais', () => {
+  await t.test('55 handlers: 48 botões + 9 selects + 6 modais', () => {
     comEnv({}, () => {
       const { InteractionRegistry } = require('../src/interactions/registry');
       const interactions = require('../src/features/campeonato/interactions');
       const r = new InteractionRegistry();
       interactions.register(r);
-      assert.equal(r.buttons.length, 35);
-      assert.equal(r.selects.length, 11);
-      assert.equal(r.modals.length, 8);
+      assert.equal(r.buttons.length, 53);
+      assert.equal(r.selects.length, 14);
+      assert.equal(r.modals.length, 11);
     });
   });
   await t.test('regex btn_camp_formato_ aceita todos os formatos e ObjectId de 24 chars hex', () => {
