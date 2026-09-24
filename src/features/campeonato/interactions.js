@@ -1,6 +1,6 @@
 const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder, UserSelectMenuBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } = require('discord.js');
 const config = require('../../config');
-const { embedCriarEvento, embedSelecionarRanks, embedEventoCriado, embedPainelInscricao, embedInscricaoConfirmada, embedResumoCorte, embedMenuFormato, embedPainelPartida, embedPlacarEnviado, embedDisputaOrganizador, embedBracket, embedClassificacao, embedCampeaoDefinido, embedPainelAdmin, embedCancelamentoConfirmado, embedReaberturaConfirmada, embedTimeDesclassificado, embedPlacarAjustado, toActionRows } = require('./embeds');
+const { embedCriarEvento, embedSelecionarRanks, embedEventoCriado, embedPainelInscricao, embedInscricaoConfirmada, embedResumoCorte, embedMenuFormato, embedPainelPartida, embedPlacarEnviado, embedDisputaOrganizador, embedBracket, embedClassificacao, embedCampeaoDefinido, embedPainelAdmin, embedCancelamentoConfirmado, embedReaberturaConfirmada, embedTimeDesclassificado, embedPlacarAjustado, toActionRows, montarComponentes } = require('./embeds');
 const { criarEvento, EventoError } = require('./service');
 const { gerarDescricaoEvento } = require('./services/duracao');
 const { inscreverCapitao, inscreverJogadorManual, fecharInscricoes, executarCorte, definirFormato, findCampeonatoPorCanalInscricao, findCampeonatoPorCanal, listarInscricoes, InscricaoError } = require('./services/inscricao');
@@ -201,7 +201,7 @@ function buildConfigPanel(userId) {
 
   return {
     embeds: [embed],
-    components: [toActionRows([buttons.slice(0, 3)]), toActionRows([buttons.slice(3)])]
+    components: montarComponentes(buttons.slice(0, 3), buttons.slice(3))
   };
 }
 
