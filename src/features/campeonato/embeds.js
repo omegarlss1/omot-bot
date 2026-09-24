@@ -390,6 +390,7 @@ module.exports = {
   embedReaberturaConfirmada,
   embedTimeDesclassificado,
   embedPlacarAjustado,
+  montarComponentes,
   corRank,
   CORES,
   toActionRows
