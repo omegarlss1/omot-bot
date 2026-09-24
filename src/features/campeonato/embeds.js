@@ -11,18 +11,82 @@ const CORES = {
   omega_champion: '#9400D3'
 };
 
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, UserSelectMenuBuilder } = require('discord.js');
+
+function montarComponentes(...grupos) {
+  // Don't flat(Infinity) - preserve row grouping from arrays
+  // Each top-level argument = one or more rows
+  const actionRows = [];
+  
+  for (const grupo of grupos) {
+    if (grupo == null) continue;
+    
+    if (grupo instanceof ActionRowBuilder) {
+      if (grupo.components.length === 0) continue;
+      if (grupo.components.length > 5) {
+        throw new Error(`ActionRow com ${grupo.components.length} componentes (máx. 5)`);
+      }
+      actionRows.push(grupo);
+    } else if (Array.isArray(grupo)) {
+      // grupo can be: [obj, obj, obj] (one row) or [[obj,obj], [obj]] (multiple rows)
+      // Check if first element is also an array = multiple rows
+      if (grupo.length > 0 && Array.isArray(grupo[0])) {
+        // Multiple rows: [[obj,obj], [obj]]
+        for (const rowItems of grupo) {
+          if (!Array.isArray(rowItems)) continue;
+          const row = new ActionRowBuilder();
+          for (const comp of rowItems) {
+            if (comp instanceof StringSelectMenuBuilder || comp instanceof UserSelectMenuBuilder) {
+              if (row.components.length > 0) throw new Error('Select/UserSelect deve ocupar ActionRow inteiro');
+              row.addComponents(comp);
+              actionRows.push(row);
+            } else if (comp instanceof ButtonBuilder) {
+              row.addComponents(comp);
+            } else if (comp && typeof comp === 'object') {
+              row.addComponents(ButtonBuilder.from(comp));
+            }
+          }
+          if (row.components.length > 0) {
+            if (row.components.length > 5) throw new Error(`ActionRow com ${row.components.length} componentes (máx. 5)`);
+            actionRows.push(row);
+          }
+        }
+      } else {
+        // Single row: [obj, obj, obj]
+        const row = new ActionRowBuilder();
+        for (const comp of grupo) {
+          if (comp instanceof StringSelectMenuBuilder || comp instanceof UserSelectMenuBuilder) {
+            if (row.components.length > 0) throw new Error('Select/UserSelect deve ocupar ActionRow inteiro');
+            row.addComponents(comp);
+            actionRows.push(row);
+          } else if (comp instanceof ButtonBuilder) {
+            row.addComponents(comp);
+          } else if (comp && typeof comp === 'object') {
+            row.addComponents(ButtonBuilder.from(comp));
+          }
+        }
+        if (row.components.length > 0) {
+          if (row.components.length > 5) throw new Error(`ActionRow com ${row.components.length} componentes (máx. 5)`);
+          actionRows.push(row);
+        }
+      }
+    } else if (grupo && typeof grupo === 'object') {
+      if (grupo.type === 3 || grupo.type === 5) {
+        throw new Error('Select/UserSelect deve vir dentro de array para ocupar ActionRow inteiro');
+      }
+      const row = new ActionRowBuilder().addComponents(ButtonBuilder.from(grupo));
+      actionRows.push(row);
+    }
+  }
+  
+  if (actionRows.length > 5) {
+    throw new Error(`${actionRows.length} ActionRows (máx. 5)`);
+  }
+  return actionRows;
+}
 
 function toActionRows(components = []) {
-  return components.map((row) => {
-    const actionRow = new ActionRowBuilder();
-    for (const btn of row) {
-      if (!btn || typeof btn !== 'object') continue;
-      const builder = ButtonBuilder.from(btn);
-      actionRow.addComponents(builder);
-    }
-    return actionRow;
-  });
+  return montarComponentes(...components);
 }
 
 function corRank(rank) {
