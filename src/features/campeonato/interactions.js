@@ -159,7 +159,10 @@ async function onSubmitConfigDados(interaction) {
     participantes: []
   });
 
-  return interaction.update(buildConfigPanel(userId));
+  return interaction.reply({
+    ...buildConfigPanel(userId),
+    flags: 64
+  });
 }
 
 function buildConfigPanel(userId) {
@@ -2212,7 +2215,7 @@ async function onConfigEntrada(interaction) {
   return interaction.update({
     content: 'Como os participantes entram?',
     embeds: [],
-    components: [toActionRows([buttons])]
+    components: toActionRows([buttons])
   });
 }
 
@@ -2234,7 +2237,7 @@ async function onConfigEntradaEscolha(interaction) {
   } else if (customId === 'btn_config_entrada_manual') {
     cfg.baseadoEmInscricoes = false;
   } else if (customId === 'btn_config_entrada_voltar') {
-    return interaction.update(buildConfigPanel(userId));
+  return interaction.update(buildConfigPanel(userId));
   }
   configPainel.set(`camp:config:${userId}`, cfg);
   return interaction.update(buildConfigPanel(userId));
@@ -2304,7 +2307,7 @@ async function onConfigParticipantes(interaction) {
   return interaction.update({
     content: `**Participantes (${cfg.participantes.length})**\n${lines}`,
     embeds: [],
-    components: [toActionRows([buttons])]
+    components: toActionRows([buttons])
   });
 }
 
