@@ -174,7 +174,7 @@ function buildConfigPanel(userId) {
   const sections = [
     { key: 'dados', label: 'Preencher dados', emoji: '📝', customId: 'btn_config_dados', disabled: false, done: true },
     { key: 'modo', label: 'Escolher modo', emoji: '⚔️', customId: 'btn_config_modo', disabled: false, done: !!cfg.modo },
-    { key: 'entrada', label: 'Quem pode entrar', emoji: '👥', customId: 'btn_config_entrada', disabled: !cfg.modo, done: !!cfg.baseadoEmInscricoes },
+    { key: 'entrada', label: 'Modo de Entrada', emoji: '👥', customId: 'btn_config_entrada', disabled: !cfg.modo, done: !!cfg.baseadoEmInscricoes },
     { key: 'formato', label: 'Formato', emoji: '📋', customId: 'btn_config_formato', disabled: !cfg.baseadoEmInscricoes || cfg.baseadoEmInscricoes === true, done: !!cfg.formato },
     { key: 'participantes', label: 'Participantes', emoji: '👤', customId: 'btn_config_participantes', disabled: !cfg.baseadoEmInscricoes || cfg.baseadoEmInscricoes === true, done: cfg.participantes?.length > 0 },
     { key: 'criar', label: 'Criar Campeonato', emoji: '✅', customId: 'btn_config_criar', disabled: !isConfigComplete(cfg), done: false }
@@ -2240,6 +2240,11 @@ async function onConfigEntradaEscolha(interaction) {
   return interaction.update(buildConfigPanel(userId));
   }
   configPainel.set(`camp:config:${userId}`, cfg);
+  const cfgSalvo = configPainel.get(`camp:config:${userId}`);
+  console.log('[Config Campeonato] entrada salva:', {
+    baseadoEmInscricoes: cfgSalvo?.baseadoEmInscricoes,
+    formato: cfgSalvo?.formato
+  });
   return interaction.update(buildConfigPanel(userId));
 }
 
