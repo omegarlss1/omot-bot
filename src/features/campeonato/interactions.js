@@ -154,6 +154,7 @@ async function onSubmitConfigDados(interaction) {
     horarioInicio,
     descricao,
     modo: null,
+    ranksSelecionados: [],
     baseadoEmInscricoes: null,
     formato: null,
     participantes: []
@@ -174,7 +175,8 @@ function buildConfigPanel(userId) {
   const sections = [
     { key: 'dados', label: 'Preencher dados', emoji: '📝', customId: 'btn_config_dados', disabled: false, done: true },
     { key: 'modo', label: 'Escolher modo', emoji: '⚔️', customId: 'btn_config_modo', disabled: false, done: !!cfg.modo },
-    { key: 'entrada', label: 'Modo de Entrada', emoji: '👥', customId: 'btn_config_entrada', disabled: !cfg.modo, done: !!cfg.baseadoEmInscricoes },
+    { key: 'ranks', label: 'Ranks', emoji: '🎯', customId: 'btn_config_ranks', disabled: !cfg.modo, done: cfg.ranksSelecionados?.length > 0 },
+    { key: 'entrada', label: 'Modo de Entrada', emoji: '👥', customId: 'btn_config_entrada', disabled: !cfg.modo || !cfg.ranksSelecionados?.length, done: !!cfg.baseadoEmInscricoes },
     { key: 'formato', label: 'Formato', emoji: '📋', customId: 'btn_config_formato', disabled: cfg.baseadoEmInscricoes !== false, done: !!cfg.formato },
     { key: 'participantes', label: 'Participantes', emoji: '👤', customId: 'btn_config_participantes', disabled: cfg.baseadoEmInscricoes !== false, done: cfg.participantes?.length > 0 },
     { key: 'criar', label: 'Criar Campeonato', emoji: '✅', customId: 'btn_config_criar', disabled: !isConfigComplete(cfg), done: false }
@@ -204,12 +206,13 @@ function buildConfigPanel(userId) {
 
   return {
     embeds: [embed],
-    components: montarComponentes(buttons.slice(0, 3), buttons.slice(3))
+    components: montarComponentes(buttons.slice(0, 4), buttons.slice(4))
   };
 }
 
 function isConfigComplete(cfg) {
   if (!cfg.modo) return false;
+  if (!cfg.ranksSelecionados?.length) return false;
   if (cfg.baseadoEmInscricoes === true) {
     return true;
   }
@@ -223,6 +226,7 @@ function getSectionPreview(cfg, key) {
   switch (key) {
     case 'dados': return `${new Date(cfg.dataInicio).toLocaleDateString('pt-BR')} | ${cfg.horarioInicio}`;
     case 'modo': return cfg.modo ? getModoLabel(cfg.modo) : '—';
+    case 'ranks': return cfg.ranksSelecionados?.length ? cfg.ranksSelecionados.map((r) => (config.ranks.find((cr) => cr.key === r)?.label || r)).join(', ') : '—';
     case 'entrada': return cfg.baseadoEmInscricoes === true ? 'Inscrição aberta' : cfg.baseadoEmInscricoes === false ? 'Eu escolho' : '—';
     case 'formato': return cfg.formato || '—';
     case 'participantes': return `${cfg.participantes?.length || 0} participante(s)`;
@@ -2196,6 +2200,83 @@ async function onSelectConfigModo(interaction) {
   return interaction.update(buildConfigPanel(userId));
 }
 
+function buildRanksScreen(userId) {
+  const cfg = configPainel.get(`camp:config:${userId}`);
+  const selecionados = cfg?.ranksSelecionados || [];
+  const linhas = config.ranks
+    .map((r) => `${selecionados.includes(r.key) ? '✅' : '▫️'} ${r.emoji} ${r.label}`)
+    .join('\n');
+  const botoesRanks = config.ranks.map((r) => ({
+    type: 2,
+    style: selecionados.includes(r.key) ? 3 : 2,
+    label: r.label,
+    emoji: { name: r.emoji },
+    custom_id: 'btn_config_rank_toggle_' + r.key
+  }));
+  const linhaConfirmar = [
+    { type: 2, style: 3, label: `✅ Confirmar (${selecionados.length})`, custom_id: 'btn_config_rank_confirmar', disabled: selecionados.length === 0 },
+    { type: 2, style: 4, label: 'Voltar', emoji: { name: '⬅️' }, custom_id: 'btn_config_rank_voltar' }
+  ];
+  return {
+    content: `Selecione os ranks que o campeonato terá (pode escolher mais de um — cada rank selecionado vira um campeonato separado):\n\n${linhas}`,
+    embeds: [],
+    components: montarComponentes(botoesRanks.slice(0, 5), botoesRanks.slice(5), linhaConfirmar)
+  };
+}
+
+async function onConfigRanks(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
+  }
+  const userId = interaction.user.id;
+  const cfg = configPainel.get(`camp:config:${userId}`);
+  if (!cfg || !cfg.modo) {
+    return interaction.update({ content: 'Escolha o modo primeiro.', embeds: [], components: [] });
+  }
+  return interaction.update(buildRanksScreen(userId));
+}
+
+async function onConfigRankToggle(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
+  }
+  const userId = interaction.user.id;
+  const cfg = configPainel.get(`camp:config:${userId}`);
+  if (!cfg) {
+    return interaction.update({ content: 'Sessão expirada.', embeds: [], components: [] });
+  }
+  const rank = interaction.customId.replace('btn_config_rank_toggle_', '');
+  cfg.ranksSelecionados = cfg.ranksSelecionados || [];
+  const idx = cfg.ranksSelecionados.indexOf(rank);
+  if (idx >= 0) cfg.ranksSelecionados.splice(idx, 1);
+  else cfg.ranksSelecionados.push(rank);
+  configPainel.set(`camp:config:${userId}`, cfg);
+  return interaction.update(buildRanksScreen(userId));
+}
+
+async function onConfigRankConfirmar(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
+  }
+  const userId = interaction.user.id;
+  const cfg = configPainel.get(`camp:config:${userId}`);
+  if (!cfg) {
+    return interaction.update({ content: 'Sessão expirada.', embeds: [], components: [] });
+  }
+  if (!cfg.ranksSelecionados?.length) {
+    return interaction.update(buildRanksScreen(userId));
+  }
+  return interaction.update(buildConfigPanel(userId));
+}
+
+async function onConfigRankVoltar(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
+  }
+  const userId = interaction.user.id;
+  return interaction.update(buildConfigPanel(userId));
+}
+
 async function onConfigEntrada(interaction) {
   if (!temPermissaoOrganizador(interaction.member)) {
     return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
@@ -2204,6 +2285,9 @@ async function onConfigEntrada(interaction) {
   const cfg = configPainel.get(`camp:config:${userId}`);
   if (!cfg || !cfg.modo) {
     return interaction.update({ content: 'Escolha o modo primeiro.', embeds: [], components: [] });
+  }
+  if (!cfg.ranksSelecionados?.length) {
+    return interaction.update({ content: 'Escolha os ranks primeiro.', embeds: [], components: [] });
   }
 
   const buttons = [
@@ -2389,7 +2473,7 @@ async function onConfigCriar(interaction) {
     
     const evento = await criarEvento(guild, {
       nome: cfg.nome,
-      ranksSelecionados: ['ouro'], // TODO: use selected ranks from existing system
+      ranksSelecionados: cfg.ranksSelecionados,
       dataInicio: cfg.dataInicio,
       dataFim: cfg.dataInicio,
       dataLimiteInscricoes: cfg.dataLimiteInscricoes,
@@ -2498,6 +2582,10 @@ function register(registry) {
   registry.button('btn_config_dados', onConfigDados);
   registry.button('btn_config_modo', onConfigModo);
   registry.select('select_config_modo', onSelectConfigModo);
+  registry.button('btn_config_ranks', onConfigRanks);
+  registry.button(/^btn_config_rank_toggle_(bronze|prata|ouro|platina|diamante|champion|grand_champion|omega_champion)$/, onConfigRankToggle);
+  registry.button('btn_config_rank_confirmar', onConfigRankConfirmar);
+  registry.button('btn_config_rank_voltar', onConfigRankVoltar);
   registry.button('btn_config_entrada', onConfigEntrada);
   registry.button('btn_config_entrada_aberta', onConfigEntradaEscolha);
   registry.button('btn_config_entrada_manual', onConfigEntradaEscolha);
