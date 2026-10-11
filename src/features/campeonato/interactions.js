@@ -2157,7 +2157,25 @@ async function onConfigDados(interaction) {
   return interaction.showModal(buildConfigModal());
 }
 
+function diagInicio(nome, interaction) {
+  const t0 = Date.now();
+  console.log(`[Diag Campeonato] entrou em ${nome}`, { customId: interaction.customId, userId: interaction.user?.id });
+  return t0;
+}
+
+async function diagUpdate(nome, t0, interaction, payload) {
+  try {
+    const resultado = await interaction.update(payload);
+    console.log(`[Diag Campeonato] ${nome} concluído em ${Date.now() - t0}ms`);
+    return resultado;
+  } catch (err) {
+    console.error(`[Diag Campeonato] ${nome} falhou após ${Date.now() - t0}ms:`, { message: err?.message, code: err?.code });
+    throw err;
+  }
+}
+
 async function onConfigModo(interaction) {
+  const t0 = diagInicio('onConfigModo', interaction);
   if (!temPermissaoOrganizador(interaction.member)) {
     return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
   }
@@ -2179,7 +2197,7 @@ async function onConfigModo(interaction) {
       { label: 'Octetos (x8, duplas intercaladas)', value: '8v8', description: '8 jogadores, duplas intercaladas' }
     ]);
 
-  return interaction.update({
+  return diagUpdate('onConfigModo', t0, interaction, {
     content: 'Escolha o **modo de jogo**:',
     embeds: [],
     components: [new ActionRowBuilder().addComponents(select)]
@@ -2187,6 +2205,7 @@ async function onConfigModo(interaction) {
 }
 
 async function onSelectConfigModo(interaction) {
+  const t0 = diagInicio('onSelectConfigModo', interaction);
   if (!temPermissaoOrganizador(interaction.member)) {
     return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
   }
@@ -2197,7 +2216,7 @@ async function onSelectConfigModo(interaction) {
   }
   cfg.modo = interaction.values[0];
   configPainel.set(`camp:config:${userId}`, cfg);
-  return interaction.update(buildConfigPanel(userId));
+  return diagUpdate('onSelectConfigModo', t0, interaction, buildConfigPanel(userId));
 }
 
 function buildRanksScreen(userId) {
@@ -2225,6 +2244,7 @@ function buildRanksScreen(userId) {
 }
 
 async function onConfigRanks(interaction) {
+  const t0 = diagInicio('onConfigRanks', interaction);
   if (!temPermissaoOrganizador(interaction.member)) {
     return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
   }
@@ -2233,10 +2253,11 @@ async function onConfigRanks(interaction) {
   if (!cfg || !cfg.modo) {
     return interaction.update({ content: 'Escolha o modo primeiro.', embeds: [], components: [] });
   }
-  return interaction.update(buildRanksScreen(userId));
+  return diagUpdate('onConfigRanks', t0, interaction, buildRanksScreen(userId));
 }
 
 async function onConfigRankToggle(interaction) {
+  const t0 = diagInicio('onConfigRankToggle', interaction);
   if (!temPermissaoOrganizador(interaction.member)) {
     return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
   }
@@ -2251,10 +2272,11 @@ async function onConfigRankToggle(interaction) {
   if (idx >= 0) cfg.ranksSelecionados.splice(idx, 1);
   else cfg.ranksSelecionados.push(rank);
   configPainel.set(`camp:config:${userId}`, cfg);
-  return interaction.update(buildRanksScreen(userId));
+  return diagUpdate('onConfigRankToggle', t0, interaction, buildRanksScreen(userId));
 }
 
 async function onConfigRankConfirmar(interaction) {
+  const t0 = diagInicio('onConfigRankConfirmar', interaction);
   if (!temPermissaoOrganizador(interaction.member)) {
     return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
   }
@@ -2263,10 +2285,11 @@ async function onConfigRankConfirmar(interaction) {
   if (!cfg) {
     return interaction.update({ content: 'Sessão expirada.', embeds: [], components: [] });
   }
+  console.log('[Diag Campeonato] ranks confirmados:', { ranksSelecionados: cfg.ranksSelecionados });
   if (!cfg.ranksSelecionados?.length) {
-    return interaction.update(buildRanksScreen(userId));
+    return diagUpdate('onConfigRankConfirmar(vazio)', t0, interaction, buildRanksScreen(userId));
   }
-  return interaction.update(buildConfigPanel(userId));
+  return diagUpdate('onConfigRankConfirmar', t0, interaction, buildConfigPanel(userId));
 }
 
 async function onConfigRankVoltar(interaction) {
@@ -2278,6 +2301,7 @@ async function onConfigRankVoltar(interaction) {
 }
 
 async function onConfigEntrada(interaction) {
+  const t0 = diagInicio('onConfigEntrada', interaction);
   if (!temPermissaoOrganizador(interaction.member)) {
     return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
   }
@@ -2296,7 +2320,7 @@ async function onConfigEntrada(interaction) {
     { type: 2, style: 4, label: 'Voltar', emoji: { name: '⬅️' }, custom_id: 'btn_config_entrada_voltar' }
   ];
 
-  return interaction.update({
+  return diagUpdate('onConfigEntrada', t0, interaction, {
     content: 'Como os participantes entram?',
     embeds: [],
     components: toActionRows([buttons])
@@ -2304,6 +2328,7 @@ async function onConfigEntrada(interaction) {
 }
 
 async function onConfigEntradaEscolha(interaction) {
+  const t0 = diagInicio('onConfigEntradaEscolha', interaction);
   if (!temPermissaoOrganizador(interaction.member)) {
     return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
   }
@@ -2312,7 +2337,7 @@ async function onConfigEntradaEscolha(interaction) {
   if (!cfg) {
     return interaction.update({ content: 'Sessão expirada.', embeds: [], components: [] });
   }
-  
+
   const customId = interaction.customId;
   if (customId === 'btn_config_entrada_aberta') {
     cfg.baseadoEmInscricoes = true;
@@ -2321,7 +2346,7 @@ async function onConfigEntradaEscolha(interaction) {
   } else if (customId === 'btn_config_entrada_manual') {
     cfg.baseadoEmInscricoes = false;
   } else if (customId === 'btn_config_entrada_voltar') {
-  return interaction.update(buildConfigPanel(userId));
+    return diagUpdate('onConfigEntradaEscolha(voltar)', t0, interaction, buildConfigPanel(userId));
   }
   configPainel.set(`camp:config:${userId}`, cfg);
   const cfgSalvo = configPainel.get(`camp:config:${userId}`);
@@ -2329,7 +2354,7 @@ async function onConfigEntradaEscolha(interaction) {
     baseadoEmInscricoes: cfgSalvo?.baseadoEmInscricoes,
     formato: cfgSalvo?.formato
   });
-  return interaction.update(buildConfigPanel(userId));
+  return diagUpdate('onConfigEntradaEscolha', t0, interaction, buildConfigPanel(userId));
 }
 
 async function onConfigFormato(interaction) {
