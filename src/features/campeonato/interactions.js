@@ -199,7 +199,7 @@ function buildConfigPanel(userId) {
     label: s.label,
     emoji: { name: s.emoji },
     custom_id: s.customId,
-    disabled: s.disabled || s.key === 'criar'
+    disabled: s.disabled
   }));
 
   buttons.push({ type: 2, style: 4, label: 'Cancelar', emoji: { name: '❌' }, custom_id: 'btn_config_cancelar' });
