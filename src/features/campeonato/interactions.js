@@ -175,19 +175,11 @@ async function onSubmitConfigDados(interaction) {
     dataLimiteInscricoes: dataLimite,
     horarioInicio,
     descricao,
-<<<<<<< HEAD
     modo: cfgAnterior.modo || null,
     ranksSelecionados: cfgAnterior.ranksSelecionados || [],
     baseadoEmInscricoes: cfgAnterior.baseadoEmInscricoes ?? null,
     formato: cfgAnterior.formato || null,
     participantes: cfgAnterior.participantes || []
-=======
-    modo: null,
-    ranksSelecionados: [],
-    baseadoEmInscricoes: null,
-    formato: null,
-    participantes: []
->>>>>>> f6fd3974a029aa5605c8b4c3479bbe55c7963df6
   });
 
   return interaction.reply({
@@ -205,17 +197,10 @@ function buildConfigPanel(userId) {
   const sections = [
     { key: 'dados', label: 'Preencher dados', emoji: '📝', customId: 'btn_config_dados', disabled: false, done: true },
     { key: 'modo', label: 'Escolher modo', emoji: '⚔️', customId: 'btn_config_modo', disabled: false, done: !!cfg.modo },
-<<<<<<< HEAD
-    { key: 'ranks', label: 'Escolher ranks', emoji: '🏅', customId: 'btn_config_ranks', disabled: !cfg.modo, done: cfg.ranksSelecionados?.length > 0 },
-    { key: 'entrada', label: 'Modo de Entrada', emoji: '👥', customId: 'btn_config_entrada', disabled: !cfg.modo, done: !!cfg.baseadoEmInscricoes },
-    { key: 'formato', label: 'Formato', emoji: '📋', customId: 'btn_config_formato', disabled: !cfg.baseadoEmInscricoes || cfg.baseadoEmInscricoes === true, done: !!cfg.formato },
-    { key: 'participantes', label: 'Participantes', emoji: '👤', customId: 'btn_config_participantes', disabled: !cfg.baseadoEmInscricoes || cfg.baseadoEmInscricoes === true, done: cfg.participantes?.length > 0 },
-=======
     { key: 'ranks', label: 'Ranks', emoji: '🎯', customId: 'btn_config_ranks', disabled: !cfg.modo, done: cfg.ranksSelecionados?.length > 0 },
     { key: 'entrada', label: 'Modo de Entrada', emoji: '👥', customId: 'btn_config_entrada', disabled: !cfg.modo || !cfg.ranksSelecionados?.length, done: !!cfg.baseadoEmInscricoes },
     { key: 'formato', label: 'Formato', emoji: '📋', customId: 'btn_config_formato', disabled: cfg.baseadoEmInscricoes !== false, done: !!cfg.formato },
     { key: 'participantes', label: 'Participantes', emoji: '👤', customId: 'btn_config_participantes', disabled: cfg.baseadoEmInscricoes !== false, done: cfg.participantes?.length > 0 },
->>>>>>> f6fd3974a029aa5605c8b4c3479bbe55c7963df6
     { key: 'criar', label: 'Criar Campeonato', emoji: '✅', customId: 'btn_config_criar', disabled: !isConfigComplete(cfg), done: false }
   ];
 
@@ -263,11 +248,7 @@ function getSectionPreview(cfg, key) {
   switch (key) {
     case 'dados': return `${new Date(cfg.dataInicio).toLocaleDateString('pt-BR')} | ${cfg.horarioInicio}`;
     case 'modo': return cfg.modo ? getModoLabel(cfg.modo) : '—';
-<<<<<<< HEAD
-    case 'ranks': return cfg.ranksSelecionados?.length ? cfg.ranksSelecionados.map((rank) => rank.toUpperCase()).join(', ') : '—';
-=======
     case 'ranks': return cfg.ranksSelecionados?.length ? cfg.ranksSelecionados.map((r) => (config.ranks.find((cr) => cr.key === r)?.label || r)).join(', ') : '—';
->>>>>>> f6fd3974a029aa5605c8b4c3479bbe55c7963df6
     case 'entrada': return cfg.baseadoEmInscricoes === true ? 'Inscrição aberta' : cfg.baseadoEmInscricoes === false ? 'Eu escolho' : '—';
     case 'formato': return cfg.formato || '—';
     case 'participantes': return `${cfg.participantes?.length || 0} participante(s)`;
@@ -1963,74 +1944,6 @@ async function onPainelOrganizadorTab(interaction) {
   }
 }
 
-function atualizarRankConfig(interaction, cfg, rank) {
-  const index = cfg.ranksSelecionados.indexOf(rank);
-  if (index >= 0) cfg.ranksSelecionados.splice(index, 1);
-  else cfg.ranksSelecionados.push(rank);
-  configPainel.set(`camp:config:${interaction.user.id}`, cfg);
-  const ranksEmbed = embedSelecionarRanks({
-    nome: cfg.nome,
-    dataInicio: cfg.dataInicio,
-    dataFim: cfg.dataInicio,
-    ranksSelecionados: cfg.ranksSelecionados,
-    customIdPrefix: 'btn_config_rank_toggle_',
-    confirmCustomId: 'btn_config_rank_confirmar'
-  });
-  return interaction.update({
-    embeds: ranksEmbed.embeds,
-    components: toActionRows(ranksEmbed.components)
-  });
-}
-
-async function onConfigToggleRank(interaction) {
-  if (!temPermissaoOrganizador(interaction.member)) {
-    return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
-  }
-  const cfg = configPainel.get(`camp:config:${interaction.user.id}`);
-  if (!cfg) {
-    return interaction.update({ content: 'Sessão expirada.', embeds: [], components: [] });
-  }
-  const rank = interaction.customId.replace('btn_config_rank_toggle_', '');
-  return atualizarRankConfig(interaction, cfg, rank);
-}
-
-async function onConfigRanks(interaction) {
-  if (!temPermissaoOrganizador(interaction.member)) {
-    return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
-  }
-  const cfg = configPainel.get(`camp:config:${interaction.user.id}`);
-  if (!cfg || !cfg.modo) {
-    return interaction.update({ content: 'Escolha o modo primeiro.', embeds: [], components: [] });
-  }
-  const ranksEmbed = embedSelecionarRanks({
-    nome: cfg.nome,
-    dataInicio: cfg.dataInicio,
-    dataFim: cfg.dataInicio,
-    ranksSelecionados: cfg.ranksSelecionados,
-    customIdPrefix: 'btn_config_rank_toggle_',
-    confirmCustomId: 'btn_config_rank_confirmar'
-  });
-  return interaction.update({
-    content: 'Selecione um ou mais ranks e confirme:',
-    embeds: ranksEmbed.embeds,
-    components: toActionRows(ranksEmbed.components)
-  });
-}
-
-async function onConfigConfirmarRanks(interaction) {
-  if (!temPermissaoOrganizador(interaction.member)) {
-    return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
-  }
-  const cfg = configPainel.get(`camp:config:${interaction.user.id}`);
-  if (!cfg) {
-    return interaction.update({ content: 'Sessão expirada.', embeds: [], components: [] });
-  }
-  if (!cfg.ranksSelecionados?.length) {
-    return interaction.update({ content: 'Selecione ao menos um rank antes de confirmar.' });
-  }
-  return interaction.update(buildConfigPanel(interaction.user.id));
-}
-
 async function onConfigSelect(interaction) {
   if (!temPermissaoOrganizador(interaction.member)) {
     return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
@@ -2458,22 +2371,10 @@ async function onConfigEntradaEscolha(interaction) {
   } else if (customId === 'btn_config_entrada_manual') {
     cfg.baseadoEmInscricoes = false;
   } else if (customId === 'btn_config_entrada_voltar') {
-<<<<<<< HEAD
-    return interaction.update(buildConfigPanel(userId));
-  }
-  configPainel.set(`camp:config:${userId}`, cfg);
-  return interaction.update(buildConfigPanel(userId));
-=======
     return diagUpdate('onConfigEntradaEscolha(voltar)', t0, interaction, buildConfigPanel(userId));
   }
   configPainel.set(`camp:config:${userId}`, cfg);
-  const cfgSalvo = configPainel.get(`camp:config:${userId}`);
-  console.log('[Config Campeonato] entrada salva:', {
-    baseadoEmInscricoes: cfgSalvo?.baseadoEmInscricoes,
-    formato: cfgSalvo?.formato
-  });
   return diagUpdate('onConfigEntradaEscolha', t0, interaction, buildConfigPanel(userId));
->>>>>>> f6fd3974a029aa5605c8b4c3479bbe55c7963df6
 }
 
 async function onConfigFormato(interaction) {
@@ -2618,13 +2519,8 @@ async function onConfigCriar(interaction) {
     const evento = await criarEvento(guild, {
       nome: cfg.nome,
       ranksSelecionados: cfg.ranksSelecionados,
-<<<<<<< HEAD
       dataInicio,
       dataFim,
-=======
-      dataInicio: cfg.dataInicio,
-      dataFim: cfg.dataInicio,
->>>>>>> f6fd3974a029aa5605c8b4c3479bbe55c7963df6
       dataLimiteInscricoes: cfg.dataLimiteInscricoes,
       organizadorId: interaction.user.id,
       modo: cfg.modo,
@@ -2737,9 +2633,6 @@ function register(registry) {
   registry.modal('modal_config_campeonato_dados', onSubmitConfigDados);
   registry.button('btn_config_dados', onConfigDados);
   registry.button('btn_config_modo', onConfigModo);
-  registry.button('btn_config_ranks', onConfigRanks);
-  registry.button(/^btn_config_rank_toggle_(bronze|prata|ouro|platina|diamante|champion|grand_champion|omega_champion)$/, onConfigToggleRank);
-  registry.button('btn_config_rank_confirmar', onConfigConfirmarRanks);
   registry.select('select_config_modo', onSelectConfigModo);
   registry.button('btn_config_ranks', onConfigRanks);
   registry.button(/^btn_config_rank_toggle_(bronze|prata|ouro|platina|diamante|champion|grand_champion|omega_champion)$/, onConfigRankToggle);
