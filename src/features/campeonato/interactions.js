@@ -451,8 +451,9 @@ function buildConfigPanel(userId) {
     { key: 'dados', label: 'Preencher dados', emoji: '📝', customId: 'btn_config_dados', disabled: false, done: true },
     { key: 'simultaneo', label: 'Simultaneidade', emoji: '⏱️', customId: 'btn_config_simultaneo', disabled: false, done: cfg.simultaneo !== undefined },
     { key: 'modo', label: 'Escolher modo', emoji: '⚔️', customId: 'btn_config_modo', disabled: false, done: !!cfg.modo },
+    { key: 'tipoDupla', label: 'Fixa ou sorteada', emoji: '👥', customId: 'btn_config_tipo_dupla', disabled: !modoPermiteTipoDupla(cfg.modo), done: !modoPermiteTipoDupla(cfg.modo) || !!cfg.tipoDupla },
     { key: 'ranks', label: 'Ranks', emoji: '🎯', customId: 'btn_config_ranks', disabled: !cfg.modo, done: cfg.ranksSelecionados?.length > 0 },
-    { key: 'entrada', label: 'Modo de Entrada', emoji: '👥', customId: 'btn_config_entrada', disabled: !cfg.modo || !cfg.ranksSelecionados?.length, done: !!cfg.baseadoEmInscricoes },
+    { key: 'entrada', label: 'Modo de Entrada', emoji: '👥', customId: 'btn_config_entrada', disabled: !cfg.modo || !cfg.ranksSelecionados?.length, done: cfg.baseadoEmInscricoes === true || cfg.baseadoEmInscricoes === false },
     { key: 'formato', label: 'Formato', emoji: '📋', customId: 'btn_config_formato', disabled: cfg.baseadoEmInscricoes !== false, done: !!cfg.formato },
     { key: 'participantes', label: 'Participantes', emoji: '👤', customId: 'btn_config_participantes', disabled: cfg.baseadoEmInscricoes !== false, done: cfg.participantes?.length > 0 },
     { key: 'criar', label: 'Criar Campeonato', emoji: '✅', customId: 'btn_config_criar', disabled: !isConfigComplete(cfg), done: false }
@@ -488,6 +489,7 @@ function buildConfigPanel(userId) {
 
 function isConfigComplete(cfg) {
   if (!cfg.modo) return false;
+  if (modoPermiteTipoDupla(cfg.modo) && !['FIXA', 'SORTEADA'].includes(cfg.tipoDupla)) return false;
   if (!cfg.ranksSelecionados?.length) return false;
   if (cfg.baseadoEmInscricoes === true) {
     return true;
@@ -503,6 +505,7 @@ function getSectionPreview(cfg, key) {
     case 'dados': return `${new Date(cfg.dataInicio).toLocaleDateString('pt-BR')} | ${cfg.horarioInicio}`;
     case 'simultaneo': return cfg.simultaneo === false ? 'Escalonadas' : 'Simultâneas';
     case 'modo': return cfg.modo ? getModoLabel(cfg.modo) : '—';
+    case 'tipoDupla': return modoPermiteTipoDupla(cfg.modo) ? (cfg.tipoDupla || 'Escolha fixa ou sorteada') : 'Não se aplica';
     case 'ranks': return cfg.ranksSelecionados?.length ? cfg.ranksSelecionados.map((r) => (config.ranks.find((cr) => cr.key === r)?.label || r)).join(', ') : '—';
     case 'entrada': return cfg.baseadoEmInscricoes === true ? 'Inscrição aberta' : cfg.baseadoEmInscricoes === false ? 'Eu escolho' : '—';
     case 'formato': return cfg.formato || '—';
@@ -522,6 +525,10 @@ function getModoLabel(modo) {
     '8v8': 'Octetos (x8, duplas intercaladas)'
   };
   return map[modo] || modo;
+}
+
+function modoPermiteTipoDupla(modo) {
+  return Number.parseInt(String(modo || ''), 10) > 1;
 }
 
 // Legacy - será removido
@@ -777,8 +784,8 @@ async function onConfirmarCriacao(interaction) {
       limiteInscricoes: selecao.limiteInscricoes,
       modalidade: selecao.modalidade,
       dataLimiteInscricoes: selecao.dataLimiteInscricoes,
-      simultaneo: true,
-      duracaoMin: 180,
+      simultaneo: selecao.simultaneo !== false,
+      duracaoMin: selecao.duracaoMin || 180,
       temTerceiroLugar: true,
       horarioInicio: selecao.horarioInicio
     });
@@ -3002,10 +3009,52 @@ async function onSelectConfigModo(interaction) {
     return interaction.update({ content: 'Sessão expirada.', embeds: [], components: [] });
   }
   cfg.modo = interaction.values[0];
+  if (!modoPermiteTipoDupla(cfg.modo) || !['FIXA', 'SORTEADA'].includes(cfg.tipoDupla)) {
+    cfg.tipoDupla = null;
+  }
   cfg.formato = null;
   cfg.participantes = [];
   configPainel.set(`camp:config:${userId}`, cfg);
   return diagUpdate('onSelectConfigModo', t0, interaction, buildConfigPanel(userId));
+}
+
+async function onConfigTipoDupla(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
+  }
+  const userId = interaction.user.id;
+  const cfg = configPainel.get(`camp:config:${userId}`);
+  if (!cfg) return interaction.update({ content: 'Sessão expirada.', embeds: [], components: [] });
+  if (!modoPermiteTipoDupla(cfg.modo)) {
+    return interaction.update({ content: 'Fixa ou sorteada só se aplica a modos de equipe.', ...buildConfigPanel(userId) });
+  }
+  const select = new StringSelectMenuBuilder()
+    .setCustomId('select_config_tipo_dupla')
+    .setPlaceholder('Escolha como os times serão formados')
+    .addOptions([
+      { label: 'Fixa', value: 'FIXA', description: 'Os jogadores mantêm suas equipes', default: cfg.tipoDupla === 'FIXA' },
+      { label: 'Sorteada', value: 'SORTEADA', description: 'O sistema organiza os jogadores', default: cfg.tipoDupla === 'SORTEADA' }
+    ]);
+  return interaction.update({
+    content: 'Escolha o tipo de equipe antes de criar:',
+    embeds: [],
+    components: [new ActionRowBuilder().addComponents(select)]
+  });
+}
+
+async function onSelectConfigTipoDupla(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.reply({ content: 'Sem permissao.', flags: 64 });
+  }
+  const cfg = configPainel.get(`camp:config:${interaction.user.id}`);
+  if (!cfg) return interaction.reply({ content: 'Sessão expirada.', flags: 64 });
+  const tipoDupla = interaction.values[0];
+  if (!modoPermiteTipoDupla(cfg.modo) || !['FIXA', 'SORTEADA'].includes(tipoDupla)) {
+    return interaction.reply({ content: 'Escolha inválida para o modo selecionado.', flags: 64 });
+  }
+  cfg.tipoDupla = tipoDupla;
+  configPainel.set(`camp:config:${interaction.user.id}`, cfg);
+  return interaction.update(buildConfigPanel(interaction.user.id));
 }
 
 function buildRanksScreen(userId) {
@@ -3288,11 +3337,11 @@ async function onConfigCriar(interaction) {
       dataLimiteInscricoes: cfg.dataLimiteInscricoes,
       organizadorId: interaction.user.id,
       modo: cfg.modo,
-      tipoDupla: cfg.modo.startsWith('4v') || cfg.modo.startsWith('6v') || cfg.modo.startsWith('8v') ? 'MESCLADA' : 'FIXA',
+      tipoDupla: modoPermiteTipoDupla(cfg.modo) ? cfg.tipoDupla : 'FIXA',
       baseadoEmInscricoes: cfg.baseadoEmInscricoes,
       limiteInscricoes: cfg.limiteInscricoes,
       modalidade: cfg.formato,
-      duracaoMin: 180,
+      duracaoMin: cfg.duracaoMin || 180,
       horarioInicio: cfg.horarioInicio,
       simultaneo: cfg.simultaneo !== false,
       temTerceiroLugar: true,
@@ -3426,6 +3475,8 @@ function register(registry) {
   registry.button('btn_config_simultaneo', onConfigSimultaneo);
   registry.button('btn_config_modo', onConfigModo);
   registry.select('select_config_modo', onSelectConfigModo);
+  registry.button('btn_config_tipo_dupla', onConfigTipoDupla);
+  registry.select('select_config_tipo_dupla', onSelectConfigTipoDupla);
   registry.button('btn_config_ranks', onConfigRanks);
   registry.button(/^btn_config_rank_toggle_(bronze|prata|ouro|platina|diamante|champion|grand_champion|omega_champion)$/, onConfigRankToggle);
   registry.button('btn_config_rank_confirmar', onConfigRankConfirmar);
