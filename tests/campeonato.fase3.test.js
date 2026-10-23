@@ -44,6 +44,110 @@ test('painel do organizador inclui a aba de check-in', () => {
   });
 });
 
+test('publicarPaineisCampeonato publica os painéis e registra suas mensagens', async () => {
+  await comEnv({}, async () => {
+    const { publicarPaineisCampeonato } = require('../src/features/campeonato/interactions');
+    const canais = new Map();
+    let proximaMensagemId = 1;
+    let salvou = false;
+
+    for (const nome of ['inscricoes', 'organizador', 'avisos']) {
+      canais.set(`${nome}-id`, {
+        id: `${nome}-id`,
+        isTextBased: () => true,
+        mensagens: [],
+        async send(payload) {
+          this.mensagens.push(payload);
+          const id = `mensagem-${proximaMensagemId++}`;
+          return {
+            id,
+            components: (payload.components || []).map((row) => ({
+              components: row.components.map((component) => ({ customId: component.data.custom_id }))
+            }))
+          };
+        }
+      });
+    }
+
+    const guild = {
+      channels: {
+        fetch: async (id) => canais.get(id)
+      }
+    };
+    const campeonato = {
+      _id: 'campeonato-id',
+      nome: 'Ômega #42 - OURO',
+      rank: 'ouro',
+      modo: '3v3',
+      tipoDupla: 'SORTEADA',
+      status: 'INSCRICOES_ABERTAS',
+      baseadoEmInscricoes: true,
+      canais: {
+        inscricoes: 'inscricoes-id',
+        organizador: 'organizador-id',
+        avisos: 'avisos-id'
+      },
+      save: async () => { salvou = true; }
+    };
+
+    const resultado = await publicarPaineisCampeonato(guild, campeonato);
+
+    assert.deepEqual(resultado, { inscricoes: true, organizador: true, avisos: true });
+    assert.equal(canais.get('inscricoes-id').mensagens.length, 1);
+    assert.ok(canais.get('inscricoes-id').mensagens[0].components[0].components
+      .some((component) => component.data.custom_id === 'btn_camp_inscrever'));
+    assert.equal(canais.get('organizador-id').mensagens.length, 5);
+    assert.ok(canais.get('organizador-id').mensagens[0].components[0].components
+      .some((component) => component.data.custom_id === 'painel_org_tab'));
+    assert.equal(canais.get('avisos-id').mensagens.length, 1);
+    assert.ok(campeonato.painelOrganizador.fixaMessageId);
+    assert.ok(campeonato.painelOrganizador.mensagens.gestao);
+    assert.equal(salvou, true);
+  });
+});
+
+test('publicarPaineisCampeonato continua publicando outros painéis se inscrição falhar', async () => {
+  await comEnv({}, async () => {
+    const { publicarPaineisCampeonato } = require('../src/features/campeonato/interactions');
+    const ids = ['inscricoes-id', 'organizador-id', 'avisos-id'];
+    const guild = {
+      channels: {
+        fetch: async (id) => ({
+          id,
+          isTextBased: () => true,
+          async send() {
+            if (id === 'inscricoes-id') throw new Error('Falha simulada');
+            return { id: `mensagem-${id}`, components: [] };
+          }
+        })
+      }
+    };
+    const campeonato = {
+      _id: 'campeonato-id',
+      nome: 'Ômega #42 - OURO',
+      rank: 'ouro',
+      modo: '3v3',
+      status: 'INSCRICOES_ABERTAS',
+      baseadoEmInscricoes: true,
+      canais: {
+        inscricoes: ids[0],
+        organizador: ids[1],
+        avisos: ids[2]
+      },
+      save: async () => {}
+    };
+    const logAnterior = console.error;
+    console.error = () => {};
+    try {
+      const resultado = await publicarPaineisCampeonato(guild, campeonato);
+      assert.deepEqual(resultado, { inscricoes: false, organizador: true, avisos: true });
+      assert.equal(campeonato.painelInscricaoErro, true);
+    } finally {
+      console.error = logAnterior;
+    }
+  });
+});
+
 test('finalizacao.podio - ordenação', async (t) => {
   await t.test('_posicionarSemifinalistas ordena por pontos, vitorias, menos wo', () => {
     comEnv({}, () => {

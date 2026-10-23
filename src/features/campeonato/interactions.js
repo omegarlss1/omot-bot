@@ -39,6 +39,84 @@ async function publicarPainelInscricao(canal, campeonato) {
   return mensagem;
 }
 
+async function publicarPaineisCampeonato(guild, campeonato) {
+  const resultado = { inscricoes: false, organizador: false, avisos: false };
+  const buscarCanal = async (chave) => {
+    try {
+      const canal = await guild.channels.fetch(campeonato.canais?.[chave]);
+      if (canal?.isTextBased?.()) return canal;
+      throw new Error(`Canal ${chave} ausente ou não é um canal de texto.`);
+    } catch (error) {
+      console.error(`[campeonato.criar] não foi possível obter o canal ${chave} do campeonato ${campeonato._id}:`, error);
+      return null;
+    }
+  };
+
+  const canalInscricoes = await buscarCanal('inscricoes');
+  if (canalInscricoes) {
+    try {
+      await publicarPainelInscricao(canalInscricoes, campeonato);
+      resultado.inscricoes = true;
+    } catch (error) {
+      campeonato.painelInscricaoErro = true;
+      console.error(`[campeonato.criar] erro ao publicar painel de inscrição no canal ${canalInscricoes.id}:`, error);
+    }
+  } else {
+    campeonato.painelInscricaoErro = true;
+  }
+
+  const canalOrganizador = await buscarCanal('organizador');
+  if (canalOrganizador) {
+    try {
+      const mensagemFixa = await canalOrganizador.send(buildPainelOrganizador());
+      const mensagens = {};
+      for (const [secao, titulo] of [
+        ['inscritos', '📋 INSCRITOS E TIMES'],
+        ['checkin', '✅ CHECK-IN'],
+        ['partidas', '🎮 PARTIDAS AO VIVO']
+      ]) {
+        const mensagem = await canalOrganizador.send({
+          embeds: [{ title: titulo, description: `Nenhum dado disponível ainda para **${campeonato.nome}**.`, color: 0x5865F2 }]
+        });
+        mensagens[secao] = mensagem.id;
+      }
+      const gestao = embedPainelAdmin({ campeonato });
+      const mensagemGestao = await canalOrganizador.send({
+        embeds: gestao.embeds,
+        components: toActionRows(gestao.components)
+      });
+      mensagens.gestao = mensagemGestao.id;
+      campeonato.painelOrganizador = {
+        fixaMessageId: mensagemFixa.id,
+        dinamicaMessageId: mensagens.inscritos,
+        mensagens
+      };
+      await campeonato.save();
+      resultado.organizador = true;
+    } catch (error) {
+      console.error(`[campeonato.criar] erro ao publicar painel do organizador no canal ${canalOrganizador.id}:`, error);
+    }
+  }
+
+  const canalAvisos = await buscarCanal('avisos');
+  if (canalAvisos) {
+    try {
+      await canalAvisos.send({
+        embeds: [{
+          title: `📣 Avisos — ${campeonato.nome}`,
+          description: `Inscrições abertas para o campeonato **${campeonato.nome}**. Acompanhe este canal para comunicados oficiais.`,
+          color: 0xFF6B00
+        }]
+      });
+      resultado.avisos = true;
+    } catch (error) {
+      console.error(`[campeonato.criar] erro ao publicar avisos no canal ${canalAvisos.id}:`, error);
+    }
+  }
+
+  return resultado;
+}
+
 function temPermissaoOrganizador(member) {
   if (!member) return false;
   if (member.permissions?.has?.('Administrator')) return true;
@@ -530,58 +608,7 @@ async function onConfirmarCriacao(interaction) {
     selecaoRanks.delete(`camp:selecao:${interaction.user.id}`);
     const eventosCriados = [];
     for (const camp of resultado.campeonatos) {
-      const canal = await interaction.guild.channels.fetch(camp.canais.inscricoes).catch(() => null);
-      if (canal && canal.isTextBased()) {
-        try {
-          await publicarPainelInscricao(canal, camp);
-        } catch (error) {
-          console.error(`[campeonato.criarEvento] erro ao publicar painel de inscrição no canal ${canal.id}:`, {
-            message: error?.message,
-            code: error?.code,
-            stack: error?.stack
-          });
-          camp.painelInscricaoErro = true;
-        }
-      } else {
-        camp.painelInscricaoErro = true;
-      }
-      const canalOrganizador = await interaction.guild.channels.fetch(camp.canais.organizador).catch(() => null);
-      if (canalOrganizador?.isTextBased()) {
-        const mensagemFixa = await canalOrganizador.send(buildPainelOrganizador());
-        const mensagens = {};
-        for (const [secao, titulo] of [
-          ['inscritos', '📋 INSCRITOS E TIMES'],
-          ['checkin', '✅ CHECK-IN'],
-          ['partidas', '🎮 PARTIDAS AO VIVO']
-        ]) {
-          const mensagem = await canalOrganizador.send({
-            embeds: [{ title: titulo, description: `Nenhum dado disponível ainda para **${camp.nome}**.`, color: 0x5865F2 }]
-          });
-          mensagens[secao] = mensagem.id;
-        }
-        const gestao = embedPainelAdmin({ campeonato: camp });
-        const mensagemGestao = await canalOrganizador.send({
-          embeds: gestao.embeds,
-          components: toActionRows(gestao.components)
-        });
-        mensagens.gestao = mensagemGestao.id;
-        camp.painelOrganizador = {
-          fixaMessageId: mensagemFixa.id,
-          dinamicaMessageId: mensagens.inscritos,
-          mensagens
-        };
-        await camp.save();
-      }
-      const canalAvisos = await interaction.guild.channels.fetch(camp.canais.avisos).catch(() => null);
-      if (canalAvisos?.isTextBased()) {
-        await canalAvisos.send({
-          embeds: [{
-            title: `📣 Avisos — ${camp.nome}`,
-            description: `Inscrições abertas para o campeonato **${camp.nome}**. Acompanhe este canal para comunicados oficiais.`,
-            color: 0xFF6B00
-          }]
-        }).catch((error) => console.error(`[campeonato.criarEvento] erro ao publicar avisos no canal ${canalAvisos.id}:`, error.message));
-      }
+      await publicarPaineisCampeonato(interaction.guild, camp);
       eventosCriados.push(camp);
     }
     return interaction.editReply(embedEventoCriado({
@@ -2536,11 +2563,23 @@ async function onConfigCriar(interaction) {
 
     configPainel.delete(`camp:config:${userId}`);
 
-    const paineisOrganizador = evento.campeonatos
-      .map((campeonato) => `**${campeonato.rank.toUpperCase()}**: <#${campeonato.canais?.organizador}>`)
-      .join('\n');
+    const statusPaineis = [];
+    for (const campeonato of evento.campeonatos) {
+      const publicados = await publicarPaineisCampeonato(guild, campeonato);
+      statusPaineis.push({
+        falhou: !publicados.inscricoes || !publicados.organizador || !publicados.avisos,
+        texto: [
+          `**${campeonato.rank.toUpperCase()}**`,
+          `Inscrições: ${campeonato.canais?.inscricoes ? `<#${campeonato.canais.inscricoes}>` : 'canal indisponível'} ${publicados.inscricoes ? '✅' : '⚠️ painel não publicado'}`,
+          `Organizador: ${campeonato.canais?.organizador ? `<#${campeonato.canais.organizador}>` : 'canal indisponível'} ${publicados.organizador ? '✅' : '⚠️ painel não publicado'}`,
+          `Avisos: ${publicados.avisos ? '✅' : '⚠️ aviso não publicado'}`
+        ].join(' | ')
+      });
+    }
+
+    const falhaPublicacao = statusPaineis.some((status) => status.falhou);
     return interaction.editReply({
-      content: `✅ Evento **${cfg.nome}** criado!\n\nPainéis de controle:\n${paineisOrganizador}`,
+      content: `${falhaPublicacao ? '⚠️' : '✅'} Evento **${cfg.nome}** criado${falhaPublicacao ? ', mas houve falha ao publicar algum painel ou aviso' : ' com os painéis publicados'}.\n\n${statusPaineis.map((status) => status.texto).join('\n')}`,
       embeds: [],
       components: []
     });
@@ -2713,4 +2752,11 @@ function register(registry) {
   registry.select(/^select_camp_jogador_capitao_[a-f0-9]{24}$/, onSelectJogadorCapitao);
 }
 
-module.exports = { register, temPermissaoOrganizador, parseDataBR, construirPeriodoEvento, publicarPainelInscricao };
+module.exports = {
+  register,
+  temPermissaoOrganizador,
+  parseDataBR,
+  construirPeriodoEvento,
+  publicarPainelInscricao,
+  publicarPaineisCampeonato
+};
