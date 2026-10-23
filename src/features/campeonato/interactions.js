@@ -427,6 +427,7 @@ async function onSubmitConfigDados(interaction) {
     dataLimiteInscricoes: dataLimite,
     horarioInicio,
     descricao,
+    etapa: cfgAnterior.etapa || 'geral',
     simultaneo: cfgAnterior.simultaneo ?? true,
     modo: cfgAnterior.modo || null,
     ranksSelecionados: cfgAnterior.ranksSelecionados || [],
@@ -441,50 +442,145 @@ async function onSubmitConfigDados(interaction) {
   });
 }
 
-function buildConfigPanel(userId) {
-  const cfg = configPainel.get(`camp:config:${userId}`);
+function buildConfigPanel(userId, configOverride) {
+  const cfg = configOverride || configPainel.get(`camp:config:${userId}`);
   if (!cfg) {
     return { content: 'Sessão expirada. Clique em Novo Campeonato de novo.', embeds: [], components: [] };
   }
-
-  const sections = [
-    { key: 'dados', label: 'Preencher dados', emoji: '📝', customId: 'btn_config_dados', disabled: false, done: true },
-    { key: 'simultaneo', label: 'Simultaneidade', emoji: '⏱️', customId: 'btn_config_simultaneo', disabled: false, done: cfg.simultaneo !== undefined },
-    { key: 'modo', label: 'Escolher modo', emoji: '⚔️', customId: 'btn_config_modo', disabled: false, done: !!cfg.modo },
-    { key: 'tipoDupla', label: 'Fixa ou sorteada', emoji: '👥', customId: 'btn_config_tipo_dupla', disabled: !modoPermiteTipoDupla(cfg.modo), done: !modoPermiteTipoDupla(cfg.modo) || !!cfg.tipoDupla },
-    { key: 'ranks', label: 'Ranks', emoji: '🎯', customId: 'btn_config_ranks', disabled: !cfg.modo, done: cfg.ranksSelecionados?.length > 0 },
-    { key: 'entrada', label: 'Modo de Entrada', emoji: '👥', customId: 'btn_config_entrada', disabled: !cfg.modo || !cfg.ranksSelecionados?.length, done: cfg.baseadoEmInscricoes === true || cfg.baseadoEmInscricoes === false },
-    { key: 'formato', label: 'Formato', emoji: '📋', customId: 'btn_config_formato', disabled: cfg.baseadoEmInscricoes !== false, done: !!cfg.formato },
-    { key: 'participantes', label: 'Participantes', emoji: '👤', customId: 'btn_config_participantes', disabled: cfg.baseadoEmInscricoes !== false, done: cfg.participantes?.length > 0 },
-    { key: 'criar', label: 'Criar Campeonato', emoji: '✅', customId: 'btn_config_criar', disabled: !isConfigComplete(cfg), done: false }
-  ];
-
+  const avancado = cfg.etapa === 'avancado';
+  const nomeRanks = (cfg.ranksSelecionados || [])
+    .map((rank) => config.ranks.find((item) => item.key === rank)?.label || rank)
+    .join(', ') || 'Ainda não selecionados';
   const embed = {
-    title: '⚙️ Configurações do Campeonato',
-    description: `**${cfg.nome}** — ${new Date(cfg.dataInicio).toLocaleDateString('pt-BR')} às ${cfg.horarioInicio}\nLimite inscrições: ${new Date(cfg.dataLimiteInscricoes).toLocaleDateString('pt-BR')}\n\n${cfg.descricao || '_Sem descrição_'}`,
-    color: 0xFF6B00,
-    fields: sections.map(s => ({
-      name: `${s.done ? '✅' : '⏳'} ${s.emoji} ${s.label}`,
-      value: getSectionPreview(cfg, s.key),
-      inline: true
-    }))
+    title: avancado ? '⚙️ Opções do Campeonato — Etapa 2/2' : '⚙️ Opções do Campeonato — Etapa 1/2',
+    description: `**${cfg.nome}** — ${new Date(cfg.dataInicio).toLocaleDateString('pt-BR')} às ${cfg.horarioInicio}\n` +
+      `Limite de inscrições: ${new Date(cfg.dataLimiteInscricoes).toLocaleDateString('pt-BR')}\n\n` +
+      `**Modo:** ${cfg.modo ? getModoLabel(cfg.modo) : 'Não selecionado'}\n` +
+      `**Ranks:** ${nomeRanks}\n` +
+      `**Simultaneidade:** ${cfg.simultaneo === false ? 'Escalonadas' : 'Simultâneas'}\n` +
+      `**Entrada:** ${cfg.baseadoEmInscricoes === true ? 'Inscrição aberta' : cfg.baseadoEmInscricoes === false ? 'Manual' : 'Não selecionada'}` +
+      (avancado ? `\n**Tipo de equipe:** ${modoPermiteTipoDupla(cfg.modo) ? (cfg.tipoDupla || 'Não selecionado') : 'Não se aplica'}` +
+        (cfg.baseadoEmInscricoes === false
+          ? `\n**Formato:** ${cfg.formato || 'Não selecionado'}\n**Limite de times:** ${cfg.limiteInscricoes || 'Sem limite'}\n**Participantes cadastrados:** ${cfg.participantes.length}`
+          : '') : '') +
+      (cfg.descricao ? `\n\n${cfg.descricao}` : ''),
+    color: 0xFF6B00
   };
 
-  const buttons = sections.map(s => ({
-    type: 2,
-    style: s.key === 'criar' ? 3 : (s.done ? 1 : 2),
-    label: s.label,
-    emoji: { name: s.emoji },
-    custom_id: s.customId,
-    disabled: s.disabled
-  }));
+  const botoes = [];
+  const componentes = [];
+  if (!avancado) {
+    const modos = [
+      ['1v1', 'Duelos (x1)'],
+      ['2v2', 'Duplas (x2)'],
+      ['3v3', 'Triplas (x3)'],
+      ['4v4', 'Quartetos (x4)'],
+      ['6v6', 'Sextetos (x6)'],
+      ['8v8', 'Octetos (x8)'],
+      ['10v10', '10 jogadores'],
+      ['12v12', '12 jogadores']
+    ];
+    const selectModo = new StringSelectMenuBuilder()
+      .setCustomId('select_config_modo')
+      .setPlaceholder('1. Escolha o modo de jogo')
+      .addOptions(modos.map(([value, label]) => ({ label, value, default: cfg.modo === value })));
+    const selectRanks = new StringSelectMenuBuilder()
+      .setCustomId('select_config_ranks')
+      .setPlaceholder('2. Selecione um ou mais ranks')
+      .setMinValues(1)
+      .setMaxValues(config.ranks.length)
+      .addOptions(config.ranks.map((rank) => ({
+        label: rank.label,
+        value: rank.key,
+        emoji: rank.emoji,
+        default: cfg.ranksSelecionados?.includes(rank.key) || false
+      })));
+    const selectSimultaneo = new StringSelectMenuBuilder()
+      .setCustomId('select_config_simultaneo')
+      .setPlaceholder('3. Escolha a simultaneidade')
+      .addOptions([
+        { label: 'Simultâneas', value: 'true', default: cfg.simultaneo !== false },
+        { label: 'Escalonadas', value: 'false', default: cfg.simultaneo === false }
+      ]);
+    const selectEntrada = new StringSelectMenuBuilder()
+      .setCustomId('select_config_entrada')
+      .setPlaceholder('4. Escolha o modo de entrada')
+      .addOptions([
+        { label: 'Inscrição aberta', value: 'true', default: cfg.baseadoEmInscricoes === true },
+        { label: 'Participantes definidos pela organização', value: 'false', default: cfg.baseadoEmInscricoes === false }
+      ]);
+    componentes.push(
+      new ActionRowBuilder().addComponents(selectModo),
+      new ActionRowBuilder().addComponents(selectRanks),
+      new ActionRowBuilder().addComponents(selectSimultaneo),
+      new ActionRowBuilder().addComponents(selectEntrada)
+    );
+    botoes.push(
+      new ButtonBuilder()
+        .setCustomId('btn_config_continuar')
+        .setLabel('Continuar')
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(!cfg.modo || !cfg.ranksSelecionados?.length || typeof cfg.baseadoEmInscricoes !== 'boolean'),
+      new ButtonBuilder()
+        .setCustomId('btn_config_cancelar')
+        .setLabel('Cancelar')
+        .setStyle(ButtonStyle.Danger)
+    );
+  } else {
+    if (modoPermiteTipoDupla(cfg.modo)) {
+      const selectTipoDupla = new StringSelectMenuBuilder()
+        .setCustomId('select_config_tipo_dupla')
+        .setPlaceholder('Escolha se as equipes serão fixas ou sorteadas')
+        .addOptions([
+          { label: 'Fixa', value: 'FIXA', default: cfg.tipoDupla === 'FIXA' },
+          { label: 'Sorteada', value: 'SORTEADA', default: cfg.tipoDupla === 'SORTEADA' }
+        ]);
+      componentes.push(new ActionRowBuilder().addComponents(selectTipoDupla));
+    }
+    if (cfg.baseadoEmInscricoes === false) {
+      const formatos = obterFormatosDisponiveis(cfg);
+      if (cfg.formato && !formatos.some((formato) => formato.value === cfg.formato)) cfg.formato = null;
+      const selectFormato = new StringSelectMenuBuilder()
+        .setCustomId('select_config_formato')
+        .setPlaceholder('Escolha o formato das partidas')
+        .addOptions(formatos.map((formato) => ({
+          label: formato.label,
+          value: formato.value,
+          description: formato.description,
+          default: cfg.formato === formato.value
+        })));
+      componentes.push(new ActionRowBuilder().addComponents(selectFormato));
+      botoes.push(
+        new ButtonBuilder()
+          .setCustomId('btn_config_limite')
+          .setLabel(cfg.limiteInscricoes ? `Limite: ${cfg.limiteInscricoes} times` : 'Definir limite de times')
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId('btn_config_participantes')
+          .setLabel(`Participantes (${cfg.participantes.length})`)
+          .setStyle(ButtonStyle.Secondary)
+      );
+    }
+    botoes.push(
+      new ButtonBuilder()
+        .setCustomId('btn_config_voltar')
+        .setLabel('Voltar')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId('btn_config_criar')
+        .setLabel('Criar campeonato')
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(!isConfigComplete(cfg)),
+      new ButtonBuilder()
+        .setCustomId('btn_config_cancelar')
+        .setLabel('Cancelar')
+        .setStyle(ButtonStyle.Danger)
+    );
+    if (botoes.length) componentes.push(new ActionRowBuilder().addComponents(botoes));
+  }
 
-  buttons.push({ type: 2, style: 4, label: 'Cancelar', emoji: { name: '❌' }, custom_id: 'btn_config_cancelar' });
-
-  return {
-    embeds: [embed],
-    components: montarComponentes(buttons.slice(0, 5), buttons.slice(5))
-  };
+  if (!avancado) componentes.push(new ActionRowBuilder().addComponents(botoes));
+  return { embeds: [embed], components: componentes };
 }
 
 function isConfigComplete(cfg) {
@@ -495,9 +591,25 @@ function isConfigComplete(cfg) {
     return true;
   }
   if (cfg.baseadoEmInscricoes === false) {
-    return !!cfg.formato && cfg.participantes.length >= 2;
+    const qtdParticipantes = cfg.participantes?.length || 0;
+    return !!cfg.formato
+      && qtdParticipantes >= 2
+      && (!cfg.limiteInscricoes || qtdParticipantes <= cfg.limiteInscricoes);
   }
   return false;
+}
+
+function obterFormatosDisponiveis(cfg) {
+  const formatos = [
+    { value: 'single', label: 'Eliminatória simples', description: 'Chave única' },
+    { value: 'double', label: 'Eliminatória dupla', description: 'Chave de vencedores e repescagem' },
+    { value: 'round-robin', label: 'Round robin', description: 'Todos contra todos' },
+    { value: 'grupos-mata-mata', label: 'Grupos + mata-mata', description: 'Fase de grupos e eliminatória' }
+  ];
+  const totalConhecido = cfg.limiteInscricoes || cfg.participantes?.length || 0;
+  return totalConhecido > 0 && totalConhecido < 4
+    ? formatos.filter((formato) => formato.value !== 'grupos-mata-mata')
+    : formatos;
 }
 
 function getSectionPreview(cfg, key) {
@@ -3008,7 +3120,11 @@ async function onSelectConfigModo(interaction) {
   if (!cfg) {
     return interaction.update({ content: 'Sessão expirada.', embeds: [], components: [] });
   }
-  cfg.modo = interaction.values[0];
+  const modo = interaction.values[0];
+  if (!['1v1', '2v2', '3v3', '4v4', '6v6', '8v8', '10v10', '12v12'].includes(modo)) {
+    return interaction.update({ ...buildConfigPanel(userId), content: 'Modo inválido. Escolha uma das opções disponíveis.' });
+  }
+  cfg.modo = modo;
   if (!modoPermiteTipoDupla(cfg.modo) || !['FIXA', 'SORTEADA'].includes(cfg.tipoDupla)) {
     cfg.tipoDupla = null;
   }
@@ -3016,6 +3132,82 @@ async function onSelectConfigModo(interaction) {
   cfg.participantes = [];
   configPainel.set(`camp:config:${userId}`, cfg);
   return diagUpdate('onSelectConfigModo', t0, interaction, buildConfigPanel(userId));
+}
+
+async function onSelectConfigRanks(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.reply({ content: 'Sem permissao.', flags: 64 });
+  }
+  const userId = interaction.user.id;
+  const cfg = configPainel.get(`camp:config:${userId}`);
+  if (!cfg) return interaction.reply({ content: 'Sessão expirada.', flags: 64 });
+  cfg.ranksSelecionados = interaction.values;
+  configPainel.set(`camp:config:${userId}`, cfg);
+  return interaction.update(buildConfigPanel(userId));
+}
+
+async function onSelectConfigSimultaneo(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.reply({ content: 'Sem permissao.', flags: 64 });
+  }
+  const userId = interaction.user.id;
+  const cfg = configPainel.get(`camp:config:${userId}`);
+  if (!cfg) return interaction.reply({ content: 'Sessão expirada.', flags: 64 });
+  cfg.simultaneo = interaction.values[0] === 'true';
+  configPainel.set(`camp:config:${userId}`, cfg);
+  return interaction.update(buildConfigPanel(userId));
+}
+
+async function onSelectConfigEntrada(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.reply({ content: 'Sem permissao.', flags: 64 });
+  }
+  const userId = interaction.user.id;
+  const cfg = configPainel.get(`camp:config:${userId}`);
+  if (!cfg) return interaction.reply({ content: 'Sessão expirada.', flags: 64 });
+  cfg.baseadoEmInscricoes = interaction.values[0] === 'true';
+  if (cfg.baseadoEmInscricoes) {
+    cfg.formato = null;
+    cfg.participantes = [];
+    cfg.limiteInscricoes = null;
+  }
+  configPainel.set(`camp:config:${userId}`, cfg);
+  return interaction.update(buildConfigPanel(userId));
+}
+
+async function onConfigContinuar(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
+  }
+  const userId = interaction.user.id;
+  const cfg = configPainel.get(`camp:config:${userId}`);
+  if (!cfg) return interaction.update({ content: 'Sessão expirada.', embeds: [], components: [] });
+  if (!cfg.modo || !cfg.ranksSelecionados?.length || typeof cfg.baseadoEmInscricoes !== 'boolean') {
+    return interaction.update({
+      ...buildConfigPanel(userId),
+      content: 'Escolha o modo, pelo menos um rank, a simultaneidade e o modo de entrada antes de continuar.'
+    });
+  }
+  cfg.etapa = 'avancado';
+  if (cfg.baseadoEmInscricoes) {
+    cfg.formato = null;
+    cfg.participantes = [];
+    cfg.limiteInscricoes = null;
+  }
+  configPainel.set(`camp:config:${userId}`, cfg);
+  return interaction.update(buildConfigPanel(userId));
+}
+
+async function onConfigVoltar(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
+  }
+  const userId = interaction.user.id;
+  const cfg = configPainel.get(`camp:config:${userId}`);
+  if (!cfg) return interaction.update({ content: 'Sessão expirada.', embeds: [], components: [] });
+  cfg.etapa = 'geral';
+  configPainel.set(`camp:config:${userId}`, cfg);
+  return interaction.update(buildConfigPanel(userId));
 }
 
 async function onConfigTipoDupla(interaction) {
@@ -3199,22 +3391,7 @@ async function onConfigFormato(interaction) {
   if (!cfg || cfg.baseadoEmInscricoes !== false) {
     return interaction.update({ content: 'Disponível apenas quando "Eu escolho os participantes".', embeds: [], components: [] });
   }
-
-  const select = new StringSelectMenuBuilder()
-    .setCustomId('select_config_formato')
-    .setPlaceholder('Escolha o formato do campeonato')
-    .addOptions([
-      { label: 'Eliminatória Simples', value: 'single', description: 'Chave única, perde uma vez e sai' },
-      { label: 'Eliminatória Dupla', value: 'double', description: 'Duas chances, loser bracket' },
-      { label: 'Grupos + Mata-mata', value: 'grupos-mata-mata', description: 'Fase de grupos e eliminatória' },
-      { label: 'Round Robin (Todos contra todos)', value: 'round-robin', description: 'Todos jogam contra todos' }
-    ]);
-
-  return interaction.update({
-    content: 'Escolha o **formato**:',
-    embeds: [],
-    components: [new ActionRowBuilder().addComponents(select)]
-  });
+  return interaction.update(buildConfigPanel(userId));
 }
 
 async function onSelectConfigFormato(interaction) {
@@ -3226,7 +3403,58 @@ async function onSelectConfigFormato(interaction) {
   if (!cfg) {
     return interaction.update({ content: 'Sessão expirada.', embeds: [], components: [] });
   }
-  cfg.formato = interaction.values[0];
+  const formato = interaction.values[0];
+  if (cfg.baseadoEmInscricoes !== false || !obterFormatosDisponiveis(cfg).some((item) => item.value === formato)) {
+    return interaction.update({
+      ...buildConfigPanel(userId),
+      content: 'Esse formato não está disponível para o limite de times escolhido.'
+    });
+  }
+  cfg.formato = formato;
+  configPainel.set(`camp:config:${userId}`, cfg);
+  return interaction.update(buildConfigPanel(userId));
+}
+
+async function onConfigLimite(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.reply({ content: 'Sem permissao.', flags: 64 });
+  }
+  const cfg = configPainel.get(`camp:config:${interaction.user.id}`);
+  if (!cfg || cfg.etapa !== 'avancado' || cfg.baseadoEmInscricoes !== false) {
+    return interaction.reply({ content: 'O limite só está disponível para participantes definidos pela organização.', flags: 64 });
+  }
+  const modal = new ModalBuilder()
+    .setCustomId('modal_config_limite_manual')
+    .setTitle('Limite de times');
+  const campo = new TextInputBuilder()
+    .setCustomId('limite_manual')
+    .setLabel('Número de times (vazio = sem limite)')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setMaxLength(3);
+  if (cfg.limiteInscricoes) campo.setValue(String(cfg.limiteInscricoes));
+  modal.addComponents(new ActionRowBuilder().addComponents(campo));
+  return interaction.showModal(modal);
+}
+
+async function onSubmitConfigLimite(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.reply({ content: 'Sem permissao.', flags: 64 });
+  }
+  const userId = interaction.user.id;
+  const cfg = configPainel.get(`camp:config:${userId}`);
+  if (!cfg || cfg.etapa !== 'avancado' || cfg.baseadoEmInscricoes !== false) {
+    return interaction.reply({ content: 'A configuração expirou ou não permite definir limite.', flags: 64 });
+  }
+  const texto = interaction.fields.getTextInputValue('limite_manual').trim();
+  const limite = texto ? Number(texto) : null;
+  if (texto && (!Number.isInteger(limite) || limite < 2 || limite > 128)) {
+    return interaction.reply({ content: 'Informe um número inteiro entre 2 e 128, ou deixe vazio para não limitar.', flags: 64 });
+  }
+  if (limite !== null && cfg.participantes.length > limite) {
+    return interaction.reply({ content: `O limite não pode ser menor que os ${cfg.participantes.length} participantes já cadastrados.`, flags: 64 });
+  }
+  cfg.limiteInscricoes = limite;
   configPainel.set(`camp:config:${userId}`, cfg);
   return interaction.update(buildConfigPanel(userId));
 }
@@ -3256,6 +3484,18 @@ async function onConfigParticipantes(interaction) {
     embeds: [],
     components: toActionRows([buttons])
   });
+}
+
+async function onConfigParticipantesVoltar(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
+  }
+  const userId = interaction.user.id;
+  const cfg = configPainel.get(`camp:config:${userId}`);
+  if (!cfg) return interaction.update({ content: 'Sessão expirada.', embeds: [], components: [] });
+  cfg.etapa = 'avancado';
+  configPainel.set(`camp:config:${userId}`, cfg);
+  return interaction.update(buildConfigPanel(userId));
 }
 
 async function onConfigParticipanteAdd(interaction) {
@@ -3301,6 +3541,13 @@ async function onSubmitConfigParticipante(interaction) {
   
   const nome = interaction.fields.getTextInputValue('part_nome').trim();
   const isSolo = pending.isSolo;
+  if (pending.cfg.limiteInscricoes && pending.cfg.participantes.length >= pending.cfg.limiteInscricoes) {
+    delete interaction.client._pendingParticipante;
+    return interaction.reply({
+      content: `O limite de ${pending.cfg.limiteInscricoes} participantes foi atingido.`,
+      flags: 64
+    });
+  }
   pending.cfg.participantes.push({ 
     nome, 
     tipo: isSolo ? 'jogador' : 'time',
@@ -3490,9 +3737,16 @@ function register(registry) {
   registry.button('btn_config_participantes', onConfigParticipantes);
   registry.button('btn_config_participante_add', onConfigParticipanteAdd);
   registry.modal('modal_config_participante', onSubmitConfigParticipante);
-  registry.button('btn_config_participantes_voltar', onConfigParticipantes);
+  registry.button('btn_config_participantes_voltar', onConfigParticipantesVoltar);
   registry.button('btn_config_criar', onConfigCriar);
+  registry.button('btn_config_continuar', onConfigContinuar);
+  registry.button('btn_config_voltar', onConfigVoltar);
+  registry.button('btn_config_limite', onConfigLimite);
   registry.button('btn_config_cancelar', onConfigCancelar);
+  registry.select('select_config_ranks', onSelectConfigRanks);
+  registry.select('select_config_simultaneo', onSelectConfigSimultaneo);
+  registry.select('select_config_entrada', onSelectConfigEntrada);
+  registry.modal('modal_config_limite_manual', onSubmitConfigLimite);
   registry.button(/^btn_camp_rank_toggle_(bronze|prata|ouro|platina|diamante|champion|grand_champion|omega_champion)$/, onToggleRank);
   registry.button('btn_camp_rank_confirmar', onConfirmarRanks);
   registry.modal('modal_criar_evento', onSubmitCriarEvento);
@@ -3569,6 +3823,9 @@ function register(registry) {
 module.exports = {
   register,
   temPermissaoOrganizador,
+  buildConfigPanel,
+  isConfigComplete,
+  obterFormatosDisponiveis,
   parseDataBR,
   construirPeriodoEvento,
   construirModalInscricaoTime,

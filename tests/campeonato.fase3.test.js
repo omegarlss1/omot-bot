@@ -94,6 +94,69 @@ test('painel de rank arquivado não oferece ações administrativas', () => {
   });
 });
 
+test('painel de criação empilha escolhas gerais e mostra opções condicionais na segunda etapa', () => {
+  comEnv({}, () => {
+    const { buildConfigPanel } = require('../src/features/campeonato/interactions');
+    const configBase = {
+      nome: 'Copa Ômega',
+      dataInicio: new Date('2026-12-01T00:00:00'),
+      dataLimiteInscricoes: new Date('2026-11-30T00:00:00'),
+      horarioInicio: '19:00',
+      descricao: '',
+      ranksSelecionados: ['ouro'],
+      participantes: [],
+      simultaneo: true
+    };
+    const painelGeral = buildConfigPanel('organizador', {
+      ...configBase,
+      etapa: 'geral',
+      modo: null,
+      baseadoEmInscricoes: null
+    });
+    const linhasGerais = painelGeral.components.map((linha) => linha.toJSON().components);
+    const idsGerais = linhasGerais.flat().map((componente) => componente.custom_id);
+    assert.equal(linhasGerais.length, 5);
+    assert.deepEqual(idsGerais.slice(0, 4), [
+      'select_config_modo',
+      'select_config_ranks',
+      'select_config_simultaneo',
+      'select_config_entrada'
+    ]);
+    assert.ok(idsGerais.includes('btn_config_continuar'));
+
+    const painelManual = buildConfigPanel('organizador', {
+      ...configBase,
+      etapa: 'avancado',
+      modo: '2v2',
+      tipoDupla: 'FIXA',
+      baseadoEmInscricoes: false,
+      formato: null,
+      limiteInscricoes: 2
+    });
+    const linhasManuais = painelManual.components.map((linha) => linha.toJSON().components);
+    const idsManuais = linhasManuais.flat().map((componente) => componente.custom_id);
+    const menuFormato = linhasManuais.flat().find((componente) => componente.custom_id === 'select_config_formato');
+    assert.ok(menuFormato);
+    assert.ok(!menuFormato.options.some((opcao) => opcao.value === 'grupos-mata-mata'));
+    assert.ok(idsManuais.includes('btn_config_limite'));
+    assert.ok(idsManuais.includes('btn_config_participantes'));
+    assert.ok(!idsManuais.includes('select_config_entrada'));
+
+    const painelAberto = buildConfigPanel('organizador', {
+      ...configBase,
+      etapa: 'avancado',
+      modo: '1v1',
+      baseadoEmInscricoes: true
+    });
+    const idsAbertos = painelAberto.components
+      .flatMap((linha) => linha.toJSON().components)
+      .map((componente) => componente.custom_id);
+    assert.ok(!idsAbertos.includes('btn_config_limite'));
+    assert.ok(!idsAbertos.includes('select_config_tipo_dupla'));
+    assert.ok(!idsAbertos.includes('select_config_formato'));
+  });
+});
+
 test('formulário de inscrição respeita o limite de cinco campos e divide a lista em etapas', () => {
   comEnv({}, () => {
     const { construirModalInscricaoTime } = require('../src/features/campeonato/interactions');
