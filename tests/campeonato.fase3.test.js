@@ -104,7 +104,6 @@ test('painel de criação empilha escolhas gerais e mostra opções condicionais
       horarioInicio: '19:00',
       descricao: '',
       ranksSelecionados: ['ouro'],
-      participantes: [],
       simultaneo: true
     };
     const painelGeral = buildConfigPanel('organizador', {
@@ -144,8 +143,26 @@ test('painel de criação empilha escolhas gerais e mostra opções condicionais
     assert.ok(menuFormato);
     assert.ok(!menuFormato.options.some((opcao) => opcao.value === 'grupos-mata-mata'));
     assert.ok(idsManuais.includes('btn_config_limite'));
-    assert.ok(idsManuais.includes('btn_config_participantes'));
+    assert.ok(!idsManuais.includes('btn_config_participantes'));
     assert.ok(!idsManuais.includes('select_config_entrada'));
+    const botaoCriar = linhasManuais.flat().find((componente) => componente.custom_id === 'btn_config_criar');
+    assert.equal(botaoCriar.disabled, true);
+
+    const painelManualComFormato = buildConfigPanel('organizador', {
+      ...configBase,
+      etapa: 'avancado',
+      modo: '2v2',
+      tipoDupla: 'FIXA',
+      baseadoEmInscricoes: false,
+      formato: 'single',
+      limiteInscricoes: 2
+    });
+    const botoesManualComFormato = painelManualComFormato.components
+      .flatMap((linha) => linha.toJSON().components);
+    assert.equal(
+      botoesManualComFormato.find((componente) => componente.custom_id === 'btn_config_criar').disabled,
+      false
+    );
 
     const painelAberto = buildConfigPanel('organizador', {
       ...configBase,

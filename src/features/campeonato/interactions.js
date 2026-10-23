@@ -433,7 +433,6 @@ async function onSubmitConfigDados(interaction) {
     ranksSelecionados: cfgAnterior.ranksSelecionados || [],
     baseadoEmInscricoes: cfgAnterior.baseadoEmInscricoes ?? null,
     formato: cfgAnterior.formato || null,
-    participantes: cfgAnterior.participantes || []
   });
 
   return interaction.reply({
@@ -461,7 +460,7 @@ function buildConfigPanel(userId, configOverride) {
       `**Entrada:** ${cfg.baseadoEmInscricoes === true ? 'Jogadores ilimitados' : cfg.baseadoEmInscricoes === false ? 'Definir limite de jogadores' : 'Não selecionada'}` +
       (avancado ? `\n**Tipo de equipe:** ${modoPermiteTipoDupla(cfg.modo) ? (cfg.tipoDupla || 'Não selecionado') : 'Não se aplica'}` +
         (cfg.baseadoEmInscricoes === false
-          ? `\n**Formato:** ${cfg.formato || 'Não selecionado'}\n**Limite de jogadores:** ${cfg.limiteInscricoes || 'Sem limite'}\n**Participantes cadastrados:** ${cfg.participantes.length}`
+          ? `\n**Formato:** ${cfg.formato || 'Não selecionado'}\n**Limite de jogadores:** ${cfg.limiteInscricoes || 'Sem limite'}`
           : '') : '') +
       (cfg.descricao ? `\n\n${cfg.descricao}` : ''),
     color: 0xFF6B00
@@ -553,11 +552,7 @@ function buildConfigPanel(userId, configOverride) {
       botoes.push(
         new ButtonBuilder()
           .setCustomId('btn_config_limite')
-            .setLabel(cfg.limiteInscricoes ? `Limite: ${cfg.limiteInscricoes} jogadores` : 'Definir limite de jogadores')
-          .setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder()
-          .setCustomId('btn_config_participantes')
-          .setLabel(`Participantes (${cfg.participantes.length})`)
+          .setLabel(cfg.limiteInscricoes ? `Limite: ${cfg.limiteInscricoes} jogadores` : 'Definir limite de jogadores')
           .setStyle(ButtonStyle.Secondary)
       );
     }
@@ -611,10 +606,7 @@ function isConfigComplete(cfg) {
     return true;
   }
   if (cfg.baseadoEmInscricoes === false) {
-    const qtdParticipantes = cfg.participantes?.length || 0;
-    return !!cfg.formato
-      && qtdParticipantes >= 2
-      && (!cfg.limiteInscricoes || qtdParticipantes <= cfg.limiteInscricoes);
+    return !!cfg.formato;
   }
   return false;
 }
@@ -626,7 +618,7 @@ function obterFormatosDisponiveis(cfg) {
     { value: 'round-robin', label: 'Round robin', description: 'Todos contra todos' },
     { value: 'grupos-mata-mata', label: 'Grupos + mata-mata', description: 'Fase de grupos e eliminatória' }
   ];
-  const totalConhecido = cfg.limiteInscricoes || cfg.participantes?.length || 0;
+  const totalConhecido = cfg.limiteInscricoes || 0;
   return totalConhecido > 0 && totalConhecido < 4
     ? formatos.filter((formato) => formato.value !== 'grupos-mata-mata')
     : formatos;
@@ -641,7 +633,6 @@ function getSectionPreview(cfg, key) {
     case 'ranks': return cfg.ranksSelecionados?.length ? cfg.ranksSelecionados.map((r) => (config.ranks.find((cr) => cr.key === r)?.label || r)).join(', ') : '—';
     case 'entrada': return cfg.baseadoEmInscricoes === true ? 'Jogadores ilimitados' : cfg.baseadoEmInscricoes === false ? 'Definir limite de jogadores' : '—';
     case 'formato': return cfg.formato || '—';
-    case 'participantes': return `${cfg.participantes?.length || 0} participante(s)`;
     case 'criar': return isConfigComplete(cfg) ? 'Pronto para criar' : 'Complete as seções acima';
     default: return '—';
   }
@@ -3150,7 +3141,6 @@ async function onSelectConfigModo(interaction) {
     cfg.tipoDupla = null;
   }
   cfg.formato = null;
-  cfg.participantes = [];
   configPainel.set(`camp:config:${userId}`, cfg);
   return atualizarPainelConfig(interaction, userId, 'onSelectConfigModo');
 }
@@ -3189,7 +3179,6 @@ async function onSelectConfigEntrada(interaction) {
   cfg.baseadoEmInscricoes = interaction.values[0] === 'true';
   if (cfg.baseadoEmInscricoes) {
     cfg.formato = null;
-    cfg.participantes = [];
     cfg.limiteInscricoes = null;
   }
   configPainel.set(`camp:config:${userId}`, cfg);
@@ -3212,7 +3201,6 @@ async function onConfigContinuar(interaction) {
   cfg.etapa = 'avancado';
   if (cfg.baseadoEmInscricoes) {
     cfg.formato = null;
-    cfg.participantes = [];
     cfg.limiteInscricoes = null;
   }
   configPainel.set(`camp:config:${userId}`, cfg);
@@ -3394,7 +3382,6 @@ async function onConfigEntradaEscolha(interaction) {
   if (customId === 'btn_config_entrada_aberta') {
     cfg.baseadoEmInscricoes = true;
     cfg.formato = null;
-    cfg.participantes = [];
   } else if (customId === 'btn_config_entrada_manual') {
     cfg.baseadoEmInscricoes = false;
   } else if (customId === 'btn_config_entrada_voltar') {
@@ -3473,111 +3460,8 @@ async function onSubmitConfigLimite(interaction) {
   if (texto && (!Number.isInteger(limite) || limite < 2 || limite > 128)) {
     return interaction.reply({ content: 'Informe um número inteiro entre 2 e 128, ou deixe vazio para não limitar.', flags: 64 });
   }
-  if (limite !== null && cfg.participantes.length > limite) {
-    return interaction.reply({ content: `O limite não pode ser menor que os ${cfg.participantes.length} participantes já cadastrados.`, flags: 64 });
-  }
   cfg.limiteInscricoes = limite;
   configPainel.set(`camp:config:${userId}`, cfg);
-  return interaction.update(buildConfigPanel(userId));
-}
-
-async function onConfigParticipantes(interaction) {
-  if (!temPermissaoOrganizador(interaction.member)) {
-    return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
-  }
-  const userId = interaction.user.id;
-  const cfg = configPainel.get(`camp:config:${userId}`);
-  if (!cfg || cfg.baseadoEmInscricoes !== false) {
-    return interaction.update({ content: 'Disponível apenas quando "Definir limite de jogadores".', embeds: [], components: [] });
-  }
-
-  // Show current participants + add button
-  const lines = cfg.participantes.map((p, i) => 
-    `${i + 1}. ${p.nome || '—'} (${p.tipo === 'time' ? 'Time' : 'Jogador'})`
-  ).join('\n') || '_Nenhum participante_';
-
-  const buttons = [
-    { type: 2, style: 3, label: 'Adicionar Participante', emoji: { name: '➕' }, custom_id: 'btn_config_participante_add' },
-    { type: 2, style: 4, label: 'Voltar', emoji: { name: '⬅️' }, custom_id: 'btn_config_participantes_voltar' }
-  ];
-
-  return interaction.update({
-    content: `**Participantes (${cfg.participantes.length})**\n${lines}`,
-    embeds: [],
-    components: toActionRows([buttons])
-  });
-}
-
-async function onConfigParticipantesVoltar(interaction) {
-  if (!temPermissaoOrganizador(interaction.member)) {
-    return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
-  }
-  const userId = interaction.user.id;
-  const cfg = configPainel.get(`camp:config:${userId}`);
-  if (!cfg) return interaction.update({ content: 'Sessão expirada.', embeds: [], components: [] });
-  cfg.etapa = 'avancado';
-  configPainel.set(`camp:config:${userId}`, cfg);
-  return interaction.update(buildConfigPanel(userId));
-}
-
-async function onConfigParticipanteAdd(interaction) {
-  if (!temPermissaoOrganizador(interaction.member)) {
-    return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
-  }
-  const userId = interaction.user.id;
-  const cfg = configPainel.get(`camp:config:${userId}`);
-  if (!cfg || !cfg.modo) {
-    return interaction.update({ content: 'Configuração incompleta.', embeds: [], components: [] });
-  }
-
-  const isSolo = cfg.modo === '1v1';
-  const modal = new ModalBuilder()
-    .setCustomId('modal_config_participante')
-    .setTitle(isSolo ? 'Adicionar Jogador' : 'Adicionar Time');
-  
-  modal.addComponents(
-    new ActionRowBuilder().addComponents(
-      new TextInputBuilder()
-        .setCustomId('part_nome')
-        .setLabel(isSolo ? 'Nick do Jogador' : 'Nome do Time')
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true)
-        .setMaxLength(50)
-    )
-  );
-
-  // Note: UserSelect can't be in modal. We'll use a follow-up select.
-  interaction.client._pendingParticipante = { isSolo, cfg };
-  return interaction.showModal(modal);
-}
-
-async function onSubmitConfigParticipante(interaction) {
-  if (!temPermissaoOrganizador(interaction.member)) {
-    return interaction.reply({ content: 'Sem permissao.', flags: 64 });
-  }
-  const userId = interaction.user.id;
-  const pending = interaction.client._pendingParticipante;
-  if (!pending || !pending.cfg) {
-    return interaction.reply({ content: 'Erro: sessão perdida. Tente novamente.', flags: 64 });
-  }
-  
-  const nome = interaction.fields.getTextInputValue('part_nome').trim();
-  const isSolo = pending.isSolo;
-  if (pending.cfg.limiteInscricoes && pending.cfg.participantes.length >= pending.cfg.limiteInscricoes) {
-    delete interaction.client._pendingParticipante;
-    return interaction.reply({
-      content: `O limite de ${pending.cfg.limiteInscricoes} participantes foi atingido.`,
-      flags: 64
-    });
-  }
-  pending.cfg.participantes.push({ 
-    nome, 
-    tipo: isSolo ? 'jogador' : 'time',
-    // Will add capitão/jogadores via follow-up select
-  });
-  configPainel.set(`camp:config:${userId}`, pending.cfg);
-  delete interaction.client._pendingParticipante;
-  
   return interaction.update(buildConfigPanel(userId));
 }
 
@@ -3756,10 +3640,6 @@ function register(registry) {
   registry.button('btn_config_entrada_voltar', onConfigEntradaEscolha);
   registry.button('btn_config_formato', onConfigFormato);
   registry.select('select_config_formato', onSelectConfigFormato);
-  registry.button('btn_config_participantes', onConfigParticipantes);
-  registry.button('btn_config_participante_add', onConfigParticipanteAdd);
-  registry.modal('modal_config_participante', onSubmitConfigParticipante);
-  registry.button('btn_config_participantes_voltar', onConfigParticipantesVoltar);
   registry.button('btn_config_criar', onConfigCriar);
   registry.button('btn_config_continuar', onConfigContinuar);
   registry.button('btn_config_voltar', onConfigVoltar);
