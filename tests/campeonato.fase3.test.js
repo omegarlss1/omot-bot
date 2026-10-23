@@ -122,6 +122,11 @@ test('painel de criação empilha escolhas gerais e mostra opções condicionais
       'select_config_simultaneo',
       'select_config_entrada'
     ]);
+    const menuEntrada = linhasGerais.flat().find((componente) => componente.custom_id === 'select_config_entrada');
+    assert.deepEqual(menuEntrada.options.map((opcao) => opcao.label), [
+      'Jogadores ilimitados',
+      'Definir limite de jogadores'
+    ]);
     assert.ok(idsGerais.includes('btn_config_continuar'));
 
     const painelManual = buildConfigPanel('organizador', {

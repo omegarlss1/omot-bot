@@ -458,10 +458,10 @@ function buildConfigPanel(userId, configOverride) {
       `**Modo:** ${cfg.modo ? getModoLabel(cfg.modo) : 'Não selecionado'}\n` +
       `**Ranks:** ${nomeRanks}\n` +
       `**Simultaneidade:** ${cfg.simultaneo === false ? 'Escalonadas' : 'Simultâneas'}\n` +
-      `**Entrada:** ${cfg.baseadoEmInscricoes === true ? 'Inscrição aberta' : cfg.baseadoEmInscricoes === false ? 'Manual' : 'Não selecionada'}` +
+      `**Entrada:** ${cfg.baseadoEmInscricoes === true ? 'Jogadores ilimitados' : cfg.baseadoEmInscricoes === false ? 'Definir limite de jogadores' : 'Não selecionada'}` +
       (avancado ? `\n**Tipo de equipe:** ${modoPermiteTipoDupla(cfg.modo) ? (cfg.tipoDupla || 'Não selecionado') : 'Não se aplica'}` +
         (cfg.baseadoEmInscricoes === false
-          ? `\n**Formato:** ${cfg.formato || 'Não selecionado'}\n**Limite de times:** ${cfg.limiteInscricoes || 'Sem limite'}\n**Participantes cadastrados:** ${cfg.participantes.length}`
+          ? `\n**Formato:** ${cfg.formato || 'Não selecionado'}\n**Limite de jogadores:** ${cfg.limiteInscricoes || 'Sem limite'}\n**Participantes cadastrados:** ${cfg.participantes.length}`
           : '') : '') +
       (cfg.descricao ? `\n\n${cfg.descricao}` : ''),
     color: 0xFF6B00
@@ -506,8 +506,8 @@ function buildConfigPanel(userId, configOverride) {
       .setCustomId('select_config_entrada')
       .setPlaceholder('4. Escolha o modo de entrada')
       .addOptions([
-        { label: 'Inscrição aberta', value: 'true', default: cfg.baseadoEmInscricoes === true },
-        { label: 'Participantes definidos pela organização', value: 'false', default: cfg.baseadoEmInscricoes === false }
+        { label: 'Jogadores ilimitados', value: 'true', default: cfg.baseadoEmInscricoes === true },
+        { label: 'Definir limite de jogadores', value: 'false', default: cfg.baseadoEmInscricoes === false }
       ]);
     componentes.push(
       new ActionRowBuilder().addComponents(selectModo),
@@ -553,7 +553,7 @@ function buildConfigPanel(userId, configOverride) {
       botoes.push(
         new ButtonBuilder()
           .setCustomId('btn_config_limite')
-          .setLabel(cfg.limiteInscricoes ? `Limite: ${cfg.limiteInscricoes} times` : 'Definir limite de times')
+            .setLabel(cfg.limiteInscricoes ? `Limite: ${cfg.limiteInscricoes} jogadores` : 'Definir limite de jogadores')
           .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
           .setCustomId('btn_config_participantes')
@@ -581,6 +581,26 @@ function buildConfigPanel(userId, configOverride) {
 
   if (!avancado) componentes.push(new ActionRowBuilder().addComponents(botoes));
   return { embeds: [embed], components: componentes };
+}
+
+async function atualizarPainelConfig(interaction, userId, nome) {
+  const inicio = diagInicio(nome, interaction);
+  try {
+    await interaction.deferUpdate();
+    const ackMs = Date.now() - inicio;
+    const inicioBuild = Date.now();
+    const payload = buildConfigPanel(userId);
+    const buildMs = Date.now() - inicioBuild;
+    const resultado = await interaction.editReply(payload);
+    console.log(`[Diag Campeonato] ${nome} ack=${ackMs}ms build=${buildMs}ms total=${Date.now() - inicio}ms`);
+    return resultado;
+  } catch (error) {
+    console.error(`[Diag Campeonato] ${nome} falhou total=${Date.now() - inicio}ms:`, {
+      message: error?.message,
+      code: error?.code
+    });
+    throw error;
+  }
 }
 
 function isConfigComplete(cfg) {
@@ -619,7 +639,7 @@ function getSectionPreview(cfg, key) {
     case 'modo': return cfg.modo ? getModoLabel(cfg.modo) : '—';
     case 'tipoDupla': return modoPermiteTipoDupla(cfg.modo) ? (cfg.tipoDupla || 'Escolha fixa ou sorteada') : 'Não se aplica';
     case 'ranks': return cfg.ranksSelecionados?.length ? cfg.ranksSelecionados.map((r) => (config.ranks.find((cr) => cr.key === r)?.label || r)).join(', ') : '—';
-    case 'entrada': return cfg.baseadoEmInscricoes === true ? 'Inscrição aberta' : cfg.baseadoEmInscricoes === false ? 'Eu escolho' : '—';
+    case 'entrada': return cfg.baseadoEmInscricoes === true ? 'Jogadores ilimitados' : cfg.baseadoEmInscricoes === false ? 'Definir limite de jogadores' : '—';
     case 'formato': return cfg.formato || '—';
     case 'participantes': return `${cfg.participantes?.length || 0} participante(s)`;
     case 'criar': return isConfigComplete(cfg) ? 'Pronto para criar' : 'Complete as seções acima';
@@ -1543,8 +1563,8 @@ function montarPainelEdicaoEvento(evento, campeonatos) {
     .setCustomId(`select_camp_editar_entrada_${evento._id}`)
     .setPlaceholder('Modo de entrada')
     .addOptions([
-      { label: 'Inscrição aberta', value: 'true', default: principal.baseadoEmInscricoes === true },
-      { label: 'Participantes definidos pela organização', value: 'false', default: principal.baseadoEmInscricoes === false }
+      { label: 'Jogadores ilimitados', value: 'true', default: principal.baseadoEmInscricoes === true },
+      { label: 'Definir limite de jogadores', value: 'false', default: principal.baseadoEmInscricoes === false }
     ]);
   const selectDupla = new StringSelectMenuBuilder()
     .setCustomId(`select_camp_editar_dupla_${evento._id}`)
@@ -1573,7 +1593,7 @@ function montarPainelEdicaoEvento(evento, campeonatos) {
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId(`btn_camp_editar_avancado_${evento._id}`)
-      .setLabel('Editar limite de times')
+      .setLabel('Definir limite de jogadores')
       .setStyle(ButtonStyle.Secondary)
   );
   return {
@@ -1651,10 +1671,10 @@ function criarModalConfiguracoesEvento(evento, campeonatos) {
   const principal = campeonatos[0];
   const modal = new ModalBuilder()
     .setCustomId(`modal_camp_editar_avancado_${evento._id}`)
-    .setTitle('Editar limite de times');
+    .setTitle('Editar limite de jogadores');
   const input = new TextInputBuilder()
     .setCustomId('edit_limite_times')
-    .setLabel('Limite de times (vazio = sem limite)')
+    .setLabel('Limite de jogadores (vazio = sem limite)')
     .setStyle(TextInputStyle.Short)
     .setRequired(false);
   if (principal.limiteInscricoes != null) input.setValue(String(principal.limiteInscricoes));
@@ -1756,7 +1776,7 @@ async function onSubmitConfiguracoesEvento(interaction) {
     const { campeonatos } = await obterEventoEditavelPorEvento(match[1]);
     const textoLimite = textoCampo(interaction, 'edit_limite_times');
     const limite = textoLimite ? Number(textoLimite) : null;
-    if (textoLimite && (!Number.isInteger(limite) || limite < 2)) throw new Error('O limite de times deve ser um número inteiro igual ou maior que 2.');
+    if (textoLimite && (!Number.isInteger(limite) || limite < 2)) throw new Error('O limite deve ser um número inteiro igual ou maior que 2.');
     if (limite !== null) {
       const inscritos = await Promise.all(campeonatos.map((camp) => Time.countDocuments({ campeonatoId: camp._id })));
       if (inscritos.some((total) => total > limite)) throw new Error('O limite não pode ser menor que a quantidade de times já inscritos.');
@@ -1765,7 +1785,7 @@ async function onSubmitConfiguracoesEvento(interaction) {
       { _id: { $in: campeonatos.map((item) => item._id) } },
       { $set: { limiteInscricoes: limite } }
     );
-    return interaction.reply({ content: 'Limite de times atualizado para os ranks ativos do evento.', flags: 64 });
+    return interaction.reply({ content: 'Limite de jogadores atualizado para os ranks ativos do evento.', flags: 64 });
   } catch (error) {
     return interaction.reply({ content: error.message, flags: 64 });
   }
@@ -3071,8 +3091,10 @@ function diagInicio(nome, interaction) {
 
 async function diagUpdate(nome, t0, interaction, payload) {
   try {
-    const resultado = await interaction.update(payload);
-    console.log(`[Diag Campeonato] ${nome} concluído em ${Date.now() - t0}ms`);
+    await interaction.deferUpdate();
+    const ackMs = Date.now() - t0;
+    const resultado = await interaction.editReply(payload);
+    console.log(`[Diag Campeonato] ${nome} ack=${ackMs}ms total=${Date.now() - t0}ms`);
     return resultado;
   } catch (err) {
     console.error(`[Diag Campeonato] ${nome} falhou após ${Date.now() - t0}ms:`, { message: err?.message, code: err?.code });
@@ -3111,7 +3133,6 @@ async function onConfigModo(interaction) {
 }
 
 async function onSelectConfigModo(interaction) {
-  const t0 = diagInicio('onSelectConfigModo', interaction);
   if (!temPermissaoOrganizador(interaction.member)) {
     return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
   }
@@ -3131,7 +3152,7 @@ async function onSelectConfigModo(interaction) {
   cfg.formato = null;
   cfg.participantes = [];
   configPainel.set(`camp:config:${userId}`, cfg);
-  return diagUpdate('onSelectConfigModo', t0, interaction, buildConfigPanel(userId));
+  return atualizarPainelConfig(interaction, userId, 'onSelectConfigModo');
 }
 
 async function onSelectConfigRanks(interaction) {
@@ -3143,7 +3164,7 @@ async function onSelectConfigRanks(interaction) {
   if (!cfg) return interaction.reply({ content: 'Sessão expirada.', flags: 64 });
   cfg.ranksSelecionados = interaction.values;
   configPainel.set(`camp:config:${userId}`, cfg);
-  return interaction.update(buildConfigPanel(userId));
+  return atualizarPainelConfig(interaction, userId, 'onSelectConfigRanks');
 }
 
 async function onSelectConfigSimultaneo(interaction) {
@@ -3155,7 +3176,7 @@ async function onSelectConfigSimultaneo(interaction) {
   if (!cfg) return interaction.reply({ content: 'Sessão expirada.', flags: 64 });
   cfg.simultaneo = interaction.values[0] === 'true';
   configPainel.set(`camp:config:${userId}`, cfg);
-  return interaction.update(buildConfigPanel(userId));
+  return atualizarPainelConfig(interaction, userId, 'onSelectConfigSimultaneo');
 }
 
 async function onSelectConfigEntrada(interaction) {
@@ -3172,7 +3193,7 @@ async function onSelectConfigEntrada(interaction) {
     cfg.limiteInscricoes = null;
   }
   configPainel.set(`camp:config:${userId}`, cfg);
-  return interaction.update(buildConfigPanel(userId));
+  return atualizarPainelConfig(interaction, userId, 'onSelectConfigEntrada');
 }
 
 async function onConfigContinuar(interaction) {
@@ -3195,7 +3216,7 @@ async function onConfigContinuar(interaction) {
     cfg.limiteInscricoes = null;
   }
   configPainel.set(`camp:config:${userId}`, cfg);
-  return interaction.update(buildConfigPanel(userId));
+  return atualizarPainelConfig(interaction, userId, 'onConfigContinuar');
 }
 
 async function onConfigVoltar(interaction) {
@@ -3207,7 +3228,7 @@ async function onConfigVoltar(interaction) {
   if (!cfg) return interaction.update({ content: 'Sessão expirada.', embeds: [], components: [] });
   cfg.etapa = 'geral';
   configPainel.set(`camp:config:${userId}`, cfg);
-  return interaction.update(buildConfigPanel(userId));
+  return atualizarPainelConfig(interaction, userId, 'onConfigVoltar');
 }
 
 async function onConfigTipoDupla(interaction) {
@@ -3246,7 +3267,7 @@ async function onSelectConfigTipoDupla(interaction) {
   }
   cfg.tipoDupla = tipoDupla;
   configPainel.set(`camp:config:${interaction.user.id}`, cfg);
-  return interaction.update(buildConfigPanel(interaction.user.id));
+  return atualizarPainelConfig(interaction, interaction.user.id, 'onSelectConfigTipoDupla');
 }
 
 function buildRanksScreen(userId) {
@@ -3323,11 +3344,12 @@ async function onConfigRankConfirmar(interaction) {
 }
 
 async function onConfigRankVoltar(interaction) {
+  const t0 = diagInicio('onConfigRankVoltar', interaction);
   if (!temPermissaoOrganizador(interaction.member)) {
     return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
   }
   const userId = interaction.user.id;
-  return interaction.update(buildConfigPanel(userId));
+  return diagUpdate('onConfigRankVoltar', t0, interaction, buildConfigPanel(userId));
 }
 
 async function onConfigEntrada(interaction) {
@@ -3345,8 +3367,8 @@ async function onConfigEntrada(interaction) {
   }
 
   const buttons = [
-    { type: 2, style: 3, label: 'Inscrição aberta', emoji: { name: '📝' }, custom_id: 'btn_config_entrada_aberta' },
-    { type: 2, style: 2, label: 'Eu escolho os participantes', emoji: { name: '🔧' }, custom_id: 'btn_config_entrada_manual' },
+    { type: 2, style: 3, label: 'Jogadores ilimitados', emoji: { name: '📝' }, custom_id: 'btn_config_entrada_aberta' },
+    { type: 2, style: 2, label: 'Definir limite de jogadores', emoji: { name: '🔧' }, custom_id: 'btn_config_entrada_manual' },
     { type: 2, style: 4, label: 'Voltar', emoji: { name: '⬅️' }, custom_id: 'btn_config_entrada_voltar' }
   ];
 
@@ -3389,7 +3411,7 @@ async function onConfigFormato(interaction) {
   const userId = interaction.user.id;
   const cfg = configPainel.get(`camp:config:${userId}`);
   if (!cfg || cfg.baseadoEmInscricoes !== false) {
-    return interaction.update({ content: 'Disponível apenas quando "Eu escolho os participantes".', embeds: [], components: [] });
+    return interaction.update({ content: 'Disponível apenas quando "Definir limite de jogadores".', embeds: [], components: [] });
   }
   return interaction.update(buildConfigPanel(userId));
 }
@@ -3407,7 +3429,7 @@ async function onSelectConfigFormato(interaction) {
   if (cfg.baseadoEmInscricoes !== false || !obterFormatosDisponiveis(cfg).some((item) => item.value === formato)) {
     return interaction.update({
       ...buildConfigPanel(userId),
-      content: 'Esse formato não está disponível para o limite de times escolhido.'
+      content: 'Esse formato não está disponível para o limite de jogadores escolhido.'
     });
   }
   cfg.formato = formato;
@@ -3421,14 +3443,14 @@ async function onConfigLimite(interaction) {
   }
   const cfg = configPainel.get(`camp:config:${interaction.user.id}`);
   if (!cfg || cfg.etapa !== 'avancado' || cfg.baseadoEmInscricoes !== false) {
-    return interaction.reply({ content: 'O limite só está disponível para participantes definidos pela organização.', flags: 64 });
+    return interaction.reply({ content: 'O limite só está disponível quando "Definir limite de jogadores" está selecionado.', flags: 64 });
   }
   const modal = new ModalBuilder()
     .setCustomId('modal_config_limite_manual')
-    .setTitle('Limite de times');
+    .setTitle('Limite de participantes');
   const campo = new TextInputBuilder()
     .setCustomId('limite_manual')
-    .setLabel('Número de times (vazio = sem limite)')
+    .setLabel('Número de participantes (vazio = sem limite)')
     .setStyle(TextInputStyle.Short)
     .setRequired(false)
     .setMaxLength(3);
@@ -3466,7 +3488,7 @@ async function onConfigParticipantes(interaction) {
   const userId = interaction.user.id;
   const cfg = configPainel.get(`camp:config:${userId}`);
   if (!cfg || cfg.baseadoEmInscricoes !== false) {
-    return interaction.update({ content: 'Disponível apenas quando "Eu escolho os participantes".', embeds: [], components: [] });
+    return interaction.update({ content: 'Disponível apenas quando "Definir limite de jogadores".', embeds: [], components: [] });
   }
 
   // Show current participants + add button

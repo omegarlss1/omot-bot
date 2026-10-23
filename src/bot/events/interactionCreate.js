@@ -37,7 +37,29 @@ module.exports = {
         return;
       }
 
-      await client.features.dispatch(interaction);
+      const handled = await client.features.dispatch(interaction);
+      if (!handled && (
+        interaction.isButton()
+        || interaction.isStringSelectMenu()
+        || interaction.isModalSubmit()
+      )) {
+        console.warn('[interactions] Nenhum handler registrado para a interação:', {
+          customId: interaction.customId,
+          userId: interaction.user?.id,
+          guildId: interaction.guildId
+        });
+        const payload = {
+          content: 'Esta opção expirou ou não está disponível. Reabra o painel e tente novamente.',
+          flags: 64
+        };
+        if (interaction.deferred && !interaction.replied) {
+          await interaction.editReply(payload);
+        } else if (interaction.replied) {
+          await interaction.followUp(payload);
+        } else {
+          await interaction.reply(payload);
+        }
+      }
     } catch (err) {
       const nome = interaction.commandName || interaction.customId || 'interação';
       console.error(`Erro ao processar ${nome}:`, {
