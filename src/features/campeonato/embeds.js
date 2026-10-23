@@ -124,7 +124,14 @@ function embedCriarEvento({ guild, organizador }) {
   };
 }
 
-function embedSelecionarRanks({ nome, dataInicio, dataFim, ranksSelecionados = [] }) {
+function embedSelecionarRanks({
+  nome,
+  dataInicio,
+  dataFim,
+  ranksSelecionados = [],
+  customIdPrefix = 'btn_camp_rank_toggle_',
+  confirmCustomId = 'btn_camp_rank_confirmar'
+}) {
   const fmt = (d) => d ? new Date(d).toLocaleDateString('pt-BR') : '—';
   const linhasRanks = ranksSelecionados.length
     ? ranksSelecionados.map((r) => '• ' + r).join('\n')
@@ -135,21 +142,21 @@ function embedSelecionarRanks({ nome, dataInicio, dataFim, ranksSelecionados = [
       description: '**' + nome + '**\n📅 ' + fmt(dataInicio) + ' → ' + fmt(dataFim) + '\n\n**Ranks selecionados (' + ranksSelecionados.length + '):**\n' + linhasRanks,
       color: 0xFF6B00
     }],
-    components: botoesSelecionarRanks()
+    components: botoesSelecionarRanks({ customIdPrefix, confirmCustomId })
   };
 }
 
-function botoesSelecionarRanks() {
+function botoesSelecionarRanks({ customIdPrefix = 'btn_camp_rank_toggle_', confirmCustomId = 'btn_camp_rank_confirmar' } = {}) {
   const linha1 = config.ranks.slice(0, 5).map((r) => ({
     type: 2, style: 2, label: r.label,
-    emoji: { name: r.emoji }, custom_id: 'btn_camp_rank_toggle_' + r.key
+    emoji: { name: r.emoji }, custom_id: customIdPrefix + r.key
   }));
   const linha2 = config.ranks.slice(5).map((r) => ({
     type: 2, style: 2, label: r.label,
-    emoji: { name: r.emoji }, custom_id: 'btn_camp_rank_toggle_' + r.key
+    emoji: { name: r.emoji }, custom_id: customIdPrefix + r.key
   }));
   const linhaConfirmar = [
-    { type: 2, style: 3, label: '✅ Confirmar Ranks', custom_id: 'btn_camp_rank_confirmar' }
+    { type: 2, style: 3, label: '✅ Confirmar Ranks', custom_id: confirmCustomId }
   ];
   const rows = [];
   if (linha1.length) rows.push(linha1);

@@ -68,6 +68,56 @@ test('interactions.parseDataBR', async (t) => {
       assert.equal(parseDataBR('25-12-2026'), null);
       assert.equal(parseDataBR('ontem'), null);
       assert.equal(parseDataBR(''), null);
+      assert.equal(parseDataBR('31/02/2026'), null);
+      assert.equal(parseDataBR('32/01/2026'), null);
+    });
+  });
+});
+
+test('interactions.construirPeriodoEvento', async (t) => {
+  await t.test('usa horário informado e calcula o fim pela duração', () => {
+    comEnv({}, () => {
+      const { construirPeriodoEvento, parseDataBR } = require('../src/features/campeonato/interactions');
+      const periodo = construirPeriodoEvento(parseDataBR('25/12/2026'), '19:30');
+      assert.equal(periodo.dataInicio.getHours(), 19);
+      assert.equal(periodo.dataInicio.getMinutes(), 30);
+      assert.equal(periodo.dataFim.getTime() - periodo.dataInicio.getTime(), 180 * 60 * 1000);
+    });
+  });
+
+  await t.test('permite que o término seja no dia seguinte', () => {
+    comEnv({}, () => {
+      const { construirPeriodoEvento, parseDataBR } = require('../src/features/campeonato/interactions');
+      const periodo = construirPeriodoEvento(parseDataBR('25/12/2026'), '22:30');
+      assert.equal(periodo.dataFim.getDate(), 26);
+      assert.equal(periodo.dataFim.getHours(), 1);
+      assert.equal(periodo.dataFim.getMinutes(), 30);
+    });
+  });
+
+  await t.test('rejeita horário inválido', () => {
+    comEnv({}, () => {
+      const { construirPeriodoEvento, parseDataBR } = require('../src/features/campeonato/interactions');
+      assert.throws(() => construirPeriodoEvento(parseDataBR('25/12/2026'), '25:00'), /Horário inválido/);
+    });
+  });
+});
+
+test('embeds.embedSelecionarRanks', async (t) => {
+  await t.test('allows using isolated rank-selection IDs in the config flow', () => {
+    comEnv({}, () => {
+      const { embedSelecionarRanks } = require('../src/features/campeonato/embeds');
+      const menu = embedSelecionarRanks({
+        nome: 'Ômega #42',
+        dataInicio: new Date('2026-12-25'),
+        dataFim: new Date('2026-12-25'),
+        customIdPrefix: 'btn_config_rank_toggle_',
+        confirmCustomId: 'btn_config_rank_confirmar'
+      });
+      const customIds = menu.components.flat().map((component) => component.custom_id);
+      assert.ok(customIds.includes('btn_config_rank_toggle_ouro'));
+      assert.ok(customIds.includes('btn_config_rank_confirmar'));
+      assert.ok(!customIds.includes('btn_camp_rank_toggle_ouro'));
     });
   });
 });
@@ -185,13 +235,13 @@ test('service.validarParametros', async (t) => {
 });
 
 test('handlers do módulo campeonato registrados', async (t) => {
-  await t.test('53 handlers: 46 botões + 9 selects + 6 modais', () => {
+  await t.test('registra também as ações de seleção de rank do painel', () => {
     comEnv({}, () => {
       const { InteractionRegistry } = require('../src/interactions/registry');
       const interactions = require('../src/features/campeonato/interactions');
       const r = new InteractionRegistry();
       interactions.register(r);
-      assert.equal(r.buttons.length, 53);
+      assert.equal(r.buttons.length, 56);
       assert.equal(r.selects.length, 14);
       assert.equal(r.modals.length, 11);
     });
