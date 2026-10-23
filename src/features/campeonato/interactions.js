@@ -17,12 +17,180 @@ const { notificarCampeao, anunciarNoCanal } = require('./services/notificacoes')
 const Campeonato = require('../../db/models/campeonato');
 const Partida = require('../../db/models/partida');
 const Time = require('../../db/models/time');
-const { buildPainelOrganizador } = require('../../bot/commands/painel-organizador');
+const { instance: eventosCampeonato, EVENTOS } = require('./events');
 
 const selecaoRanks = new Map();
 const selecoesExclusao = new Map();
+const selecoesJogadoresTime = new Map();
 const wosPendentes = new Map();
 const configPainel = new Map(); // FLUXO 2: estado do painel de configuração por usuário
+let clientPainelOrganizador = null;
+let listenersPainelOrganizadorRegistrados = false;
+const atualizacoesPainelPendentes = new Map();
+
+function limitarTextoPainel(linhas, limite) {
+  const texto = linhas.join('\n') || 'Nenhum dado disponível.';
+  if (texto.length <= limite) return texto;
+  const marcador = '\n… conteúdo truncado; consulte os canais do campeonato.';
+  return `${texto.slice(0, limite - marcador.length)}${marcador}`;
+}
+
+function rotuloJogadorPainel(jogador) {
+  if (!jogador) return 'Jogador não definido';
+  if (jogador.origem === 'WHATSAPP' || String(jogador.userId || '').startsWith('MANUAL_WHATSAPP_')) {
+    return String(jogador.nickSnapshot || jogador.nome || 'Jogador sem nick').replace(/[*_`~|]/g, '\\$&');
+  }
+  return jogador.userId ? `<@${jogador.userId}>` : String(jogador.nickSnapshot || 'Jogador sem nick');
+}
+
+function rotuloFasePainel(partida, campeonato, totalTimes) {
+  const fase = String(partida.fase || '');
+  if (fase === 'FINAL' || fase.toLowerCase() === 'final') return 'Final';
+  const rodada = Number(partida.rodada) || Number(fase.match(/\d+/)?.[0]) || 1;
+  if ([campeonato.modalidade, campeonato.formato].some((formato) => String(formato || '').toLowerCase().includes('round-robin'))) {
+    return `Rodada ${rodada}`;
+  }
+  const totalRodadas = Math.ceil(Math.log2(Math.max(2, totalTimes)));
+  const timesNaFase = 2 ** Math.max(1, totalRodadas - rodada + 1);
+  const nomes = { 2: 'Final', 4: 'Semifinal', 8: 'Quartas de Final', 16: 'Oitavas de Final' };
+  return nomes[timesNaFase] || `Rodada ${rodada}`;
+}
+
+function buildPainelOrganizadorCampeonato({ campeonato, times = [], partidas = [] }) {
+  const timesPorId = new Map(times.map((time) => [String(time._id), time]));
+  const linhasInscritos = [];
+  times.forEach((time, index) => {
+    linhasInscritos.push(`**Time ${index + 1} — ${time.nome || 'Sem nome'}**`);
+    const jogadores = time.jogadores || [];
+    if (jogadores.length) jogadores.forEach((jogador) => linhasInscritos.push(`• ${rotuloJogadorPainel(jogador)}`));
+    else linhasInscritos.push('• Sem jogadores');
+  });
+  if (campeonato.limiteInscricoes) {
+    linhasInscritos.push(`\n**Total:** ${times.length}/${campeonato.limiteInscricoes} times`);
+  } else {
+    linhasInscritos.push(`\n**Total:** ${times.length} time(s)`);
+  }
+
+  const linhasPartidas = partidas.map((partida) => {
+    const timeA = timesPorId.get(String(partida.timeA || partida.timeAId || ''));
+    const timeB = timesPorId.get(String(partida.timeB || partida.timeBId || ''));
+    const checkin = (lado, time) => {
+      if (partida.checkIns?.[lado]?.fez) return '✅ confirmado';
+      if (!time) return '⏳ aguardando time';
+      const capitao = (time.jogadores || []).find((jogador) => jogador.userId === time.capitaoId)
+        || (time.jogadores || []).find((jogador) => jogador.isCapitao);
+      return `⏳ aguardando ${rotuloJogadorPainel(capitao)}`;
+    };
+    const placarA = partida.placarEnviado?.timeA?.placar;
+    const placarB = partida.placarEnviado?.timeB?.placar;
+    let placar = placarA || placarB || '0 x 0';
+    if (placarA && placarB && placarA !== placarB) placar = `${placarA} (A) / ${placarB} (B)`;
+    const fase = rotuloFasePainel(partida, campeonato, times.length);
+    const status = String(partida.status || 'AGUARDANDO_CHECKIN').replace(/_/g, ' ').toLowerCase();
+    return `**${fase}** — ${timeA?.nome || 'A definir'} ${placar} ${timeB?.nome || 'A definir'}\nTime A: ${checkin('timeA', timeA)} | Time B: ${checkin('timeB', timeB)} · ${status}`;
+  });
+
+  const admin = embedPainelAdmin({ campeonato });
+  return {
+    embeds: [
+      {
+        title: `👥 Inscritos — ${campeonato.nome}`,
+        description: limitarTextoPainel(linhasInscritos, 2300),
+        color: 0x00C2FF
+      },
+      {
+        title: `🎮 Partidas — ${campeonato.nome}`,
+        description: limitarTextoPainel(linhasPartidas, 2300),
+        color: 0x5865F2
+      },
+      ...admin.embeds
+    ],
+    components: toActionRows(admin.components)
+  };
+}
+
+async function atualizarPainelOrganizadorCampeonato(campeonatoId) {
+  if (!clientPainelOrganizador) throw new Error('Cliente do Discord não configurado para atualizar o painel do organizador.');
+  const campeonato = await Campeonato.findById(campeonatoId).lean();
+  if (!campeonato?.canais?.organizador || !campeonato.painelOrganizador?.fixaMessageId) return false;
+
+  const canal = await clientPainelOrganizador.channels.fetch(campeonato.canais.organizador);
+  if (!canal?.isTextBased?.()) throw new Error(`Canal do organizador inválido para o campeonato ${campeonatoId}.`);
+  const [times, partidas] = await Promise.all([
+    Time.find({ campeonatoId: campeonato._id }).lean(),
+    Partida.find({ campeonatoId: campeonato._id }).sort({ rodada: 1, criadoEm: 1 }).lean()
+  ]);
+  const payload = buildPainelOrganizadorCampeonato({ campeonato, times, partidas });
+  let mensagem = await canal.messages.fetch(campeonato.painelOrganizador.fixaMessageId).catch((error) => {
+    if (error?.code === 10008) return null;
+    throw error;
+  });
+
+  if (!mensagem) {
+    mensagem = await canal.send(payload);
+    await Campeonato.updateOne({ _id: campeonato._id }, {
+      $set: {
+        'painelOrganizador.fixaMessageId': mensagem.id,
+        'painelOrganizador.dinamicaMessageId': mensagem.id,
+        'painelOrganizador.mensagens.inscritos': mensagem.id,
+        'painelOrganizador.mensagens.checkin': mensagem.id,
+        'painelOrganizador.mensagens.partidas': mensagem.id,
+        'painelOrganizador.mensagens.gestao': mensagem.id
+      }
+    });
+    return true;
+  }
+
+  await mensagem.edit(payload);
+  return true;
+}
+
+function solicitarAtualizacaoPainelOrganizador(campeonatoId) {
+  if (!campeonatoId || !clientPainelOrganizador) return;
+  const id = String(campeonatoId);
+  const timerAnterior = atualizacoesPainelPendentes.get(id);
+  if (timerAnterior) clearTimeout(timerAnterior);
+  const timer = setTimeout(() => {
+    atualizacoesPainelPendentes.delete(id);
+    atualizarPainelOrganizadorCampeonato(id).catch((error) => {
+      console.error(`[campeonato.painel] erro ao atualizar painel ${id}:`, error);
+    });
+  }, 250);
+  timer.unref?.();
+  atualizacoesPainelPendentes.set(id, timer);
+}
+
+function setCampeonatoClient(client) {
+  clientPainelOrganizador = client;
+  if (listenersPainelOrganizadorRegistrados) return;
+  const eventosQueAtualizamPainel = [
+    EVENTOS.INSCRICAO_REALIZADA, EVENTOS.INSCRICOES_FECHADAS, EVENTOS.CORTE_REALIZADO,
+    EVENTOS.FORMATO_ESCOLHIDO, EVENTOS.PARTIDA_CRIADA, EVENTOS.CHECKIN_REALIZADO,
+    EVENTOS.PLACAR_ENVIADO, EVENTOS.PLACAR_VALIDADO, EVENTOS.PLACAR_CONTESTADO,
+    EVENTOS.PLACAR_DEFINIDO_ORG, EVENTOS.WO_REGISTRADO, EVENTOS.PARTIDA_FINALIZADA,
+    EVENTOS.CAMPEONATO_CANCELADO, EVENTOS.CAMPEONATO_REABERTO, EVENTOS.TIME_DESCLASSIFICADO,
+    EVENTOS.PLACAR_AJUSTADO, EVENTOS.TIME_ATUALIZADO, EVENTOS.CAMPEAO_DEFINIDO
+  ];
+  eventosQueAtualizamPainel.forEach((nomeEvento) => {
+    eventosCampeonato.on(nomeEvento, async (payload = {}) => {
+      try {
+        let campeonatoId = payload.campeonatoId;
+        if (!campeonatoId && payload.partidaId) {
+          const partida = await Partida.findById(payload.partidaId).select('campeonatoId').lean();
+          campeonatoId = partida?.campeonatoId;
+        }
+        if (!campeonatoId && payload.timeId) {
+          const time = await Time.findById(payload.timeId).select('campeonatoId').lean();
+          campeonatoId = time?.campeonatoId;
+        }
+        solicitarAtualizacaoPainelOrganizador(campeonatoId);
+      } catch (error) {
+        console.error(`[campeonato.painel] falha ao localizar painel após ${nomeEvento}:`, error);
+      }
+    });
+  });
+  listenersPainelOrganizadorRegistrados = true;
+}
 
 async function publicarPainelInscricao(canal, campeonato) {
   if (!canal?.isTextBased?.()) throw new Error('Canal de inscrições inválido ou não é um canal de texto.');
@@ -68,28 +236,17 @@ async function publicarPaineisCampeonato(guild, campeonato) {
   const canalOrganizador = await buscarCanal('organizador');
   if (canalOrganizador) {
     try {
-      const mensagemFixa = await canalOrganizador.send(buildPainelOrganizador());
-      const mensagens = {};
-      for (const [secao, titulo] of [
-        ['inscritos', '📋 INSCRITOS E TIMES'],
-        ['checkin', '✅ CHECK-IN'],
-        ['partidas', '🎮 PARTIDAS AO VIVO']
-      ]) {
-        const mensagem = await canalOrganizador.send({
-          embeds: [{ title: titulo, description: `Nenhum dado disponível ainda para **${campeonato.nome}**.`, color: 0x5865F2 }]
-        });
-        mensagens[secao] = mensagem.id;
-      }
-      const gestao = embedPainelAdmin({ campeonato });
-      const mensagemGestao = await canalOrganizador.send({
-        embeds: gestao.embeds,
-        components: toActionRows(gestao.components)
-      });
-      mensagens.gestao = mensagemGestao.id;
+      const mensagem = await canalOrganizador.send(buildPainelOrganizadorCampeonato({ campeonato }));
+      const mensagemId = mensagem.id;
       campeonato.painelOrganizador = {
-        fixaMessageId: mensagemFixa.id,
-        dinamicaMessageId: mensagens.inscritos,
-        mensagens
+        fixaMessageId: mensagemId,
+        dinamicaMessageId: mensagemId,
+        mensagens: {
+          inscritos: mensagemId,
+          checkin: mensagemId,
+          partidas: mensagemId,
+          gestao: mensagemId
+        }
       };
       await campeonato.save();
       resultado.organizador = true;
@@ -897,6 +1054,7 @@ async function onSelectJogadoresTime(interaction) {
   }
   time.jogadores = jogadores;
   await time.save();
+  solicitarAtualizacaoPainelOrganizador(campeonato._id);
   for (const canalId of [time.canais?.texto, time.canais?.voz].filter(Boolean)) {
     const canal = await interaction.guild.channels.fetch(canalId).catch(() => null);
     for (const jogador of jogadores.filter((item) => !item.userId.startsWith('MANUAL_WHATSAPP_'))) {
@@ -967,23 +1125,9 @@ async function onBotaoFecharInscricoes(interaction) {
   // Toggle: if already closed, reopen; else close
   const novoStatus = campeonato.status === 'INSCRICOES_FECHADAS' ? 'INSCRICOES_ABERTAS' : 'INSCRICOES_FECHADAS';
   await Campeonato.updateOne({ _id: campeonatoId }, { $set: { status: novoStatus } });
+  solicitarAtualizacaoPainelOrganizador(campeonatoId);
   
   const inscricoes = await listarInscricoes(campeonatoId);
-  
-  // Update organizer panel
-  const canalOrgao = campeonato.canais?.organizador;
-  if (canalOrgao) {
-    try {
-      const canal = await interaction.guild.channels.fetch(canalOrgao);
-      if (canal) {
-        const campAtualizado = await Campeonato.findById(campeonatoId).lean();
-        const { atualizarPainelOrganizador } = require('./services/painel');
-        await atualizarPainelOrganizador(canal, campAtualizado, 'gestao');
-      }
-    } catch (e) {
-      console.warn('[Encerrar/Reabrir] falha ao atualizar painel:', e.message);
-    }
-  }
   
   const label = novoStatus === 'INSCRICOES_FECHADAS' ? 'encerradas' : 'reabertas';
   return safeReply(interaction, { 
@@ -1032,7 +1176,7 @@ async function onGerenciarParticipantes(interaction) {
   if (!temPermissaoOrganizador(interaction.member)) {
     return safeReply(interaction, { content: 'Apenas @OrganizadorCamps.', flags: 64 });
   }
-  const match = interaction.customId.match(/^btn_gerenciar_participantes_([a-f0-9]{24})$/);
+  const match = interaction.customId.match(/^btn_(?:camp_)?gerenciar_(?:participantes|times)_([a-f0-9]{24})$/);
   if (!match) return safeReply(interaction, { content: 'ID inválido.', flags: 64 });
   const campeonatoId = match[1];
   
@@ -1067,7 +1211,7 @@ async function onGerenciarParticipantes(interaction) {
   }));
   
   const select = new StringSelectMenuBuilder()
-    .setCustomId('select_participante_acao_' + campeonatoId)
+    .setCustomId('select_camp_time_acao_' + campeonatoId)
     .setPlaceholder('Selecione um participante para gerenciar')
     .addOptions(opcoes);
   
@@ -1081,28 +1225,12 @@ async function onGerenciarParticipantes(interaction) {
     components: [new ActionRowBuilder().addComponents(select)]
   };
   
-  const canalOrgao = campeonato.canais?.organizador;
-  if (canalOrgao) {
-    try {
-      const canal = await interaction.guild.channels.fetch(canalOrgao);
-      if (canal) {
-        const messageId = campeonato.painelOrganizador?.mensagens?.times || campeonato.painelOrganizador?.dinamicaMessageId;
-        let mensagem = messageId ? await canal.messages.fetch(messageId).catch(() => null) : null;
-        
-        if (mensagem) {
-          await mensagem.edit(payload);
-          await Campeonato.updateOne({ _id: campeonatoId }, { $set: { 'painelOrganizador.mensagens.times': mensagem.id } });
-        } else {
-          mensagem = await canal.send(payload);
-          await Campeonato.updateOne({ _id: campeonatoId }, { $set: { 'painelOrganizador.mensagens.times': mensagem.id } });
-        }
-      }
-    } catch (e) {
-      console.warn('[GerenciarParticipantes] falha ao atualizar painel:', e.message);
-    }
-  }
-  
-  return safeReply(interaction, { content: 'Painel de participantes atualizado no canal de organizador.', flags: 64 });
+  return safeReply(interaction, {
+    content: 'Painel de participantes exibido apenas para você.',
+    embeds: payload.embeds,
+    components: payload.components,
+    flags: 64
+  });
 }
 
 // Legacy alias
@@ -1366,21 +1494,6 @@ async function onConfirmarGerarBracket(interaction) {
         }
       } catch (e) {
         console.warn('[gerarBracket] Falha ao postar no canal #partidas:', e.message);
-      }
-    }
-
-    // Update organizer panel
-    const canalOrgao = campeonato.canais?.organizador;
-    if (canalOrgao) {
-      try {
-        const canal = await interaction.guild.channels.fetch(canalOrgao);
-        if (canal) {
-          const campAtualizado = await Campeonato.findById(campeonatoId).lean();
-          const { atualizarPainelOrganizador } = require('./services/painel');
-          await atualizarPainelOrganizador(canal, campAtualizado, 'gestao');
-        }
-      } catch (e) {
-        console.warn('[gerarBracket] falha ao atualizar painel:', e.message);
       }
     }
 
@@ -2141,31 +2254,31 @@ async function onSelectTimeAcao(interaction) {
   const components = [
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId('btn_camp_excluir_time_' + campeonatoId)
+        .setCustomId(`btn_camp_excluir_time_${campeonatoId}_${timeId}`)
         .setLabel('🗑️ Excluir Time')
         .setStyle(ButtonStyle.Danger)
     ),
     new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
-        .setCustomId('select_camp_jogador_excluir_' + campeonatoId)
+        .setCustomId(`select_camp_jogador_excluir_${campeonatoId}_${timeId}`)
         .setPlaceholder('Selecione jogador para excluir')
         .addOptions(opcoesJogadores)
     ),
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId('btn_camp_excluir_jogador_' + campeonatoId)
+        .setCustomId(`btn_camp_excluir_jogador_${campeonatoId}_${timeId}`)
         .setLabel('👤 Excluir Jogador')
         .setStyle(ButtonStyle.Secondary)
     ),
     new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
-        .setCustomId('select_camp_jogador_capitao_' + campeonatoId)
+        .setCustomId(`select_camp_jogador_capitao_${campeonatoId}_${timeId}`)
         .setPlaceholder('Selecione novo capitão')
         .addOptions(opcoesJogadores)
     ),
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId('btn_camp_trocar_capitao_' + campeonatoId)
+        .setCustomId(`btn_camp_trocar_capitao_${campeonatoId}_${timeId}`)
         .setLabel('👑 Trocar Capitão')
         .setStyle(ButtonStyle.Primary)
     )
@@ -2181,22 +2294,15 @@ async function onExcluirTime(interaction) {
   if (!temPermissaoOrganizador(interaction.member)) {
     return safeReply(interaction, { content: 'Sem permissao.', flags: 64 });
   }
-  const campeonatoId = interaction.customId.replace('btn_camp_excluir_time_', '');
-  const time = await Time.findOneAndDelete({ campeonatoId });
+  const match = interaction.customId.match(/^btn_camp_excluir_time_([a-f0-9]{24})_([a-f0-9]{24})$/);
+  if (!match) return safeReply(interaction, { content: 'Selecione um time para excluir novamente.', flags: 64 });
+  const [, campeonatoId, timeId] = match;
+  const time = await Time.findOneAndDelete({ _id: timeId, campeonatoId });
   if (!time) {
     return safeReply(interaction, { content: 'Time nao encontrado.', flags: 64 });
   }
   console.log('[Time] excluido', time._id, 'campeonatoId', campeonatoId);
-  // Atualizar painel
-  const campeonato = await Campeonato.findById(campeonatoId).lean();
-  const { atualizarPainelOrganizador } = require('./services/painel');
-  const canalOrgao = campeonato?.canais?.organizador;
-  if (canalOrgao) {
-    try {
-      const canal = await interaction.guild.channels.fetch(canalOrgao);
-      if (canal) await atualizarPainelOrganizador(canal, campeonato, 'times');
-    } catch (e) {}
-  }
+  solicitarAtualizacaoPainelOrganizador(campeonatoId);
   return safeReply(interaction, { content: `Time **${time.nome || 'Sem nome'}** excluido.`, flags: 64 });
 }
 
@@ -2605,7 +2711,9 @@ async function onSelectJogadorExcluir(interaction) {
     return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
   }
   // Store selected player for next button
-  interaction.client._selectedJogadorExcluir = interaction.values[0];
+  const [, campeonatoId, timeId] = interaction.customId.match(/^select_camp_jogador_excluir_([a-f0-9]{24})_([a-f0-9]{24})$/) || [];
+  if (!campeonatoId || !timeId) return safeReply(interaction, { content: 'Selecione um time novamente.', flags: 64 });
+  selecoesJogadoresTime.set(`${interaction.user.id}:${timeId}:excluir`, interaction.values[0]);
   return interaction.update({ content: 'Jogador selecionado. Clique em Excluir Jogador para confirmar.', embeds: [], components: [] });
 }
 
@@ -2613,19 +2721,23 @@ async function onExcluirJogador(interaction) {
   if (!temPermissaoOrganizador(interaction.member)) {
     return safeReply(interaction, { content: 'Sem permissao.', flags: 64 });
   }
-  const campeonatoId = interaction.customId.replace('btn_camp_excluir_jogador_', '');
-  const jogadorId = interaction.client._selectedJogadorExcluir;
+  const match = interaction.customId.match(/^btn_camp_excluir_jogador_([a-f0-9]{24})_([a-f0-9]{24})$/);
+  if (!match) return safeReply(interaction, { content: 'Selecione um time para gerenciar novamente.', flags: 64 });
+  const [, campeonatoId, timeId] = match;
+  const chaveSelecao = `${interaction.user.id}:${timeId}:excluir`;
+  const jogadorId = selecoesJogadoresTime.get(chaveSelecao);
   if (!jogadorId) {
     return safeReply(interaction, { content: 'Nenhum jogador selecionado.', flags: 64 });
   }
   const time = await Time.findOneAndUpdate(
-    { campeonatoId, 'jogadores.userId': jogadorId },
+    { _id: timeId, campeonatoId, 'jogadores.userId': jogadorId },
     { $pull: { jogadores: { userId: jogadorId } } },
     { new: true }
   );
   if (!time) {
     return safeReply(interaction, { content: 'Jogador nao encontrado no time.', flags: 64 });
   }
+  selecoesJogadoresTime.delete(chaveSelecao);
   // If 1x1 and no players left, delete the team
   const modo = (await Campeonato.findById(campeonatoId).lean())?.modo || '1v1';
   if (['1v1', '2v2'].includes(modo) && time.jogadores.length === 0) {
@@ -2633,6 +2745,7 @@ async function onExcluirJogador(interaction) {
     console.log('[Time] excluido por ficar vazio apos remover jogador', time._id);
   }
   console.log('[Jogador] excluido', jogadorId, 'do time', time._id);
+  solicitarAtualizacaoPainelOrganizador(campeonatoId);
   return safeReply(interaction, { content: 'Jogador excluido do time.', flags: 64 });
 }
 
@@ -2640,7 +2753,9 @@ async function onSelectJogadorCapitao(interaction) {
   if (!temPermissaoOrganizador(interaction.member)) {
     return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
   }
-  interaction.client._selectedJogadorCapitao = interaction.values[0];
+  const [, campeonatoId, timeId] = interaction.customId.match(/^select_camp_jogador_capitao_([a-f0-9]{24})_([a-f0-9]{24})$/) || [];
+  if (!campeonatoId || !timeId) return safeReply(interaction, { content: 'Selecione um time novamente.', flags: 64 });
+  selecoesJogadoresTime.set(`${interaction.user.id}:${timeId}:capitao`, interaction.values[0]);
   return interaction.update({ content: 'Novo capitão selecionado. Clique em Trocar Capitão para confirmar.', embeds: [], components: [] });
 }
 
@@ -2648,20 +2763,25 @@ async function onTrocarCapitao(interaction) {
   if (!temPermissaoOrganizador(interaction.member)) {
     return safeReply(interaction, { content: 'Sem permissao.', flags: 64 });
   }
-  const campeonatoId = interaction.customId.replace('btn_camp_trocar_capitao_', '');
-  const novoCapitaoId = interaction.client._selectedJogadorCapitao;
+  const match = interaction.customId.match(/^btn_camp_trocar_capitao_([a-f0-9]{24})_([a-f0-9]{24})$/);
+  if (!match) return safeReply(interaction, { content: 'Selecione um time para gerenciar novamente.', flags: 64 });
+  const [, campeonatoId, timeId] = match;
+  const chaveSelecao = `${interaction.user.id}:${timeId}:capitao`;
+  const novoCapitaoId = selecoesJogadoresTime.get(chaveSelecao);
   if (!novoCapitaoId) {
     return safeReply(interaction, { content: 'Nenhum jogador selecionado.', flags: 64 });
   }
   const time = await Time.findOneAndUpdate(
-    { campeonatoId },
+    { _id: timeId, campeonatoId },
     { $set: { capitaoId: novoCapitaoId } },
     { new: true }
   );
   if (!time) {
     return safeReply(interaction, { content: 'Time nao encontrado.', flags: 64 });
   }
+  selecoesJogadoresTime.delete(chaveSelecao);
   console.log('[Capitao] trocado para', novoCapitaoId, 'no time', time._id);
+  solicitarAtualizacaoPainelOrganizador(campeonatoId);
   return safeReply(interaction, { content: 'Capitão trocado com sucesso.', flags: 64 });
 }
 
@@ -2745,11 +2865,11 @@ function register(registry) {
   registry.button('btn_camp_cancelar_criacao', onCancelarCriacao);
   registry.select('painel_org_tab', onPainelOrganizadorTab);
   registry.select(/^select_camp_time_acao_[a-f0-9]{24}$/, onSelectTimeAcao);
-  registry.button(/^btn_camp_excluir_time_[a-f0-9]{24}$/, onExcluirTime);
-  registry.button(/^btn_camp_excluir_jogador_[a-f0-9]{24}$/, onExcluirJogador);
-  registry.button(/^btn_camp_trocar_capitao_[a-f0-9]{24}$/, onTrocarCapitao);
-  registry.select(/^select_camp_jogador_excluir_[a-f0-9]{24}$/, onSelectJogadorExcluir);
-  registry.select(/^select_camp_jogador_capitao_[a-f0-9]{24}$/, onSelectJogadorCapitao);
+  registry.button(/^btn_camp_excluir_time_[a-f0-9]{24}_[a-f0-9]{24}$/, onExcluirTime);
+  registry.button(/^btn_camp_excluir_jogador_[a-f0-9]{24}_[a-f0-9]{24}$/, onExcluirJogador);
+  registry.button(/^btn_camp_trocar_capitao_[a-f0-9]{24}_[a-f0-9]{24}$/, onTrocarCapitao);
+  registry.select(/^select_camp_jogador_excluir_[a-f0-9]{24}_[a-f0-9]{24}$/, onSelectJogadorExcluir);
+  registry.select(/^select_camp_jogador_capitao_[a-f0-9]{24}_[a-f0-9]{24}$/, onSelectJogadorCapitao);
 }
 
 module.exports = {
@@ -2758,5 +2878,8 @@ module.exports = {
   parseDataBR,
   construirPeriodoEvento,
   publicarPainelInscricao,
-  publicarPaineisCampeonato
+  publicarPaineisCampeonato,
+  buildPainelOrganizadorCampeonato,
+  atualizarPainelOrganizadorCampeonato,
+  setCampeonatoClient
 };

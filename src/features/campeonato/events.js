@@ -26,6 +26,7 @@ const EVENTOS = {
   CAMPEONATO_CANCELADO: 'campeonato.cancelado',
   CAMPEONATO_REABERTO: 'campeonato.reaberto',
   TIME_DESCLASSIFICADO: 'time.desclassificado',
+  TIME_ATUALIZADO: 'time.atualizado',
   PLACAR_AJUSTADO: 'placar.ajustado',
   STARTGG_SCORE_REPORTADO: 'startgg.score.reportado',
   NOTIFICACAO_ENVIADA: 'notificacao.enviada'

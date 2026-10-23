@@ -29,18 +29,50 @@ test('eventos: novos eventos da Fase 3 registrados', () => {
     assert.equal(EVENTOS.CAMPEONATO_CANCELADO, 'campeonato.cancelado');
     assert.equal(EVENTOS.CAMPEONATO_REABERTO, 'campeonato.reaberto');
     assert.equal(EVENTOS.TIME_DESCLASSIFICADO, 'time.desclassificado');
+    assert.equal(EVENTOS.TIME_ATUALIZADO, 'time.atualizado');
     assert.equal(EVENTOS.PLACAR_AJUSTADO, 'placar.ajustado');
     assert.equal(EVENTOS.STARTGG_SCORE_REPORTADO, 'startgg.score.reportado');
     assert.equal(EVENTOS.NOTIFICACAO_ENVIADA, 'notificacao.enviada');
   });
 });
 
-test('painel do organizador inclui a aba de check-in', () => {
+test('painel consolidado lista times, check-ins e placares com ações administrativas', () => {
   comEnv({}, () => {
-    const { buildPainelOrganizador } = require('../src/bot/commands/painel-organizador');
-    const painel = buildPainelOrganizador();
-    const opcoes = painel.components[0].toJSON().components[0].options;
-    assert.ok(opcoes.some((opcao) => opcao.value === 'checkin'));
+    const { buildPainelOrganizadorCampeonato } = require('../src/features/campeonato/interactions');
+    const campeonato = {
+      _id: 'campeonato-id',
+      nome: 'Copa Ômega',
+      rank: 'ouro',
+      status: 'INSCRICOES_ABERTAS',
+      baseadoEmInscricoes: true,
+      modalidade: null,
+      limiteInscricoes: 8
+    };
+    const times = [
+      { _id: 'time-a', nome: 'Time 1', capitaoId: 'player-1', jogadores: [{ userId: 'player-1', nickSnapshot: 'Player1' }] },
+      { _id: 'time-b', nome: 'Time 2', capitaoId: 'player-4', jogadores: [{ userId: 'player-4', nickSnapshot: 'Player4' }] }
+    ];
+    const partidas = [{
+      fase: 'R1',
+      rodada: 1,
+      status: 'AGUARDANDO_CHECKIN',
+      timeA: 'time-a',
+      timeB: 'time-b',
+      checkIns: { timeA: { fez: true }, timeB: { fez: false } },
+      placarEnviado: { timeA: null, timeB: null }
+    }];
+
+    const painel = buildPainelOrganizadorCampeonato({ campeonato, times, partidas });
+    assert.equal(painel.embeds.length, 3);
+    assert.match(painel.embeds[0].description, /Time 1/);
+    assert.match(painel.embeds[0].description, /<@player-1>/);
+    assert.match(painel.embeds[1].description, /Final/);
+    assert.match(painel.embeds[1].description, /0 x 0/);
+    assert.match(painel.embeds[1].description, /confirmado/);
+    assert.match(painel.embeds[1].description, /<@player-4>/);
+    const customIds = painel.components.flatMap((row) => row.toJSON().components.map((component) => component.custom_id));
+    assert.ok(customIds.includes('btn_camp_broadcast'));
+    assert.ok(customIds.includes('btn_camp_gerar_bracket'));
   });
 });
 
@@ -96,9 +128,10 @@ test('publicarPaineisCampeonato publica os painéis e registra suas mensagens', 
     assert.equal(canais.get('inscricoes-id').mensagens.length, 1);
     assert.ok(canais.get('inscricoes-id').mensagens[0].components[0].components
       .some((component) => component.data.custom_id === 'btn_camp_inscrever'));
-    assert.equal(canais.get('organizador-id').mensagens.length, 5);
-    assert.ok(canais.get('organizador-id').mensagens[0].components[0].components
-      .some((component) => component.data.custom_id === 'painel_org_tab'));
+    assert.equal(canais.get('organizador-id').mensagens.length, 1);
+    assert.equal(canais.get('organizador-id').mensagens[0].embeds.length, 3);
+    assert.ok(canais.get('organizador-id').mensagens[0].components
+      .some((row) => row.components.some((component) => component.data.custom_id === 'btn_camp_broadcast')));
     assert.equal(canais.get('avisos-id').mensagens.length, 1);
     assert.ok(campeonato.painelOrganizador.fixaMessageId);
     assert.ok(campeonato.painelOrganizador.mensagens.gestao);
@@ -144,6 +177,60 @@ test('publicarPaineisCampeonato continua publicando outros painéis se inscriç�
       assert.equal(campeonato.painelInscricaoErro, true);
     } finally {
       console.error = logAnterior;
+    }
+  });
+});
+
+test('atualizarPainelOrganizadorCampeonato edita a mensagem persistida', async () => {
+  await comEnv({}, async () => {
+    const interactions = require('../src/features/campeonato/interactions');
+    const Campeonato = require('../src/db/models/campeonato');
+    const Time = require('../src/db/models/time');
+    const Partida = require('../src/db/models/partida');
+    const campeonato = {
+      _id: 'campeonato-id',
+      nome: 'Copa Ômega',
+      rank: 'ouro',
+      status: 'INSCRICOES_ABERTAS',
+      baseadoEmInscricoes: true,
+      canais: { organizador: 'organizador-id' },
+      painelOrganizador: { fixaMessageId: 'painel-id' }
+    };
+    const time = { _id: 'time-id', nome: 'Time atualizado', jogadores: [] };
+    const mensagem = {
+      id: 'painel-id',
+      async edit(payload) { this.payload = payload; }
+    };
+    const originais = {
+      campeonatoFindById: Campeonato.findById,
+      timeFind: Time.find,
+      partidaFind: Partida.find
+    };
+    Campeonato.findById = () => ({ lean: async () => campeonato });
+    Time.find = () => ({ lean: async () => [time] });
+    Partida.find = () => ({
+      sort() { return this; },
+      lean: async () => []
+    });
+    interactions.setCampeonatoClient({
+      channels: {
+        fetch: async () => ({
+          isTextBased: () => true,
+          messages: { fetch: async () => mensagem }
+        })
+      }
+    });
+
+    try {
+      const atualizado = await interactions.atualizarPainelOrganizadorCampeonato('campeonato-id');
+      assert.equal(atualizado, true);
+      assert.match(mensagem.payload.embeds[0].description, /Time atualizado/);
+      assert.equal(mensagem.payload.embeds.length, 3);
+    } finally {
+      interactions.setCampeonatoClient(null);
+      Campeonato.findById = originais.campeonatoFindById;
+      Time.find = originais.timeFind;
+      Partida.find = originais.partidaFind;
     }
   });
 });

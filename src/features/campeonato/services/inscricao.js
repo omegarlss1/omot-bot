@@ -73,6 +73,11 @@ async function adicionarJogadorAoTime({ guild, campeonato, time, capitaoId, memb
     partidasJogadas: 0
   });
   await time.save();
+  emitir(EVENTOS.TIME_ATUALIZADO, {
+    timeId: time._id,
+    campeonatoId: campeonato._id,
+    jogadorId: member.id
+  });
   return time;
 }
 

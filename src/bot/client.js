@@ -3,6 +3,7 @@ const { loadCommands, loadEvents } = require('./loaders');
 const { CallsStore } = require('../features/calls/store');
 const { GatilhosStore } = require('../features/calls/gatilhosStore');
 const { createFeatureRegistry } = require('../features');
+const campeonatoInteractions = require('../features/campeonato/interactions');
 
 function createBot() {
   const client = new Client({
@@ -19,6 +20,7 @@ function createBot() {
     gatilhos: new GatilhosStore()
   };
   client.features = createFeatureRegistry();
+  campeonatoInteractions.setCampeonatoClient(client);
 
   loadCommands(client);
   loadEvents(client);
