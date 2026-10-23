@@ -308,9 +308,9 @@ test('handlers da Fase 2 registrados', async (t) => {
       const interactions = require('../src/features/campeonato/interactions');
       const r = new InteractionRegistry();
       interactions.register(r);
-      assert.equal(r.buttons.length, 60);
-      assert.equal(r.selects.length, 14);
-      assert.equal(r.modals.length, 10);
+      assert.equal(r.buttons.length, 63);
+      assert.equal(r.selects.length, 16);
+      assert.equal(r.modals.length, 13);
     });
   });
 });

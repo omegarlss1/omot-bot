@@ -140,6 +140,35 @@ async function criarCanaisRank(guild, categoria, rank, evento, botUserId) {
   return canais;
 }
 
+async function recriarCanaisInscricoesPartidas(guild, categoriaId, rank, evento, botUserId) {
+  const rankConfig = config.ranks.find((r) => r.key === rank);
+  if (!rankConfig) throw new Error(`[permissions] Rank ${rank} não existe em config.ranks.`);
+  const sufixo = evento.sufixoNumero || '';
+  const overwrites = [
+    { id: guild.roles.everyone.id, deny: PERMISSOES_LEITURA },
+    permOrgao(),
+    permBot(botUserId),
+    permRank(rank)
+  ];
+  const inscricoes = await guild.channels.create({
+    name: `${rankConfig.emoji}‐${rank}‐inscricoes${sufixo ? '‐' + sufixo : ''}`.replace(/‐/g, '-'),
+    type: ChannelType.GuildText,
+    parent: categoriaId,
+    permissionOverwrites: overwrites,
+    topic: `Inscrições do campeonato ${rankConfig.label} - ${evento.nome}`,
+    reason: `Reativação de inscrições do rank ${rank} no evento ${evento.nome}`
+  });
+  const partidas = await guild.channels.create({
+    name: `${rankConfig.emoji}‐${rank}‐partidas${sufixo ? '‐' + sufixo : ''}`.replace(/‐/g, '-'),
+    type: ChannelType.GuildText,
+    parent: categoriaId,
+    permissionOverwrites: overwrites,
+    topic: `Partidas do campeonato ${rankConfig.label} - ${evento.nome}`,
+    reason: `Reativação de partidas do rank ${rank} no evento ${evento.nome}`
+  });
+  return { inscricoes, partidas };
+}
+
 async function criarCanaisTime(guild, categoria, time, jogadorIds = [], botUserId, modo = null) {
   const numJogadores = parseInt(modo) || 3;
   if (numJogadores < 3) {
@@ -182,6 +211,7 @@ module.exports = {
   criarCategoriaEvento,
   criarCanalGeral,
   criarCanaisRank,
+  recriarCanaisInscricoesPartidas,
   criarCanaisTime,
   gerarPainelPermissoes,
   permOrgao,

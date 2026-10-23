@@ -73,6 +73,24 @@ test('painel consolidado lista times, check-ins e placares com ações administr
     const customIds = painel.components.flatMap((row) => row.toJSON().components.map((component) => component.custom_id));
     assert.ok(customIds.includes('btn_camp_broadcast'));
     assert.ok(customIds.includes('btn_camp_gerar_bracket'));
+    assert.ok(customIds.includes('btn_camp_editar_config_campeonato-id'));
+  });
+});
+
+test('painel de rank arquivado não oferece ações administrativas', () => {
+  comEnv({}, () => {
+    const { buildPainelOrganizadorCampeonato } = require('../src/features/campeonato/interactions');
+    const painel = buildPainelOrganizadorCampeonato({
+      campeonato: {
+        _id: 'campeonato-id',
+        nome: 'Copa Ômega',
+        rank: 'ouro',
+        status: 'INSCRICOES_ABERTAS',
+        arquivado: true
+      }
+    });
+    assert.match(painel.embeds[2].title, /Rank arquivado/);
+    assert.equal(painel.components.length, 0);
   });
 });
 

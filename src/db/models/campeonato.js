@@ -16,6 +16,7 @@ const campeonatoSchema = new mongoose.Schema({
   guildId: { type: String, required: true, index: true },
   eventoId: { type: mongoose.Schema.Types.ObjectId, ref: 'Evento', required: true, index: true },
   rank: { type: String, required: true },
+  arquivado: { type: Boolean, default: false },
   nome: { type: String, required: true, trim: true },
   modo: { type: String, enum: MODO_PARTIDA, required: true },
   tipoDupla: { type: String, enum: TIPO_DUPLA, default: 'SORTEADA' },

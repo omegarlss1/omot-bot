@@ -307,7 +307,8 @@ function embedPainelAdmin({ campeonato }) {
       { type: 2, style: 1, label: '🔒 Encerrar inscrições', custom_id: 'btn_camp_fechar_inscricoes_' + campeonato._id, emoji: { name: '🔒' } }
     ],
     [
-      { type: 2, style: 1, label: '👥 Gerenciar Times', custom_id: 'btn_camp_gerenciar_times_' + campeonato._id, emoji: { name: '👥' } }
+      { type: 2, style: 1, label: '👥 Gerenciar Times', custom_id: 'btn_camp_gerenciar_times_' + campeonato._id, emoji: { name: '👥' } },
+      { type: 2, style: 2, label: '⚙️ Editar configurações', custom_id: 'btn_camp_editar_config_' + campeonato._id, emoji: { name: '⚙️' } }
     ]
   ];
   

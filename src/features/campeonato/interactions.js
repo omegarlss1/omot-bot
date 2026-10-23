@@ -15,8 +15,11 @@ const { finalizarCampeonato, obterClassificacaoFinal, FinalizacaoError } = requi
 const { cancelarCampeonato, reabrirCampeonato, excluirCampeonatos, desclassificarTime, ajustarPlacar, AdminError } = require('./services/admin');
 const { notificarCampeao, anunciarNoCanal } = require('./services/notificacoes');
 const Campeonato = require('../../db/models/campeonato');
+const Evento = require('../../db/models/evento');
 const Partida = require('../../db/models/partida');
 const Time = require('../../db/models/time');
+const CampeonatoFactory = require('./factory/CampeonatoFactory');
+const { criarCanaisRank, recriarCanaisInscricoesPartidas, permOrgao, permBot, permRank, PERMISSOES_LEITURA } = require('./permissions');
 const { instance: eventosCampeonato, EVENTOS } = require('./events');
 
 const selecaoRanks = new Map();
@@ -28,6 +31,7 @@ const configPainel = new Map(); // FLUXO 2: estado do painel de configuração p
 let clientPainelOrganizador = null;
 let listenersPainelOrganizadorRegistrados = false;
 const atualizacoesPainelPendentes = new Map();
+const edicoesRanksPendentes = new Map();
 
 function limitarTextoPainel(linhas, limite) {
   const texto = linhas.join('\n') || 'Nenhum dado disponível.';
@@ -91,7 +95,16 @@ function buildPainelOrganizadorCampeonato({ campeonato, times = [], partidas = [
     return `**${fase}** — ${timeA?.nome || 'A definir'} ${placar} ${timeB?.nome || 'A definir'}\nTime A: ${checkin('timeA', timeA)} | Time B: ${checkin('timeB', timeB)} · ${status}`;
   });
 
-  const admin = embedPainelAdmin({ campeonato });
+  const admin = campeonato.arquivado
+    ? {
+      embeds: [{
+        title: '📦 Rank arquivado',
+        description: 'As inscrições e partidas deste rank foram removidas dos canais. Os dados históricos foram preservados.',
+        color: 0x808080
+      }],
+      components: []
+    }
+    : embedPainelAdmin({ campeonato });
   return {
     embeds: [
       {
@@ -1389,6 +1402,496 @@ async function onGerenciarParticipantes(interaction) {
 // Legacy alias
 async function onGerenciarTimes(interaction) {
   return onGerenciarParticipantes(interaction);
+}
+
+function montarPainelEdicaoEvento(evento, campeonatos) {
+  const ranks = evento.ranksSelecionados || [];
+  const principal = campeonatos[0];
+  const selectRanks = new StringSelectMenuBuilder()
+    .setCustomId(`select_camp_editar_ranks_${evento._id}`)
+    .setPlaceholder('Ranks ativos no evento')
+    .setMinValues(1)
+    .setMaxValues(config.ranks.length)
+    .addOptions(config.ranks.map((rank) => ({
+      label: rank.label,
+      value: rank.key,
+      default: ranks.includes(rank.key)
+    })));
+  const selectEntrada = new StringSelectMenuBuilder()
+    .setCustomId(`select_camp_editar_entrada_${evento._id}`)
+    .setPlaceholder('Modo de entrada')
+    .addOptions([
+      { label: 'Inscrição aberta', value: 'true', default: principal.baseadoEmInscricoes === true },
+      { label: 'Participantes definidos pela organização', value: 'false', default: principal.baseadoEmInscricoes === false }
+    ]);
+  const selectDupla = new StringSelectMenuBuilder()
+    .setCustomId(`select_camp_editar_dupla_${evento._id}`)
+    .setPlaceholder('Tipo de dupla')
+    .addOptions([
+      { label: 'Fixa', value: 'FIXA', default: principal.tipoDupla === 'FIXA' },
+      { label: 'Sorteada', value: 'SORTEADA', default: principal.tipoDupla !== 'FIXA' }
+    ]);
+  const formatos = [
+    { value: 'single-elimination', label: 'Eliminatória simples' },
+    { value: 'double-elimination', label: 'Eliminatória dupla' },
+    { value: 'round-robin', label: 'Round robin' },
+    { value: 'grupos-mata-mata', label: 'Grupos + mata-mata' }
+  ];
+  const selectFormato = new StringSelectMenuBuilder()
+    .setCustomId(`select_camp_editar_formato_${evento._id}`)
+    .setPlaceholder('Formato das partidas')
+    .addOptions(formatos.map((formato) => ({
+      ...formato,
+      default: principal.formato === formato.value
+    })));
+  const botoes = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`btn_camp_editar_dados_${evento._id}`)
+      .setLabel('Editar nome e datas')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(`btn_camp_editar_avancado_${evento._id}`)
+      .setLabel('Outras configurações')
+      .setStyle(ButtonStyle.Secondary)
+  );
+  return {
+    content: `**Edição do evento:** ${evento.nome}\nO modo de jogo não pode ser alterado. Alterações são bloqueadas após a geração de partidas.`,
+    components: [
+      botoes,
+      new ActionRowBuilder().addComponents(selectRanks),
+      new ActionRowBuilder().addComponents(selectEntrada),
+      new ActionRowBuilder().addComponents(selectDupla),
+      new ActionRowBuilder().addComponents(selectFormato)
+    ]
+  };
+}
+
+async function obterEventoEditavel(campeonatoId) {
+  const campeonato = await Campeonato.findById(campeonatoId).lean();
+  if (!campeonato) throw new Error('Campeonato não encontrado.');
+  if (campeonato.arquivado) throw new Error('Este rank está arquivado e não pode ser editado.');
+  return obterEventoEditavelPorEvento(campeonato.eventoId);
+}
+
+async function obterEventoEditavelPorEvento(eventoId) {
+  const evento = await Evento.findById(eventoId).lean();
+  if (!evento) throw new Error('Evento não encontrado.');
+  const campeonatos = await Campeonato.find({
+    eventoId: evento._id,
+    rank: { $in: evento.ranksSelecionados },
+    arquivado: { $ne: true }
+  }).sort({ criadoEm: 1 }).lean();
+  const ids = campeonatos.map((item) => item._id);
+  if (ids.length && await Partida.exists({ campeonatoId: { $in: ids } })) {
+    throw new Error('As configurações não podem ser alteradas depois que as partidas forem geradas.');
+  }
+  if (!campeonatos.length) throw new Error('Nenhum campeonato ativo foi encontrado para este evento.');
+  return { evento, campeonatos };
+}
+
+async function onAbrirEdicaoCampeonato(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.reply({ content: 'Apenas organizadores podem editar o campeonato.', flags: 64 });
+  }
+  const match = interaction.customId.match(/^btn_camp_editar_config_([a-f0-9]{24})$/);
+  if (!match) return interaction.reply({ content: 'ID do campeonato inválido.', flags: 64 });
+  try {
+    const { evento, campeonatos } = await obterEventoEditavelPorEvento(match[1]);
+    return interaction.reply({ ...montarPainelEdicaoEvento(evento, campeonatos), flags: 64 });
+  } catch (error) {
+    return interaction.reply({ content: error.message, flags: 64 });
+  }
+}
+
+function criarModalDadosEvento(evento) {
+  const modal = new ModalBuilder()
+    .setCustomId(`modal_camp_editar_dados_${evento._id}`)
+    .setTitle('Editar dados do evento');
+  const campos = [
+    ['edit_evento_nome', 'Nome do evento', evento.nome, true],
+    ['edit_evento_inicio', 'Data de início (DD/MM/AAAA)', new Date(evento.dataInicio).toLocaleDateString('pt-BR'), true],
+    ['edit_evento_fim', 'Data de término (DD/MM/AAAA)', new Date(evento.dataFim).toLocaleDateString('pt-BR'), true],
+    ['edit_evento_limite', 'Data limite de inscrição (DD/MM/AAAA)', evento.dataLimiteInscricoes ? new Date(evento.dataLimiteInscricoes).toLocaleDateString('pt-BR') : '', false]
+  ];
+  for (const [id, label, value, required] of campos) {
+    const input = new TextInputBuilder()
+      .setCustomId(id)
+      .setLabel(label)
+      .setStyle(TextInputStyle.Short)
+      .setRequired(required);
+    if (value) input.setValue(String(value).slice(0, 100));
+    modal.addComponents(new ActionRowBuilder().addComponents(input));
+  }
+  return modal;
+}
+
+function criarModalConfiguracoesEvento(evento, campeonatos) {
+  const principal = campeonatos[0];
+  const modal = new ModalBuilder()
+    .setCustomId(`modal_camp_editar_avancado_${evento._id}`)
+    .setTitle('Outras configurações');
+  const campos = [
+    ['edit_limite_times', 'Limite de times (vazio = sem limite)', principal.limiteInscricoes ?? '', false],
+    ['edit_intervalo', 'Intervalo entre partidas (1 a 120 min)', principal.intervaloPartidasMin ?? 20, true],
+    ['edit_duracao', 'Duração do evento em minutos (60 a 240)', evento.duracaoMin ?? 180, true],
+    ['edit_terceiro', 'Disputa de 3º lugar? SIM ou NAO', evento.temTerceiroLugar === false ? 'NAO' : 'SIM', true],
+    ['edit_simultaneo', 'Partidas simultâneas? SIM ou NAO', evento.simultaneo === false ? 'NAO' : 'SIM', true]
+  ];
+  for (const [id, label, value, required] of campos) {
+    const input = new TextInputBuilder()
+      .setCustomId(id)
+      .setLabel(label)
+      .setStyle(TextInputStyle.Short)
+      .setRequired(required);
+    if (value !== '') input.setValue(String(value).slice(0, 100));
+    modal.addComponents(new ActionRowBuilder().addComponents(input));
+  }
+  return modal;
+}
+
+async function onAbrirModalEdicao(interaction, tipo) {
+  if (!temPermissaoOrganizador(interaction.member)) return interaction.reply({ content: 'Sem permissão.', flags: 64 });
+  const match = interaction.customId.match(/^btn_camp_editar_(?:dados|avancado)_([a-f0-9]{24})$/);
+  if (!match) return interaction.reply({ content: 'ID do evento inválido.', flags: 64 });
+  try {
+    const { evento, campeonatos } = await obterEventoEditavelPorEvento(match[1]);
+    return interaction.showModal(tipo === 'dados'
+      ? criarModalDadosEvento(evento)
+      : criarModalConfiguracoesEvento(evento, campeonatos));
+  } catch (error) {
+    return interaction.reply({ content: error.message, flags: 64 });
+  }
+}
+
+function textoCampo(interaction, id) {
+  return interaction.fields.getTextInputValue(id).trim();
+}
+
+async function onSubmitDadosEvento(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) return interaction.reply({ content: 'Sem permissão.', flags: 64 });
+  const match = interaction.customId.match(/^modal_camp_editar_dados_([a-f0-9]{24})$/);
+  if (!match) return interaction.reply({ content: 'ID do evento inválido.', flags: 64 });
+  try {
+    const { evento, campeonatos } = await obterEventoEditavelPorEvento(match[1]);
+    const nome = textoCampo(interaction, 'edit_evento_nome');
+    const dataInicio = parseDataBR(textoCampo(interaction, 'edit_evento_inicio'));
+    const dataFim = parseDataBR(textoCampo(interaction, 'edit_evento_fim'));
+    const textoLimite = textoCampo(interaction, 'edit_evento_limite');
+    const dataLimite = textoLimite ? parseDataBR(textoLimite) : null;
+    if (nome.length < 3) throw new Error('O nome do evento precisa ter pelo menos 3 caracteres.');
+    if (!dataInicio || !dataFim || dataFim <= dataInicio) throw new Error('Informe datas válidas; o término deve ser posterior ao início.');
+    if (textoLimite && !dataLimite) throw new Error('A data limite de inscrição é inválida.');
+    if (dataLimite && dataLimite > dataInicio) throw new Error('A data limite de inscrição deve ser igual ou anterior ao início.');
+    const totalTimes = await Time.countDocuments({ campeonatoId: { $in: campeonatos.map((item) => item._id) } });
+    const horarioInicio = String(evento.descricao || '').match(/às\s*(\d{2}:\d{2})/)?.[1];
+    const descricao = gerarDescricaoEvento({
+      dataInicio,
+      duracaoMin: evento.duracaoMin,
+      numTimes: totalTimes,
+      modo: campeonatos[0].modo,
+      simultaneo: evento.simultaneo,
+      horarioInicio
+    }).descricao;
+    const eventoAtualizado = await Evento.findByIdAndUpdate(evento._id, {
+      $set: { nome, dataInicio, dataFim, dataLimiteInscricoes: dataLimite, descricao }
+    }, { new: true, runValidators: true }).lean();
+    const rankConfigs = new Map(config.ranks.map((rank) => [rank.key, rank]));
+    await Campeonato.updateMany(
+      { _id: { $in: campeonatos.map((item) => item._id) } },
+      { $set: {
+        dataEvento: dataInicio,
+        startAt: dataInicio,
+        dataLimiteInscricoes: dataLimite
+      } }
+    );
+    for (const campeonato of campeonatos) {
+      const rank = rankConfigs.get(campeonato.rank);
+      if (rank) {
+        await Campeonato.updateOne({ _id: campeonato._id }, {
+          $set: { nome: `${nome} - ${rank.label.toUpperCase()}` }
+        });
+        for (const [chave, titulo] of Object.entries({
+          avisos: 'Avisos oficiais',
+          inscricoes: 'Inscrições',
+          partidas: 'Partidas',
+          prints: 'Prints',
+          organizador: 'Painel do organizador'
+        })) {
+          const canalId = campeonato.canais?.[chave];
+          if (!canalId) continue;
+          const canal = await interaction.guild.channels.fetch(canalId);
+          if (canal?.isTextBased?.() && canal.setTopic) {
+            await canal.setTopic(`${titulo} do campeonato ${rank.label} - ${nome}`);
+          }
+        }
+        solicitarAtualizacaoPainelOrganizador(campeonato._id);
+      }
+    }
+    const categoria = evento.categoriaId ? await interaction.guild.channels.fetch(evento.categoriaId) : null;
+    if (categoria?.setName) await categoria.setName(`🏆 ${nome.toUpperCase()}`);
+    return interaction.reply({ content: `Dados do evento **${eventoAtualizado.nome}** atualizados.`, flags: 64 });
+  } catch (error) {
+    return interaction.reply({ content: error.message, flags: 64 });
+  }
+}
+
+async function onSubmitConfiguracoesEvento(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) return interaction.reply({ content: 'Sem permissão.', flags: 64 });
+  const match = interaction.customId.match(/^modal_camp_editar_avancado_([a-f0-9]{24})$/);
+  if (!match) return interaction.reply({ content: 'ID do evento inválido.', flags: 64 });
+  try {
+    const { evento, campeonatos } = await obterEventoEditavelPorEvento(match[1]);
+    const textoLimite = textoCampo(interaction, 'edit_limite_times');
+    const limite = textoLimite ? Number(textoLimite) : null;
+    const intervalo = Number(textoCampo(interaction, 'edit_intervalo'));
+    const duracaoMin = Number(textoCampo(interaction, 'edit_duracao'));
+    const terceiro = textoCampo(interaction, 'edit_terceiro').toUpperCase();
+    const simultaneo = textoCampo(interaction, 'edit_simultaneo').toUpperCase();
+    if (textoLimite && (!Number.isInteger(limite) || limite < 2)) throw new Error('O limite de times deve ser um número inteiro igual ou maior que 2.');
+    if (!Number.isInteger(intervalo) || intervalo < 1 || intervalo > 120) throw new Error('O intervalo deve ser de 1 a 120 minutos.');
+    if (!Number.isInteger(duracaoMin) || duracaoMin < 60 || duracaoMin > 240) throw new Error('A duração deve ser de 60 a 240 minutos.');
+    if (!['SIM', 'NAO', 'NÃO'].includes(terceiro) || !['SIM', 'NAO', 'NÃO'].includes(simultaneo)) {
+      throw new Error('Responda SIM ou NAO para terceiro lugar e partidas simultâneas.');
+    }
+    if (limite !== null) {
+      const inscritos = await Promise.all(campeonatos.map((camp) => Time.countDocuments({ campeonatoId: camp._id })));
+      if (inscritos.some((total) => total > limite)) throw new Error('O limite não pode ser menor que a quantidade de times já inscritos.');
+    }
+    const totalTimes = await Time.countDocuments({ campeonatoId: { $in: campeonatos.map((item) => item._id) } });
+    const horarioInicio = String(evento.descricao || '').match(/às\s*(\d{2}:\d{2})/)?.[1];
+    const descricao = gerarDescricaoEvento({
+      dataInicio: evento.dataInicio,
+      duracaoMin,
+      numTimes: totalTimes,
+      modo: campeonatos[0].modo,
+      simultaneo: simultaneo === 'SIM',
+      horarioInicio
+    }).descricao;
+    await Evento.updateOne({ _id: evento._id }, {
+      $set: {
+        duracaoMin,
+        descricao,
+        temTerceiroLugar: ['SIM'].includes(terceiro),
+        simultaneo: simultaneo === 'SIM'
+      }
+    });
+    await Campeonato.updateMany(
+      { _id: { $in: campeonatos.map((item) => item._id) } },
+      { $set: {
+        limiteInscricoes: limite,
+        intervaloPartidasMin: intervalo,
+        temTerceiroLugar: terceiro === 'SIM'
+      } }
+    );
+    return interaction.reply({ content: 'Configurações atualizadas para os ranks ativos do evento.', flags: 64 });
+  } catch (error) {
+    return interaction.reply({ content: error.message, flags: 64 });
+  }
+}
+
+async function onSelecionarConfiguracaoEvento(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) return interaction.reply({ content: 'Sem permissão.', flags: 64 });
+  const match = interaction.customId.match(/^select_camp_editar_(entrada|dupla|formato)_([a-f0-9]{24})$/);
+  if (!match) return interaction.reply({ content: 'Seleção inválida.', flags: 64 });
+  try {
+    const { campeonatos } = await obterEventoEditavelPorEvento(match[2]);
+    const [campo, valor] = match[1] === 'formato'
+      ? ['formato', interaction.values[0]]
+      : [match[1] === 'entrada' ? 'baseadoEmInscricoes' : 'tipoDupla',
+        match[1] === 'entrada' ? interaction.values[0] === 'true' : interaction.values[0]];
+    const atualizacao = { [campo]: valor };
+    if (campo === 'formato') {
+      atualizacao.modalidade = {
+        'single-elimination': 'single',
+        'double-elimination': 'double',
+        'round-robin': 'round-robin',
+        'grupos-mata-mata': 'grupos-mata-mata'
+      }[valor];
+    }
+    await Campeonato.updateMany({ _id: { $in: campeonatos.map((item) => item._id) } }, { $set: atualizacao });
+    const { evento, campeonatos: campeonatosAtualizados } = await obterEventoEditavelPorEvento(match[2]);
+    return interaction.update(montarPainelEdicaoEvento(evento, campeonatosAtualizados));
+  } catch (error) {
+    return interaction.reply({ content: error.message, flags: 64 });
+  }
+}
+
+async function aplicarSelecaoRanksEvento(interaction, eventoId, ranks, aviso) {
+  const evento = await Evento.findById(eventoId);
+  if (!evento) throw new Error('Evento não encontrado.');
+  const ranksAnteriores = evento.ranksSelecionados || [];
+  if (!Array.isArray(ranks) || !ranks.length || ranks.some((rank) => !config.ranks.some((item) => item.key === rank))) {
+    throw new Error('Selecione pelo menos um rank válido.');
+  }
+  const removidos = ranksAnteriores.filter((rank) => !ranks.includes(rank));
+  const adicionados = ranks.filter((rank) => !ranksAnteriores.includes(rank));
+  if ((removidos.length || adicionados.length) && !String(aviso || '').trim()) {
+    throw new Error('O aviso obrigatório para a alteração de ranks não foi informado.');
+  }
+  const campeonatosAtivos = await Campeonato.find({
+    eventoId,
+    rank: { $in: ranksAnteriores },
+    arquivado: { $ne: true }
+  });
+  const modelo = campeonatosAtivos[0];
+  const sufixoNumero = CampeonatoFactory.sufixoDoEvento(evento);
+  const botUserId = interaction.guild.members.me?.id || interaction.client.user?.id;
+  if (!botUserId) throw new Error('Não foi possível identificar o usuário do bot.');
+
+  for (const rank of adicionados) {
+    let campeonato = await Campeonato.findOne({ eventoId, rank });
+    if (campeonato) {
+      const canais = await recriarCanaisInscricoesPartidas(
+        interaction.guild,
+        evento.categoriaId,
+        rank,
+        { nome: evento.nome, sufixoNumero },
+        botUserId
+      );
+      campeonato.canais.inscricoes = canais.inscricoes.id;
+      campeonato.canais.partidas = canais.partidas.id;
+      campeonato.arquivado = false;
+      await campeonato.save();
+      await publicarPainelInscricao(canais.inscricoes, campeonato);
+      solicitarAtualizacaoPainelOrganizador(campeonato._id);
+    } else {
+      if (!modelo) throw new Error('Não foi possível determinar o modo original deste evento.');
+      campeonato = await CampeonatoFactory.criar({
+        eventoId,
+        guildId: evento.guildId,
+        rank,
+        sufixoNumero,
+        modo: modelo.modo,
+        tipoDupla: modelo.tipoDupla,
+        baseadoEmInscricoes: modelo.baseadoEmInscricoes,
+        limiteInscricoes: modelo.limiteInscricoes,
+        formato: modelo.formato,
+        modalidade: modelo.modalidade,
+        temTerceiroLugar: evento.temTerceiroLugar,
+        dataEvento: evento.dataInicio,
+        dataLimiteInscricoes: evento.dataLimiteInscricoes,
+        intervaloPartidasMin: modelo.intervaloPartidasMin
+      });
+      const categoria = await interaction.guild.channels.fetch(evento.categoriaId);
+      if (!categoria) throw new Error('Categoria do evento não encontrada no servidor.');
+      campeonato.canais = Object.fromEntries(Object.entries(
+        await criarCanaisRank(interaction.guild, categoria, rank, { nome: evento.nome, sufixoNumero }, botUserId)
+      ).map(([chave, canal]) => [chave, canal.id]));
+      await campeonato.save();
+      const publicado = await publicarPaineisCampeonato(interaction.guild, campeonato);
+      if (!publicado.inscricoes || !publicado.organizador) {
+        throw new Error(`O rank ${rank} foi criado, mas não foi possível publicar todos os painéis.`);
+      }
+    }
+    if (aviso) {
+      const campeonatoAtualizado = await Campeonato.findOne({ eventoId, rank });
+      const canalAvisos = campeonatoAtualizado?.canais?.avisos
+        ? await interaction.guild.channels.fetch(campeonatoAtualizado.canais.avisos)
+        : null;
+      if (!canalAvisos?.isTextBased?.()) throw new Error(`Canal de avisos não encontrado para o rank ${rank}.`);
+      await canalAvisos.send({
+        content: `⚠️ **Atualização de ranks do evento ${evento.nome}**\n${String(aviso).trim()}`
+      });
+    }
+  }
+
+  for (const rank of removidos) {
+    const campeonato = await Campeonato.findOne({ eventoId, rank });
+    if (!campeonato) continue;
+    const canalAvisos = campeonato.canais?.avisos
+      ? await interaction.guild.channels.fetch(campeonato.canais.avisos)
+      : null;
+    if (!canalAvisos?.isTextBased?.()) throw new Error(`Canal de avisos não encontrado para o rank ${rank}.`);
+    await canalAvisos.send({
+      content: `⚠️ **Atualização de ranks do evento ${evento.nome}**\n${String(aviso).trim()}`
+    });
+    for (const chave of ['inscricoes', 'partidas']) {
+      const canalId = campeonato.canais?.[chave];
+      if (!canalId) continue;
+      try {
+        const canal = await interaction.guild.channels.fetch(canalId);
+        if (canal) await canal.delete(`Rank ${rank} removido da seleção do evento ${evento.nome}`);
+      } catch (error) {
+        if (error?.code !== 10003) throw error;
+      }
+    }
+    campeonato.canais.inscricoes = null;
+    campeonato.canais.partidas = null;
+    campeonato.arquivado = true;
+    await campeonato.save();
+    solicitarAtualizacaoPainelOrganizador(campeonato._id);
+  }
+
+  evento.ranksSelecionados = ranks;
+  await evento.save();
+
+  const canalGeralId = campeonatosAtivos[0]?.canais?.geral;
+  if (canalGeralId) {
+    const canalGeral = await interaction.guild.channels.fetch(canalGeralId);
+    if (canalGeral?.permissionOverwrites?.set) {
+      await canalGeral.permissionOverwrites.set([
+        { id: interaction.guild.roles.everyone.id, deny: PERMISSOES_LEITURA },
+        permOrgao(),
+        permBot(botUserId),
+        ...ranks.map(permRank)
+      ], `Ranks atualizados no evento ${evento.nome}`);
+    }
+  }
+}
+
+async function onSelecionarRanksEvento(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) return interaction.reply({ content: 'Sem permissão.', flags: 64 });
+  const match = interaction.customId.match(/^select_camp_editar_ranks_([a-f0-9]{24})$/);
+  if (!match) return interaction.reply({ content: 'ID do evento inválido.', flags: 64 });
+  try {
+    const { evento } = await obterEventoEditavelPorEvento(match[1]);
+    const ranks = interaction.values;
+    const alteracao = evento.ranksSelecionados.length !== ranks.length
+      || evento.ranksSelecionados.some((rank) => !ranks.includes(rank));
+    if (alteracao) {
+      edicoesRanksPendentes.set(`${interaction.user.id}:${evento._id}`, ranks);
+      const modal = new ModalBuilder()
+        .setCustomId(`modal_camp_aviso_ranks_${evento._id}`)
+        .setTitle('Aviso obrigatório aos ranks removidos');
+      const input = new TextInputBuilder()
+        .setCustomId('aviso_ranks')
+        .setLabel('Explique a mudança e a exclusão')
+        .setStyle(TextInputStyle.Paragraph)
+        .setMinLength(10)
+        .setMaxLength(1000)
+        .setRequired(true);
+      modal.addComponents(new ActionRowBuilder().addComponents(input));
+      return interaction.showModal(modal);
+    }
+    await interaction.deferUpdate();
+    await aplicarSelecaoRanksEvento(interaction, evento._id, ranks, null);
+    return interaction.editReply({ content: 'Ranks do evento atualizados. Os registros dos ranks removidos foram preservados.', components: [] });
+  } catch (error) {
+    if (!interaction.deferred && !interaction.replied) return interaction.reply({ content: error.message, flags: 64 });
+    return interaction.editReply({ content: error.message, components: [] });
+  }
+}
+
+async function onSubmitAvisoRanks(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) return interaction.reply({ content: 'Sem permissão.', flags: 64 });
+  const match = interaction.customId.match(/^modal_camp_aviso_ranks_([a-f0-9]{24})$/);
+  if (!match) return interaction.reply({ content: 'ID do evento inválido.', flags: 64 });
+  const key = `${interaction.user.id}:${match[1]}`;
+  const ranks = edicoesRanksPendentes.get(key);
+  edicoesRanksPendentes.delete(key);
+  if (!ranks) return interaction.reply({ content: 'A seleção de ranks expirou. Abra a edição novamente.', flags: 64 });
+  try {
+    const aviso = textoCampo(interaction, 'aviso_ranks');
+    if (aviso.length < 10) throw new Error('O aviso precisa ter pelo menos 10 caracteres.');
+    const campeonato = await Campeonato.findOne({ eventoId: match[1], arquivado: { $ne: true } }).lean();
+    if (!campeonato) throw new Error('Nenhum campeonato ativo foi encontrado para este evento.');
+    await obterEventoEditavel(campeonato._id);
+    await aplicarSelecaoRanksEvento(interaction, match[1], ranks, aviso);
+    return interaction.reply({ content: 'Ranks atualizados. O aviso foi enviado aos canais de avisos; os canais de inscrição e partidas dos ranks removidos foram excluídos e os dados históricos foram preservados.', flags: 64 });
+  } catch (error) {
+    console.error('[campeonato.edicao] falha ao atualizar ranks:', error);
+    return interaction.reply({ content: `Não foi possível concluir a edição dos ranks: ${error.message}`, flags: 64 });
+  }
 }
 
 async function onEscolherFormato(interaction) {
@@ -2983,6 +3486,14 @@ function register(registry) {
   registry.button(/^btn_camp_fechar_inscricoes_[a-f0-9]{24}$/, onBotaoFecharInscricoes); // legacy
   registry.button(/^btn_gerenciar_participantes_[a-f0-9]{24}$/, onGerenciarTimes);
   registry.button(/^btn_camp_gerenciar_times_[a-f0-9]{24}$/, onGerenciarTimes); // legacy
+  registry.button(/^btn_camp_editar_config_[a-f0-9]{24}$/, onAbrirEdicaoCampeonato);
+  registry.button(/^btn_camp_editar_dados_[a-f0-9]{24}$/, (interaction) => onAbrirModalEdicao(interaction, 'dados'));
+  registry.button(/^btn_camp_editar_avancado_[a-f0-9]{24}$/, (interaction) => onAbrirModalEdicao(interaction, 'avancado'));
+  registry.modal(/^modal_camp_editar_dados_[a-f0-9]{24}$/, onSubmitDadosEvento);
+  registry.modal(/^modal_camp_editar_avancado_[a-f0-9]{24}$/, onSubmitConfiguracoesEvento);
+  registry.modal(/^modal_camp_aviso_ranks_[a-f0-9]{24}$/, onSubmitAvisoRanks);
+  registry.select(/^select_camp_editar_ranks_[a-f0-9]{24}$/, onSelecionarRanksEvento);
+  registry.select(/^select_camp_editar_(entrada|dupla|formato)_[a-f0-9]{24}$/, onSelecionarConfiguracaoEvento);
   registry.button('btn_camp_cortar', onBotaoCortar);
   registry.button(/^btn_camp_formato_(round-robin|grupos-mata-mata|double-elimination|single-elimination)_[a-f0-9]{24}$/, onEscolherFormato);
   registry.button(/^btn_camp_definir_formato_[a-f0-9]{24}$/, onDefinirFormato);
