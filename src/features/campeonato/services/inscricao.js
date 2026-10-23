@@ -404,6 +404,7 @@ async function definirFormato(campeonatoId, formato) {
 }
 
 module.exports = {
+  InscricaoError,
   findCampeonatoPorCanalInscricao,
   findCampeonatoPorCanal,
   fecharPorPrazo,

@@ -161,6 +161,15 @@ test('inscreverTimeCompleto associa os nicks informados às contas Discord valid
   });
 });
 
+test('serviço e validação de inscrição exportam a mesma classe de erro', () => {
+  comEnv({}, () => {
+    const { InscricaoError: erroDoServico } = require('../src/features/campeonato/services/inscricao');
+    const { InscricaoError: erroDaValidacao } = require('../src/features/campeonato/validators/inscricao');
+    assert.equal(typeof erroDoServico, 'function');
+    assert.equal(erroDoServico, erroDaValidacao);
+  });
+});
+
 test('publicarPaineisCampeonato publica os painéis e registra suas mensagens', async () => {
   await comEnv({}, async () => {
     const { publicarPaineisCampeonato } = require('../src/features/campeonato/interactions');
