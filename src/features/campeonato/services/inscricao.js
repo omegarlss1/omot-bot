@@ -153,6 +153,116 @@ async function inscreverCapitao({ guild, member, campeonato, nomeTime }) {
   return { time, dadosCapitao };
 }
 
+async function inscreverTimeCompleto({ guild, campeonato, capitao, nickCapitao, nomeTime, jogadores }) {
+  if (!campeonato) throw new InscricaoError('Campeonato não encontrado.', 'INSCRICAO_CAMP_NAO_ENCONTRADO');
+  if (campeonato.status !== 'INSCRICOES_ABERTAS') {
+    throw new InscricaoError('Inscrições não estão abertas.', 'INSCRICAO_FECHADAS');
+  }
+  const quantidadeEsperada = Number(campeonato.maxJogadoresPorTime);
+  if (!Number.isInteger(quantidadeEsperada) || !Array.isArray(jogadores) || jogadores.length !== quantidadeEsperada - 1) {
+    throw new InscricaoError(`Este modo exige ${quantidadeEsperada} jogador(es) por time, incluindo o capitão.`, 'TIME_QUANTIDADE_INVALIDA');
+  }
+  const integrantes = [{ member: capitao, nick: nickCapitao }, ...jogadores];
+  const ids = integrantes.map(({ member }) => String(member?.id || ''));
+  if (ids.some((id) => !id) || new Set(ids).size !== ids.length) {
+    throw new InscricaoError('Cada jogador deve ser uma conta Discord diferente.', 'TIME_JOGADORES_DUPLICADOS');
+  }
+  for (const integrante of integrantes) {
+    const nick = String(integrante.nick || '').trim();
+    if (!nick || nick.length > 20) {
+      throw new InscricaoError('Informe um nick válido de até 20 caracteres para cada jogador.', 'TIME_NICK_INVALIDO');
+    }
+  }
+  if (await jogadorJaInscrito(campeonato._id, capitao.id)) {
+    throw new InscricaoError('Você já está inscrito neste campeonato.', 'INSCRICAO_DUPLICADA');
+  }
+
+  const perfilCapitao = await PerfilMembro.findOne({ guildId: guild.id, userId: capitao.id });
+  const dadosCapitao = validarInscricao({
+    member: capitao,
+    perfil: perfilCapitao,
+    ranksDisponiveis: campeonato.rank ? [campeonato.rank] : (campeonato.ranksSelecionados || [])
+  });
+  const jogadoresTime = [{
+    userId: capitao.id,
+    rankSnapshot: perfilCapitao.rankX1 || perfilCapitao.rankX2 || perfilCapitao.picoRank,
+    nickSnapshot: String(nickCapitao).trim(),
+    isSubstituto: false,
+    isCapitao: true,
+    partidasJogadas: 0
+  }];
+
+  for (const integrante of jogadores) {
+    if (await jogadorJaInscrito(campeonato._id, integrante.member.id)) {
+      throw new InscricaoError(`<@${integrante.member.id}> já está inscrito neste campeonato.`, 'INSCRICAO_DUPLICADA');
+    }
+    const perfil = await PerfilMembro.findOne({ guildId: guild.id, userId: integrante.member.id });
+    const dados = validarInscricao({
+      member: integrante.member,
+      perfil,
+      ranksDisponiveis: campeonato.rank ? [campeonato.rank] : (campeonato.ranksSelecionados || [])
+    });
+    jogadoresTime.push({
+      userId: integrante.member.id,
+      rankSnapshot: dados.capitaoRankSnapshot,
+      nickSnapshot: String(integrante.nick).trim(),
+      isSubstituto: false,
+      isCapitao: false,
+      partidasJogadas: 0
+    });
+  }
+
+  const totalTimes = await Time.countDocuments({ campeonatoId: campeonato._id });
+  if (!campeonato.baseadoEmInscricoes && campeonato.limiteInscricoes && totalTimes >= campeonato.limiteInscricoes) {
+    throw new InscricaoError(`Limite atingido (${campeonato.limiteInscricoes} times). Inscrições fechadas.`, 'INSCRICAO_LIMITE_ATINGIDO');
+  }
+  const nomeFinal = String(nomeTime || '').trim();
+  if (!nomeFinal || nomeFinal.length > 40) {
+    throw new InscricaoError('Informe um nome de time válido (até 40 caracteres).', 'TIME_NOME_INVALIDO');
+  }
+
+  const time = await Time.create({
+    guildId: guild.id,
+    campeonatoId: campeonato._id,
+    capitaoId: capitao.id,
+    jogadores: jogadoresTime,
+    nome: nomeFinal
+  });
+  if (campeonato.categoriaId && guild.channels?.create) {
+    time.canais = await criarCanaisTime(
+      guild,
+      campeonato.categoriaId,
+      time.nome,
+      ids,
+      guild.members.me?.id || guild.client?.user?.id,
+      campeonato.modo
+    );
+    await time.save();
+  }
+  if (!campeonato.baseadoEmInscricoes && campeonato.limiteInscricoes
+      && totalTimes + 1 === campeonato.limiteInscricoes) {
+    campeonato.status = 'INSCRICOES_FECHADAS';
+    await campeonato.save();
+    emitir(EVENTOS.INSCRICOES_FECHADAS, { campeonatoId: campeonato._id, motivo: 'LIMITE_ATINGIDO' });
+    if (campeonato.canais?.geral && guild.channels?.fetch) {
+      const canalGeral = await guild.channels.fetch(campeonato.canais.geral).catch(() => null);
+      if (canalGeral?.isTextBased?.()) {
+        await canalGeral.send({
+          content: `🔒 @everyone Campeonato ${campeonato.nome} atingiu o limite de ${campeonato.limiteInscricoes} times! Inscrições encerradas.`
+        }).catch(() => {});
+      }
+    }
+  }
+  emitir(EVENTOS.INSCRICAO_REALIZADA, {
+    timeId: time._id,
+    campeonatoId: campeonato._id,
+    capitaoId: capitao.id,
+    jogadores: ids,
+    rank: dadosCapitao.rank
+  });
+  return { time, dadosCapitao };
+}
+
 async function inscreverJogadorManual({ guild, campeonato, nomeJogador, nick, telefone, rank, nomeTime }) {
   if (!campeonato) throw new InscricaoError('Campeonato não encontrado.', 'INSCRICAO_CAMP_NAO_ENCONTRADO');
   if (campeonato.status !== 'INSCRICOES_ABERTAS') {
@@ -302,6 +412,7 @@ module.exports = {
   buscarNicks,
   adicionarJogadorAoTime,
   inscreverCapitao,
+  inscreverTimeCompleto,
   inscreverJogadorManual,
   fecharInscricoes,
   executarCorte,

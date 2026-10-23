@@ -141,8 +141,8 @@ async function gerarBracket(campeonatoId, { shuffle = true } = {}) {
   }
   if (!guildId) throw new BracketError('guildId não encontrado no campeonato nem no evento.', 'BRACKET_GUILD_MISSING');
   const times = await Time.find({ campeonatoId }).lean();
-  if (times.length < 2) {
-    throw new BracketError('Mínimo de 2 times para gerar bracket.', 'BRACKET_MIN_TIMES');
+  if (times.length < 4) {
+    throw new BracketError('Mínimo de 4 times para gerar bracket.', 'BRACKET_MIN_TIMES');
   }
 
   const existing = await Partida.findOne({ campeonatoId, fase: 'R1' });
@@ -263,8 +263,8 @@ async function previewBracket(campeonatoId) {
   const campeonato = await Campeonato.findById(campeonatoId).lean();
   if (!campeonato) throw new BracketError('Campeonato não encontrado.', 'BRACKET_CAMP_NAO_ENCONTRADO');
   const times = await Time.find({ campeonatoId }).lean();
-  if (times.length < 2) {
-    throw new BracketError('Mínimo de 2 times para gerar bracket.', 'BRACKET_MIN_TIMES');
+  if (times.length < 4) {
+    throw new BracketError('Mínimo de 4 times para gerar bracket.', 'BRACKET_MIN_TIMES');
   }
 
   const isSingle = ['single', '1v1', 'x1', '1x1'].includes(String(campeonato.modalidade || 'single').toLowerCase());

@@ -406,23 +406,31 @@ module.exports = {
 function embedPainelInscricao(campeonato, totalInscritos) {
   const rankLabel = String(campeonato.rank || '').toUpperCase();
   const tipoDupla = campeonato.tipoDupla || 'NÃO SE APLICA';
+  const modoDuelo = String(campeonato.modo || '').toLowerCase() === '1v1'
+    || Number(campeonato.maxJogadoresPorTime) <= 1;
   return {
     embeds: [{
       title: '🎮 Inscrições Abertas — ' + rankLabel,
       description: 'Campeonato: **' + campeonato.nome + '**\nModo: **' + campeonato.modo + '** | Tipo: **' + tipoDupla + '**\n\n' +
-        'Clique no botão abaixo para inscrever seu time. Você deve ter o **cargo @' + rankLabel + '** no Discord e o rank correspondente na sua ficha.',
+        (modoDuelo
+          ? 'Clique em **Inscrever-se** para confirmar sua inscrição usando sua conta Discord. Você precisa ter o **cargo @' + rankLabel + '** e o rank correspondente na sua ficha.'
+          : 'Clique em **Inscrever time** e informe os nicks e as contas Discord dos jogadores. Cada integrante precisa ter o **cargo @' + rankLabel + '** e o rank correspondente na ficha.'),
       color: 0x00C2FF,
       fields: [
-        { name: '📊 Inscritos', value: String(totalInscritos || 0) + ' jogador(es)', inline: true },
+        { name: '📊 Inscritos', value: String(totalInscritos || 0) + ' time(s)', inline: true },
         { name: '🎯 Modo', value: campeonato.modo, inline: true },
         { name: '👥 Tipo', value: tipoDupla, inline: true }
       ]
     }],
-    components: [[
-      { type: 2, style: 3, label: '🎮 Inscrever Time', custom_id: 'btn_camp_inscrever', emoji: { name: '🎮' } },
-      { type: 2, style: 1, label: '📝 Inscrição manual', custom_id: 'btn_camp_inscricao_manual', emoji: { name: '📝' } },
-      { type: 2, style: 1, label: '👑 Selecionar capitão', custom_id: 'btn_camp_selecionar_capitao', emoji: { name: '👑' } }
-    ]]
+    components: modoDuelo
+      ? [[
+          { type: 2, style: 3, label: '✅ Inscrever-se', custom_id: 'btn_camp_inscrever_se', emoji: { name: '✅' } },
+          { type: 2, style: 1, label: '📝 Inscrição manual', custom_id: 'btn_camp_inscricao_manual', emoji: { name: '📝' } }
+        ]]
+      : [[
+          { type: 2, style: 3, label: '👥 Inscrever time', custom_id: 'btn_camp_inscrever_time', emoji: { name: '👥' } },
+          { type: 2, style: 1, label: '📝 Inscrição manual', custom_id: 'btn_camp_inscricao_manual', emoji: { name: '📝' } }
+        ]]
   };
 }
 

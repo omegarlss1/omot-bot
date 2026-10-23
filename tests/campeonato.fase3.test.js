@@ -76,6 +76,91 @@ test('painel consolidado lista times, check-ins e placares com ações administr
   });
 });
 
+test('formulário de inscrição respeita o limite de cinco campos e divide a lista em etapas', () => {
+  comEnv({}, () => {
+    const { construirModalInscricaoTime } = require('../src/features/campeonato/interactions');
+    const campeonato = { _id: '0123456789abcdef01234567', maxJogadoresPorTime: 12 };
+    const etapaInicial = construirModalInscricaoTime(campeonato, 0, 0).toJSON();
+    const etapaSeguinte = construirModalInscricaoTime(campeonato, 1, 3).toJSON();
+    const etapaFinal = construirModalInscricaoTime(campeonato, 2, 8).toJSON();
+    const customIds = (modal) => modal.components.map((row) => row.components[0].custom_id);
+
+    assert.equal(etapaInicial.components.length, 5);
+    assert.deepEqual(customIds(etapaInicial), [
+      'inscricao_time_nome',
+      'inscricao_time_capitao',
+      'inscricao_time_jogador_0',
+      'inscricao_time_jogador_1',
+      'inscricao_time_jogador_2'
+    ]);
+    assert.equal(etapaSeguinte.components.length, 5);
+    assert.deepEqual(customIds(etapaFinal), [
+      'inscricao_time_jogador_8',
+      'inscricao_time_jogador_9',
+      'inscricao_time_jogador_10'
+    ]);
+  });
+});
+
+test('inscreverTimeCompleto associa os nicks informados às contas Discord validadas', async () => {
+  await comEnv({}, async () => {
+    const Time = require('../src/db/models/time');
+    const PerfilMembro = require('../src/db/models/perfilMembro');
+    const { inscreverTimeCompleto } = require('../src/features/campeonato/services/inscricao');
+    const originais = {
+      findOne: Time.findOne,
+      countDocuments: Time.countDocuments,
+      create: Time.create,
+      perfilFindOne: PerfilMembro.findOne
+    };
+    let timeCriado;
+    Time.findOne = () => ({ lean: async () => null });
+    Time.countDocuments = async () => 0;
+    Time.create = async (dados) => {
+      timeCriado = { ...dados, _id: 'time-id' };
+      return timeCriado;
+    };
+    PerfilMembro.findOne = async ({ userId }) => ({
+      userId,
+      rankX1: 'ouro',
+      nick_principal: `Perfil-${userId}`
+    });
+    const integrante = (id) => ({
+      id,
+      roles: { cache: { has: (roleId) => roleId === '6' } }
+    });
+
+    try {
+      const resultado = await inscreverTimeCompleto({
+        guild: { id: 'guild-id' },
+        campeonato: {
+          _id: 'campeonato-id',
+          rank: 'ouro',
+          modo: '2v2',
+          maxJogadoresPorTime: 2,
+          status: 'INSCRICOES_ABERTAS',
+          baseadoEmInscricoes: true
+        },
+        capitao: integrante('capitao'),
+        nickCapitao: 'NickCapitao',
+        nomeTime: 'Time Omega',
+        jogadores: [{ member: integrante('jogador'), nick: 'NickJogador' }]
+      });
+
+      assert.equal(resultado.time.nome, 'Time Omega');
+      assert.deepEqual(timeCriado.jogadores.map(({ userId, nickSnapshot, isCapitao }) => ({ userId, nickSnapshot, isCapitao })), [
+        { userId: 'capitao', nickSnapshot: 'NickCapitao', isCapitao: true },
+        { userId: 'jogador', nickSnapshot: 'NickJogador', isCapitao: false }
+      ]);
+    } finally {
+      Time.findOne = originais.findOne;
+      Time.countDocuments = originais.countDocuments;
+      Time.create = originais.create;
+      PerfilMembro.findOne = originais.perfilFindOne;
+    }
+  });
+});
+
 test('publicarPaineisCampeonato publica os painéis e registra suas mensagens', async () => {
   await comEnv({}, async () => {
     const { publicarPaineisCampeonato } = require('../src/features/campeonato/interactions');
@@ -127,7 +212,7 @@ test('publicarPaineisCampeonato publica os painéis e registra suas mensagens', 
     assert.deepEqual(resultado, { inscricoes: true, organizador: true, avisos: true });
     assert.equal(canais.get('inscricoes-id').mensagens.length, 1);
     assert.ok(canais.get('inscricoes-id').mensagens[0].components[0].components
-      .some((component) => component.data.custom_id === 'btn_camp_inscrever'));
+      .some((component) => component.data.custom_id === 'btn_camp_inscrever_time'));
     assert.equal(canais.get('organizador-id').mensagens.length, 1);
     assert.equal(canais.get('organizador-id').mensagens[0].embeds.length, 3);
     assert.ok(canais.get('organizador-id').mensagens[0].components

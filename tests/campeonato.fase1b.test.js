@@ -241,15 +241,15 @@ test('handlers do módulo campeonato registrados', async (t) => {
       const interactions = require('../src/features/campeonato/interactions');
       const r = new InteractionRegistry();
       interactions.register(r);
-      assert.equal(r.buttons.length, 57);
+      assert.equal(r.buttons.length, 60);
       assert.equal(r.selects.length, 14);
-      assert.equal(r.modals.length, 11);
+      assert.equal(r.modals.length, 10);
     });
   });
 });
 
 test('painel de inscrição', async (t) => {
-  await t.test('inclui o botão para inscrever o time', () => {
+  await t.test('mostra inscrição de time para modos em equipe e remove seleção manual de capitão', () => {
     comEnv({}, () => {
       const { embedPainelInscricao, toActionRows } = require('../src/features/campeonato/embeds');
       const painel = embedPainelInscricao({
@@ -259,9 +259,19 @@ test('painel de inscrição', async (t) => {
         tipoDupla: 'SORTEADA'
       }, 0);
       const payload = toActionRows(painel.components).map((row) => row.toJSON());
-      assert.equal(payload[0].components[0].custom_id, 'btn_camp_inscrever');
-      assert.equal(payload[0].components[0].label, '🎮 Inscrever Time');
+      assert.equal(payload[0].components[0].custom_id, 'btn_camp_inscrever_time');
+      assert.equal(payload[0].components[0].label, '👥 Inscrever time');
       assert.equal(payload[0].components[1].custom_id, 'btn_camp_inscricao_manual');
+      assert.equal(payload[0].components.some((component) => component.custom_id === 'btn_camp_selecionar_capitao'), false);
+    });
+  });
+  await t.test('mostra inscrição direta no modo duelos', () => {
+    comEnv({}, () => {
+      const { embedPainelInscricao, toActionRows } = require('../src/features/campeonato/embeds');
+      const painel = embedPainelInscricao({ nome: 'Duelo', rank: 'ouro', modo: '1v1' }, 0);
+      const componentes = toActionRows(painel.components).flatMap((row) => row.toJSON().components);
+      assert.equal(componentes[0].custom_id, 'btn_camp_inscrever_se');
+      assert.equal(componentes.some((component) => component.custom_id === 'btn_camp_inscrever_time'), false);
     });
   });
 });

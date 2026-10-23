@@ -93,6 +93,31 @@ test('bracket.parearChaves', async (t) => {
   });
 });
 
+test('bracket preview e geração exigem ao menos quatro times', async () => {
+  await comEnv({}, async () => {
+    const Campeonato = require('../src/db/models/campeonato');
+    const Time = require('../src/db/models/time');
+    const { gerarBracket, previewBracket, BracketError } = require('../src/features/campeonato/services/bracket');
+    const originais = { findById: Campeonato.findById, find: Time.find };
+    Campeonato.findById = () => ({ lean: async () => ({ guildId: 'guild-id' }) });
+    Time.find = () => ({ lean: async () => [{ _id: 'a' }, { _id: 'b' }, { _id: 'c' }] });
+
+    try {
+      await assert.rejects(
+        () => gerarBracket('campeonato-id'),
+        (error) => error instanceof BracketError && error.code === 'BRACKET_MIN_TIMES' && /4 times/.test(error.message)
+      );
+      await assert.rejects(
+        () => previewBracket('campeonato-id'),
+        (error) => error instanceof BracketError && error.code === 'BRACKET_MIN_TIMES' && /4 times/.test(error.message)
+      );
+    } finally {
+      Campeonato.findById = originais.findById;
+      Time.find = originais.find;
+    }
+  });
+});
+
 test('canvasBracket.renderSingleBracketPng retorna PNG válido', async (t) => {
   await t.test('4 times geram buffer com header PNG', async () => {
     comEnv({}, async () => {
@@ -277,15 +302,15 @@ test('classificacao.detectarEmpates', async (t) => {
 });
 
 test('handlers da Fase 2 registrados', async (t) => {
-  await t.test('registra 57 botões, 14 selects e 11 modais', () => {
+  await t.test('registra os botões, selects e modais de campeonato', () => {
     comEnv({}, () => {
       const { InteractionRegistry } = require('../src/interactions/registry');
       const interactions = require('../src/features/campeonato/interactions');
       const r = new InteractionRegistry();
       interactions.register(r);
-      assert.equal(r.buttons.length, 57);
+      assert.equal(r.buttons.length, 60);
       assert.equal(r.selects.length, 14);
-      assert.equal(r.modals.length, 11);
+      assert.equal(r.modals.length, 10);
     });
   });
 });

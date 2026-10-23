@@ -271,9 +271,9 @@ test('handlers da Fase 1C registrados', async (t) => {
       const interactions = require('../src/features/campeonato/interactions');
       const r = new InteractionRegistry();
       interactions.register(r);
-      assert.equal(r.buttons.length, 53);
+      assert.equal(r.buttons.length, 60);
       assert.equal(r.selects.length, 14);
-      assert.equal(r.modals.length, 11);
+      assert.equal(r.modals.length, 10);
     });
   });
   await t.test('regex btn_camp_formato_ aceita todos os formatos e ObjectId de 24 chars hex', () => {
