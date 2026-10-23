@@ -427,6 +427,7 @@ async function onSubmitConfigDados(interaction) {
     dataLimiteInscricoes: dataLimite,
     horarioInicio,
     descricao,
+    simultaneo: cfgAnterior.simultaneo ?? true,
     modo: cfgAnterior.modo || null,
     ranksSelecionados: cfgAnterior.ranksSelecionados || [],
     baseadoEmInscricoes: cfgAnterior.baseadoEmInscricoes ?? null,
@@ -448,6 +449,7 @@ function buildConfigPanel(userId) {
 
   const sections = [
     { key: 'dados', label: 'Preencher dados', emoji: '📝', customId: 'btn_config_dados', disabled: false, done: true },
+    { key: 'simultaneo', label: 'Simultaneidade', emoji: '⏱️', customId: 'btn_config_simultaneo', disabled: false, done: cfg.simultaneo !== undefined },
     { key: 'modo', label: 'Escolher modo', emoji: '⚔️', customId: 'btn_config_modo', disabled: false, done: !!cfg.modo },
     { key: 'ranks', label: 'Ranks', emoji: '🎯', customId: 'btn_config_ranks', disabled: !cfg.modo, done: cfg.ranksSelecionados?.length > 0 },
     { key: 'entrada', label: 'Modo de Entrada', emoji: '👥', customId: 'btn_config_entrada', disabled: !cfg.modo || !cfg.ranksSelecionados?.length, done: !!cfg.baseadoEmInscricoes },
@@ -480,7 +482,7 @@ function buildConfigPanel(userId) {
 
   return {
     embeds: [embed],
-    components: montarComponentes(buttons.slice(0, 4), buttons.slice(4))
+    components: montarComponentes(buttons.slice(0, 5), buttons.slice(5))
   };
 }
 
@@ -499,6 +501,7 @@ function isConfigComplete(cfg) {
 function getSectionPreview(cfg, key) {
   switch (key) {
     case 'dados': return `${new Date(cfg.dataInicio).toLocaleDateString('pt-BR')} | ${cfg.horarioInicio}`;
+    case 'simultaneo': return cfg.simultaneo === false ? 'Escalonadas' : 'Simultâneas';
     case 'modo': return cfg.modo ? getModoLabel(cfg.modo) : '—';
     case 'ranks': return cfg.ranksSelecionados?.length ? cfg.ranksSelecionados.map((r) => (config.ranks.find((cr) => cr.key === r)?.label || r)).join(', ') : '—';
     case 'entrada': return cfg.baseadoEmInscricoes === true ? 'Inscrição aberta' : cfg.baseadoEmInscricoes === false ? 'Eu escolho' : '—';
@@ -1451,7 +1454,7 @@ function montarPainelEdicaoEvento(evento, campeonatos) {
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId(`btn_camp_editar_avancado_${evento._id}`)
-      .setLabel('Outras configurações')
+      .setLabel('Editar limite de times')
       .setStyle(ButtonStyle.Secondary)
   );
   return {
@@ -1496,7 +1499,7 @@ async function onAbrirEdicaoCampeonato(interaction) {
   const match = interaction.customId.match(/^btn_camp_editar_config_([a-f0-9]{24})$/);
   if (!match) return interaction.reply({ content: 'ID do campeonato inválido.', flags: 64 });
   try {
-    const { evento, campeonatos } = await obterEventoEditavelPorEvento(match[1]);
+    const { evento, campeonatos } = await obterEventoEditavel(match[1]);
     return interaction.reply({ ...montarPainelEdicaoEvento(evento, campeonatos), flags: 64 });
   } catch (error) {
     return interaction.reply({ content: error.message, flags: 64 });
@@ -1529,23 +1532,14 @@ function criarModalConfiguracoesEvento(evento, campeonatos) {
   const principal = campeonatos[0];
   const modal = new ModalBuilder()
     .setCustomId(`modal_camp_editar_avancado_${evento._id}`)
-    .setTitle('Outras configurações');
-  const campos = [
-    ['edit_limite_times', 'Limite de times (vazio = sem limite)', principal.limiteInscricoes ?? '', false],
-    ['edit_intervalo', 'Intervalo entre partidas (1 a 120 min)', principal.intervaloPartidasMin ?? 20, true],
-    ['edit_duracao', 'Duração do evento em minutos (60 a 240)', evento.duracaoMin ?? 180, true],
-    ['edit_terceiro', 'Disputa de 3º lugar? SIM ou NAO', evento.temTerceiroLugar === false ? 'NAO' : 'SIM', true],
-    ['edit_simultaneo', 'Partidas simultâneas? SIM ou NAO', evento.simultaneo === false ? 'NAO' : 'SIM', true]
-  ];
-  for (const [id, label, value, required] of campos) {
-    const input = new TextInputBuilder()
-      .setCustomId(id)
-      .setLabel(label)
-      .setStyle(TextInputStyle.Short)
-      .setRequired(required);
-    if (value !== '') input.setValue(String(value).slice(0, 100));
-    modal.addComponents(new ActionRowBuilder().addComponents(input));
-  }
+    .setTitle('Editar limite de times');
+  const input = new TextInputBuilder()
+    .setCustomId('edit_limite_times')
+    .setLabel('Limite de times (vazio = sem limite)')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false);
+  if (principal.limiteInscricoes != null) input.setValue(String(principal.limiteInscricoes));
+  modal.addComponents(new ActionRowBuilder().addComponents(input));
   return modal;
 }
 
@@ -1640,50 +1634,19 @@ async function onSubmitConfiguracoesEvento(interaction) {
   const match = interaction.customId.match(/^modal_camp_editar_avancado_([a-f0-9]{24})$/);
   if (!match) return interaction.reply({ content: 'ID do evento inválido.', flags: 64 });
   try {
-    const { evento, campeonatos } = await obterEventoEditavelPorEvento(match[1]);
+    const { campeonatos } = await obterEventoEditavelPorEvento(match[1]);
     const textoLimite = textoCampo(interaction, 'edit_limite_times');
     const limite = textoLimite ? Number(textoLimite) : null;
-    const intervalo = Number(textoCampo(interaction, 'edit_intervalo'));
-    const duracaoMin = Number(textoCampo(interaction, 'edit_duracao'));
-    const terceiro = textoCampo(interaction, 'edit_terceiro').toUpperCase();
-    const simultaneo = textoCampo(interaction, 'edit_simultaneo').toUpperCase();
     if (textoLimite && (!Number.isInteger(limite) || limite < 2)) throw new Error('O limite de times deve ser um número inteiro igual ou maior que 2.');
-    if (!Number.isInteger(intervalo) || intervalo < 1 || intervalo > 120) throw new Error('O intervalo deve ser de 1 a 120 minutos.');
-    if (!Number.isInteger(duracaoMin) || duracaoMin < 60 || duracaoMin > 240) throw new Error('A duração deve ser de 60 a 240 minutos.');
-    if (!['SIM', 'NAO', 'NÃO'].includes(terceiro) || !['SIM', 'NAO', 'NÃO'].includes(simultaneo)) {
-      throw new Error('Responda SIM ou NAO para terceiro lugar e partidas simultâneas.');
-    }
     if (limite !== null) {
       const inscritos = await Promise.all(campeonatos.map((camp) => Time.countDocuments({ campeonatoId: camp._id })));
       if (inscritos.some((total) => total > limite)) throw new Error('O limite não pode ser menor que a quantidade de times já inscritos.');
     }
-    const totalTimes = await Time.countDocuments({ campeonatoId: { $in: campeonatos.map((item) => item._id) } });
-    const horarioInicio = String(evento.descricao || '').match(/às\s*(\d{2}:\d{2})/)?.[1];
-    const descricao = gerarDescricaoEvento({
-      dataInicio: evento.dataInicio,
-      duracaoMin,
-      numTimes: totalTimes,
-      modo: campeonatos[0].modo,
-      simultaneo: simultaneo === 'SIM',
-      horarioInicio
-    }).descricao;
-    await Evento.updateOne({ _id: evento._id }, {
-      $set: {
-        duracaoMin,
-        descricao,
-        temTerceiroLugar: ['SIM'].includes(terceiro),
-        simultaneo: simultaneo === 'SIM'
-      }
-    });
     await Campeonato.updateMany(
       { _id: { $in: campeonatos.map((item) => item._id) } },
-      { $set: {
-        limiteInscricoes: limite,
-        intervaloPartidasMin: intervalo,
-        temTerceiroLugar: terceiro === 'SIM'
-      } }
+      { $set: { limiteInscricoes: limite } }
     );
-    return interaction.reply({ content: 'Configurações atualizadas para os ranks ativos do evento.', flags: 64 });
+    return interaction.reply({ content: 'Limite de times atualizado para os ranks ativos do evento.', flags: 64 });
   } catch (error) {
     return interaction.reply({ content: error.message, flags: 64 });
   }
@@ -2969,6 +2932,18 @@ async function onConfigDados(interaction) {
   return interaction.showModal(buildConfigModal());
 }
 
+async function onConfigSimultaneo(interaction) {
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
+  }
+  const userId = interaction.user.id;
+  const cfg = configPainel.get(`camp:config:${userId}`);
+  if (!cfg) return interaction.update({ content: 'Sessão expirada.', embeds: [], components: [] });
+  cfg.simultaneo = cfg.simultaneo === false;
+  configPainel.set(`camp:config:${userId}`, cfg);
+  return interaction.update(buildConfigPanel(userId));
+}
+
 function diagInicio(nome, interaction) {
   const t0 = Date.now();
   console.log(`[Diag Campeonato] entrou em ${nome}`, { customId: interaction.customId, userId: interaction.user?.id });
@@ -3319,6 +3294,7 @@ async function onConfigCriar(interaction) {
       modalidade: cfg.formato,
       duracaoMin: 180,
       horarioInicio: cfg.horarioInicio,
+      simultaneo: cfg.simultaneo !== false,
       temTerceiroLugar: true,
       intervaloPartidasMin: 20
     });
@@ -3447,6 +3423,7 @@ function register(registry) {
   // FLUXO 2 - Config panel
   registry.modal('modal_config_campeonato_dados', onSubmitConfigDados);
   registry.button('btn_config_dados', onConfigDados);
+  registry.button('btn_config_simultaneo', onConfigSimultaneo);
   registry.button('btn_config_modo', onConfigModo);
   registry.select('select_config_modo', onSelectConfigModo);
   registry.button('btn_config_ranks', onConfigRanks);
