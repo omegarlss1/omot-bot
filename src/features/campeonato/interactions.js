@@ -3404,6 +3404,7 @@ async function onConfigFormato(interaction) {
 }
 
 async function onSelectConfigFormato(interaction) {
+  const t0 = diagInicio('onSelectConfigFormato', interaction);
   if (!temPermissaoOrganizador(interaction.member)) {
     return interaction.update({ content: 'Sem permissao.', embeds: [], components: [] });
   }
@@ -3414,14 +3415,14 @@ async function onSelectConfigFormato(interaction) {
   }
   const formato = interaction.values[0];
   if (cfg.baseadoEmInscricoes !== false || !obterFormatosDisponiveis(cfg).some((item) => item.value === formato)) {
-    return interaction.update({
+    return diagUpdate('onSelectConfigFormato(invalido)', t0, interaction, {
       ...buildConfigPanel(userId),
       content: 'Esse formato não está disponível para o limite de jogadores escolhido.'
     });
   }
   cfg.formato = formato;
   configPainel.set(`camp:config:${userId}`, cfg);
-  return interaction.update(buildConfigPanel(userId));
+  return diagUpdate('onSelectConfigFormato', t0, interaction, buildConfigPanel(userId));
 }
 
 async function onConfigLimite(interaction) {
