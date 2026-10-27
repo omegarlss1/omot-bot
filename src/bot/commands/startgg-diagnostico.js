@@ -1,20 +1,10 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const { StartGGAdapter } = require('../../features/campeonato/adapters/StartGGAdapter');
 
-const TIPOS_RELEVANTES = [
-  'TournamentCreateInput',
-  'TournamentUpsertInput',
-  'EventCreateInput',
-  'EventUpsertInput',
-  'ParticipantInput',
-  'EntrantCreateInput',
-  'PhaseUpsertInput',
-  'UpdatePhaseSeedInfo',
-  'BracketType'
-];
-
 const MUTACOES_RELEVANTES = /tournament|event|participant|entrant|phase|seed|bracket/i;
 const LIMITE_TEXTO = 16_000;
+const LIMITE_TIPOS = 80;
+const PROFUNDIDADE_MAXIMA = 5;
 
 function tipoCompleto(tipo) {
   if (!tipo) return 'desconhecido';
@@ -22,19 +12,31 @@ function tipoCompleto(tipo) {
   return tipo.ofType ? `${tipo.kind}(${tipoCompleto(tipo.ofType)})` : tipo.kind || 'desconhecido';
 }
 
-function criarQuerySchema() {
-  const tipos = TIPOS_RELEVANTES.map((nome, indice) =>
-    `tipo${indice}: __type(name: "${nome}") { name kind inputFields { name type { kind name ofType { kind name ofType { kind name } } } } enumValues { name } }`
-  );
-  return `query StartGGSchemaDiagnostic {
+function obterNomeTipoBase(tipo) {
+  if (!tipo) return null;
+  return tipo.name || obterNomeTipoBase(tipo.ofType);
+}
+
+function criarQueryMutacoes() {
+  return `query StartGGMutationDiagnostic {
     mutation: __type(name: "Mutation") {
       fields {
         name
         args { name type { kind name ofType { kind name ofType { kind name ofType { kind name } } } } }
       }
     }
-    ${tipos.join('\n')}
   }`;
+}
+
+function criarQueryTipos(nomes) {
+  const campos = nomes.map((nome, indice) =>
+    `tipo${indice}: __type(name: "${nome}") {
+      name kind
+      inputFields { name type { kind name ofType { kind name ofType { kind name ofType { kind name } } } } }
+      enumValues { name }
+    }`
+  );
+  return `query StartGGInputTypeDiagnostic { ${campos.join('\n')} }`;
 }
 
 function mensagemErroSegura(error) {
@@ -43,11 +45,8 @@ function mensagemErroSegura(error) {
   return (token ? mensagem.split(token).join('[redigido]') : mensagem).slice(0, 1_500);
 }
 
-function formatarDiagnosticoSchema(data) {
+function formatarDiagnosticoSchema(mutacoes, tipos) {
   const linhas = ['Diagnóstico do schema GraphQL do Start.gg'];
-  const mutacoes = (data?.mutation?.fields || [])
-    .filter((campo) => MUTACOES_RELEVANTES.test(campo.name))
-    .sort((a, b) => a.name.localeCompare(b.name));
 
   linhas.push('', 'Mutações relacionadas a torneios, eventos, participantes e fases:');
   if (!mutacoes.length) {
@@ -61,18 +60,18 @@ function formatarDiagnosticoSchema(data) {
     }
   }
 
-  linhas.push('', 'Tipos de entrada e enumeração relevantes:');
-  TIPOS_RELEVANTES.forEach((nome, indice) => {
-    const tipo = data?.[`tipo${indice}`];
-    if (!tipo) {
-      linhas.push(`- ${nome}: não encontrado`);
-    } else if (tipo.kind === 'ENUM') {
-      linhas.push(`- ${nome}: ${(tipo.enumValues || []).map((valor) => valor.name).join(', ') || '(sem valores)'}`);
+  linhas.push('', 'Tipos de entrada e enumerações descobertos no schema:');
+  if (!tipos.length) {
+    linhas.push('(nenhum tipo de entrada ou enumeração descoberto nas mutações relevantes)');
+  }
+  tipos.forEach((tipo) => {
+    if (tipo.kind === 'ENUM') {
+      linhas.push(`- ${tipo.name}: ${(tipo.enumValues || []).map((valor) => valor.name).join(', ') || '(sem valores)'}`);
     } else {
       const campos = (tipo.inputFields || [])
         .map((campo) => `${campo.name}: ${tipoCompleto(campo.type)}`)
         .join(', ');
-      linhas.push(`- ${nome}: ${campos || '(sem campos)'}`);
+      linhas.push(`- ${tipo.name}: ${campos || '(sem campos)'}`);
     }
   });
 
@@ -84,11 +83,44 @@ function formatarDiagnosticoSchema(data) {
 }
 
 async function consultarSchema(adapter = new StartGGAdapter()) {
-  const resultado = await adapter.request({ query: criarQuerySchema() });
-  if (!resultado?.mutation) {
+  const resultado = await adapter.request({ query: criarQueryMutacoes() });
+  if (!resultado?.mutation?.fields) {
     throw new Error('A API não retornou o schema de mutações. Confira a autenticação e a disponibilidade de introspecção.');
   }
-  return formatarDiagnosticoSchema(resultado);
+  const mutacoes = resultado.mutation.fields
+    .filter((campo) => MUTACOES_RELEVANTES.test(campo.name))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const nomesPendentes = new Set(
+    mutacoes.flatMap((mutacao) => (mutacao.args || [])
+      .map((arg) => obterNomeTipoBase(arg.type))
+      .filter(Boolean))
+  );
+  const tiposMap = new Map();
+  let profundidade = 0;
+
+  while (nomesPendentes.size && tiposMap.size < LIMITE_TIPOS && profundidade < PROFUNDIDADE_MAXIMA) {
+    const nomes = [...nomesPendentes]
+      .filter((nome) => !tiposMap.has(nome))
+      .slice(0, LIMITE_TIPOS - tiposMap.size);
+    nomes.forEach((nome) => nomesPendentes.delete(nome));
+    if (!nomes.length) break;
+
+    const tiposData = await adapter.request({ query: criarQueryTipos(nomes) });
+    for (let indice = 0; indice < nomes.length; indice++) {
+      const tipo = tiposData?.[`tipo${indice}`];
+      if (!tipo?.name) continue;
+      tiposMap.set(tipo.name, tipo);
+      if (tipo.kind === 'INPUT_OBJECT') {
+        for (const campo of tipo.inputFields || []) {
+          const nomeCampo = obterNomeTipoBase(campo.type);
+          if (nomeCampo && !tiposMap.has(nomeCampo)) nomesPendentes.add(nomeCampo);
+        }
+      }
+    }
+    profundidade++;
+  }
+
+  return formatarDiagnosticoSchema(mutacoes, [...tiposMap.values()]);
 }
 
 module.exports = {
@@ -123,7 +155,8 @@ module.exports = {
       });
     }
   },
-  criarQuerySchema,
+  criarQueryMutacoes,
+  criarQueryTipos,
   formatarDiagnosticoSchema,
   consultarSchema
 };

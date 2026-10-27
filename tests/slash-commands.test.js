@@ -86,36 +86,54 @@ test('slash /startgg-diagnostico', async (t) => {
   await t.test('consulta e formata somente os dados do schema', async () => {
     comEnv({}, async () => {
       const { consultarSchema } = require('../src/bot/commands/startgg-diagnostico');
-      let queryRecebida = '';
+      const queriesRecebidas = [];
       const diagnostico = await consultarSchema({
         request: async ({ query }) => {
-          queryRecebida = query;
+          queriesRecebidas.push(query);
+          if (queriesRecebidas.length === 1) {
+            return {
+              mutation: {
+                fields: [
+                  { name: 'createTournament', args: [{ name: 'tournament', type: { kind: 'INPUT_OBJECT', name: 'RealTournamentInput' } }] },
+                  { name: 'reportScore', args: [{ name: 'setId', type: { kind: 'SCALAR', name: 'ID' } }] },
+                  { name: 'upsertPhase', args: [{ name: 'phase', type: { kind: 'INPUT_OBJECT', name: 'RealPhaseInput' } }] }
+                ]
+              }
+            };
+          }
+          if (queriesRecebidas.length === 2) {
+            return {
+              tipo0: {
+                name: 'RealTournamentInput',
+                kind: 'INPUT_OBJECT',
+                inputFields: [{ name: 'name', type: { kind: 'SCALAR', name: 'String' } }]
+              },
+              tipo1: {
+                name: 'RealPhaseInput',
+                kind: 'INPUT_OBJECT',
+                inputFields: [{ name: 'bracketType', type: { kind: 'ENUM', name: 'ActualBracketKind' } }]
+              }
+            };
+          }
           return {
-            mutation: {
-              fields: [
-                { name: 'createTournament', args: [{ name: 'tournament', type: { kind: 'INPUT_OBJECT', name: 'TournamentCreateInput' } }] },
-                { name: 'reportScore', args: [{ name: 'setId', type: { kind: 'SCALAR', name: 'ID' } }] },
-                { name: 'upsertPhase', args: [{ name: 'eventId', type: { kind: 'SCALAR', name: 'ID' } }] }
-              ]
-            },
-            tipo0: { name: 'TournamentCreateInput', kind: 'INPUT_OBJECT', inputFields: [{ name: 'name', type: { kind: 'SCALAR', name: 'String' } }] },
-            tipo1: null,
-            tipo2: null,
-            tipo3: null,
-            tipo4: { name: 'ParticipantInput', kind: 'INPUT_OBJECT', inputFields: [{ name: 'gamerTag', type: { kind: 'SCALAR', name: 'String' } }] },
-            tipo5: null,
-            tipo6: { name: 'PhaseUpsertInput', kind: 'INPUT_OBJECT', inputFields: [{ name: 'bracketType', type: { kind: 'ENUM', name: 'BracketType' } }] },
-            tipo7: null,
-            tipo8: { name: 'BracketType', kind: 'ENUM', enumValues: [{ name: 'DOUBLE_ELIMINATION' }] }
+            tipo0: {
+              name: 'ActualBracketKind',
+              kind: 'ENUM',
+              enumValues: [{ name: 'DOUBLE_ELIMINATION' }]
+            }
           };
         }
       });
 
-      assert.match(queryRecebida, /__type\(name: "Mutation"\)/);
-      assert.match(diagnostico, /createTournament\(tournament: TournamentCreateInput\)/);
+      assert.match(queriesRecebidas[0], /__type\(name: "Mutation"\)/);
+      assert.doesNotMatch(queriesRecebidas[0], /TournamentCreateInput/);
+      assert.match(queriesRecebidas[1], /__type\(name: "RealTournamentInput"\)/);
+      assert.match(queriesRecebidas[1], /__type\(name: "RealPhaseInput"\)/);
+      assert.match(queriesRecebidas[2], /__type\(name: "ActualBracketKind"\)/);
+      assert.match(diagnostico, /createTournament\(tournament: RealTournamentInput\)/);
       assert.match(diagnostico, /upsertPhase/);
       assert.doesNotMatch(diagnostico, /reportScore/);
-      assert.match(diagnostico, /TournamentCreateInput: name: String/);
+      assert.match(diagnostico, /RealTournamentInput: name: String/);
       assert.match(diagnostico, /DOUBLE_ELIMINATION/);
       assert.doesNotMatch(diagnostico, /STARTGG_TOKEN|Bearer|Authorization/);
     });
