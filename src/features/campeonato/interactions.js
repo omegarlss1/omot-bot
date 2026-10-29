@@ -459,8 +459,9 @@ function buildConfigPanel(userId, configOverride) {
       `**Simultaneidade:** ${cfg.simultaneo === false ? 'Escalonadas' : 'Simultâneas'}\n` +
       `**Entrada:** ${cfg.baseadoEmInscricoes === true ? 'Jogadores ilimitados' : cfg.baseadoEmInscricoes === false ? 'Definir limite de jogadores' : 'Não selecionada'}` +
       (avancado ? `\n**Tipo de equipe:** ${modoPermiteTipoDupla(cfg.modo) ? (cfg.tipoDupla || 'Não selecionado') : 'Não se aplica'}` +
+        `\n**Formato:** ${cfg.formato || 'Não selecionado'}` +
         (cfg.baseadoEmInscricoes === false
-          ? `\n**Formato:** ${cfg.formato || 'Não selecionado'}\n**Limite de jogadores:** ${cfg.limiteInscricoes || 'Sem limite'}`
+          ? `\n**Limite de jogadores:** ${cfg.limiteInscricoes || 'Sem limite'}`
           : '') : '') +
       (cfg.descricao ? `\n\n${cfg.descricao}` : ''),
     color: 0xFF6B00
@@ -536,19 +537,19 @@ function buildConfigPanel(userId, configOverride) {
         ]);
       componentes.push(new ActionRowBuilder().addComponents(selectTipoDupla));
     }
+    const formatos = obterFormatosDisponiveis(cfg);
+    if (cfg.formato && !formatos.some((formato) => formato.value === cfg.formato)) cfg.formato = null;
+    const selectFormato = new StringSelectMenuBuilder()
+      .setCustomId('select_config_formato')
+      .setPlaceholder('Escolha o formato das partidas')
+      .addOptions(formatos.map((formato) => ({
+        label: formato.label,
+        value: formato.value,
+        description: formato.description,
+        default: cfg.formato === formato.value
+      })));
+    componentes.push(new ActionRowBuilder().addComponents(selectFormato));
     if (cfg.baseadoEmInscricoes === false) {
-      const formatos = obterFormatosDisponiveis(cfg);
-      if (cfg.formato && !formatos.some((formato) => formato.value === cfg.formato)) cfg.formato = null;
-      const selectFormato = new StringSelectMenuBuilder()
-        .setCustomId('select_config_formato')
-        .setPlaceholder('Escolha o formato das partidas')
-        .addOptions(formatos.map((formato) => ({
-          label: formato.label,
-          value: formato.value,
-          description: formato.description,
-          default: cfg.formato === formato.value
-        })));
-      componentes.push(new ActionRowBuilder().addComponents(selectFormato));
       botoes.push(
         new ButtonBuilder()
           .setCustomId('btn_config_limite')
@@ -602,13 +603,7 @@ function isConfigComplete(cfg) {
   if (!cfg.modo) return false;
   if (modoPermiteTipoDupla(cfg.modo) && !['FIXA', 'SORTEADA'].includes(cfg.tipoDupla)) return false;
   if (!cfg.ranksSelecionados?.length) return false;
-  if (cfg.baseadoEmInscricoes === true) {
-    return true;
-  }
-  if (cfg.baseadoEmInscricoes === false) {
-    return !!cfg.formato;
-  }
-  return false;
+  return typeof cfg.baseadoEmInscricoes === 'boolean' && !!cfg.formato;
 }
 
 function obterFormatosDisponiveis(cfg) {
@@ -2170,6 +2165,58 @@ async function onBotaoGerarBracket(interaction) {
   // Generate preview
   await interaction.deferReply({ flags: 64 });
   try {
+    const totalTimes = await Time.countDocuments({ campeonatoId });
+    if (totalTimes > 16) {
+      const { configurarBracketStartGG, StartGGBracketError } = require('./services/startggBracket');
+      try {
+        const resultado = await configurarBracketStartGG(campeonatoId);
+        const formato = campeonato.modalidade || campeonato.formato || 'não definido';
+        const mensagem = {
+          title: `Bracket configurado no Start.gg — ${campeonato.nome}`,
+          description: [
+            `**Formato:** ${formato}`,
+            `**Times:** ${resultado.entrantCount}`,
+            `[Abrir evento no Start.gg](${resultado.url})`,
+            String(formato).toLowerCase() === 'grupos-mata-mata'
+              ? 'A promoção dos dois primeiros de cada grupo para o mata-mata deve estar configurada manualmente no Start.gg.'
+              : null
+          ].filter(Boolean).join('\n'),
+          color: 0xFF6B00
+        };
+        try {
+          if (!campeonato.canais?.partidas) {
+            throw new Error('Canal de partidas não configurado.');
+          }
+          const canalPartidas = await interaction.guild.channels.fetch(campeonato.canais.partidas);
+          if (!canalPartidas?.isTextBased?.()) {
+            throw new Error('Canal de partidas não encontrado ou não é textual.');
+          }
+          await canalPartidas.send({ embeds: [mensagem] });
+          return interaction.editReply({
+            content: `✅ Bracket configurado no Start.gg e anunciado em <#${campeonato.canais.partidas}>: ${resultado.url}`,
+            embeds: [],
+            components: []
+          });
+        } catch (error) {
+          console.error('[gerarBracket] Bracket configurado, mas não foi possível anunciar no Discord:', error);
+          return interaction.editReply({
+            content: `✅ Bracket configurado no Start.gg, mas não foi possível anunciar no canal de partidas. Link: ${resultado.url}`,
+            embeds: [],
+            components: []
+          });
+        }
+      } catch (error) {
+        if (!(error instanceof StartGGBracketError)) {
+          console.error('[gerarBracket] Falha ao configurar bracket no Start.gg:', error);
+        }
+        return interaction.editReply({
+          content: `❌ Não foi possível configurar o bracket no Start.gg: ${String(error.message || 'erro desconhecido').slice(0, 1_500)}`,
+          embeds: [],
+          components: []
+        });
+      }
+    }
+
     const { previewBracket } = require('./services/bracket');
     const preview = await previewBracket(campeonatoId);
 
@@ -3200,7 +3247,6 @@ async function onConfigContinuar(interaction) {
   }
   cfg.etapa = 'avancado';
   if (cfg.baseadoEmInscricoes) {
-    cfg.formato = null;
     cfg.limiteInscricoes = null;
   }
   configPainel.set(`camp:config:${userId}`, cfg);
@@ -3414,10 +3460,12 @@ async function onSelectConfigFormato(interaction) {
     return interaction.update({ content: 'Sessão expirada.', embeds: [], components: [] });
   }
   const formato = interaction.values[0];
-  if (cfg.baseadoEmInscricoes !== false || !obterFormatosDisponiveis(cfg).some((item) => item.value === formato)) {
+  if (cfg.etapa !== 'avancado'
+    || typeof cfg.baseadoEmInscricoes !== 'boolean'
+    || !obterFormatosDisponiveis(cfg).some((item) => item.value === formato)) {
     return diagUpdate('onSelectConfigFormato(invalido)', t0, interaction, {
       ...buildConfigPanel(userId),
-      content: 'Esse formato não está disponível para o limite de jogadores escolhido.'
+      content: 'Esse formato não está disponível para as opções escolhidas.'
     });
   }
   cfg.formato = formato;

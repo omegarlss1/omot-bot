@@ -322,13 +322,17 @@ test('handlers da Fase 2 registrados', async (t) => {
   });
 });
 
-test('StartGGAdapter: métodos de torneio não fazem request sem chamada', async (t) => {
+test('StartGGAdapter: métodos compatíveis com o schema disponível', async (t) => {
   await t.test('instancia e tem métodos', () => {
     comEnv({}, () => {
       const { StartGGAdapter } = require('../src/features/campeonato/adapters/StartGGAdapter');
       const a = new StartGGAdapter();
-      assert.equal(typeof a.createTournament, 'function');
-      assert.equal(typeof a.addParticipantsBulk, 'function');
+      assert.equal(typeof a.getEventById, 'function');
+      assert.equal(typeof a.getEventBySlug, 'function');
+      assert.equal(typeof a.getEventEntrants, 'function');
+      assert.equal(typeof a.upsertPhase, 'function');
+      assert.equal(typeof a.getPhaseSeeds, 'function');
+      assert.equal(typeof a.updatePhaseSeeding, 'function');
       assert.equal(typeof a.reportScore, 'function');
       assert.equal(typeof a.ping, 'function');
     });

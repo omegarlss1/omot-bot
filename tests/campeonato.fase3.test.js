@@ -168,14 +168,15 @@ test('painel de criação empilha escolhas gerais e mostra opções condicionais
       ...configBase,
       etapa: 'avancado',
       modo: '1v1',
-      baseadoEmInscricoes: true
+      baseadoEmInscricoes: true,
+      formato: 'single'
     });
     const idsAbertos = painelAberto.components
       .flatMap((linha) => linha.toJSON().components)
       .map((componente) => componente.custom_id);
     assert.ok(!idsAbertos.includes('btn_config_limite'));
     assert.ok(!idsAbertos.includes('select_config_tipo_dupla'));
-    assert.ok(!idsAbertos.includes('select_config_formato'));
+    assert.ok(idsAbertos.includes('select_config_formato'));
   });
 });
 

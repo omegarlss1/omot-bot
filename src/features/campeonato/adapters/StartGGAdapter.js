@@ -87,29 +87,96 @@ class StartGGAdapter {
     return conta;
   }
 
-  async createTournament({ eventId = null, name, slug = null, startAt = null, timezone = 'America/Sao_Paulo', includeThirdPlace = true } = {}) {
-    const query = `mutation CreateTournament($name: String!, $slug: String, $startAt: Timestamp, $timezone: String, $includeThirdPlace: Boolean) {
-      createTournament(tournament: { name: $name, slug: $slug, startAt: $startAt, timezone: $timezone, includeThirdPlace: $includeThirdPlace }) {
-        id
-        name
-        slug
+  async getEventById(eventId) {
+    const query = `query StartGGEvent($eventId: ID!) {
+      event(id: $eventId) {
+        id name slug
+        tournament { id slug }
+        phases { id name bracketType groupCount }
       }
     }`;
-    const data = await this.request({ query, variables: { name, slug, startAt, timezone, includeThirdPlace } });
-    return data?.createTournament ?? null;
+    const data = await this.request({ query, variables: { eventId: String(eventId) } });
+    return data?.event ?? null;
   }
 
-  async addParticipantsBulk(tournamentId, participants = []) {
-    if (!Array.isArray(participants) || participants.length === 0) return [];
-    const mutation = `mutation AddParticipants($tournamentId: ID!, $participants: [ParticipantInput!]!) {
-      addParticipants(tournamentId: $tournamentId, participants: $participants) { id gamerTag }
+  async getEventBySlug(slug) {
+    const query = `query StartGGEventBySlug($slug: String!) {
+      event(slug: $slug) {
+        id name slug
+        tournament { id slug }
+        phases { id name bracketType groupCount }
+      }
     }`;
-    const operations = [];
-    for (let i = 0; i < participants.length; i += 50) {
-      const lote = participants.slice(i, i + 50);
-      operations.push({ query: mutation, variables: { tournamentId, participants: lote } });
+    const data = await this.request({ query, variables: { slug } });
+    return data?.event ?? null;
+  }
+
+  async getEventEntrants(eventId) {
+    const query = `query StartGGEventEntrants($eventId: ID!, $page: Int!, $perPage: Int!) {
+      event(id: $eventId) {
+        entrants(query: { page: $page, perPage: $perPage }) {
+          pageInfo { totalPages }
+          nodes { id name participants { id gamerTag } }
+        }
+      }
+    }`;
+    const entrants = [];
+    let totalPages = 1;
+    for (let page = 1; page <= totalPages; page++) {
+      const data = await this.request({ query, variables: { eventId: String(eventId), page, perPage: 500 } });
+      const connection = data?.event?.entrants;
+      if (!connection) throw new Error('[StartGGAdapter] O evento não retornou sua lista de participantes.');
+      entrants.push(...(connection.nodes || []));
+      totalPages = Number(connection.pageInfo?.totalPages || 1);
     }
-    return Promise.all(operations.map((op) => this.request({ query: op.query, variables: op.variables })));
+    return entrants;
+  }
+
+  async upsertPhase({ eventId, phaseId = null, name, bracketType, groupCount = null } = {}) {
+    const query = `mutation UpsertPhase($eventId: ID, $phaseId: ID, $payload: PhaseUpsertInput!) {
+      upsertPhase(eventId: $eventId, phaseId: $phaseId, payload: $payload) {
+        id name bracketType groupCount numSeeds
+      }
+    }`;
+    const payload = { name, bracketType };
+    if (groupCount !== null) payload.groupCount = groupCount;
+    const data = await this.request({
+      query,
+      variables: { eventId: String(eventId), phaseId: phaseId ? String(phaseId) : null, payload }
+    });
+    return data?.upsertPhase ?? null;
+  }
+
+  async getPhaseSeeds(phaseId) {
+    const query = `query StartGGPhaseSeeds($phaseId: ID!, $page: Int!, $perPage: Int!) {
+      phase(id: $phaseId) {
+        id event { id }
+        seeds(query: { page: $page, perPage: $perPage }) {
+          pageInfo { totalPages }
+          nodes { id seedNum entrant { id } }
+        }
+      }
+    }`;
+    const seeds = [];
+    let totalPages = 1;
+    let phase = null;
+    for (let page = 1; page <= totalPages; page++) {
+      const data = await this.request({ query, variables: { phaseId: String(phaseId), page, perPage: 500 } });
+      phase = data?.phase || null;
+      const connection = phase?.seeds;
+      if (!connection) throw new Error(`[StartGGAdapter] Fase ${phaseId} não retornou seeds.`);
+      seeds.push(...(connection.nodes || []));
+      totalPages = Number(connection.pageInfo?.totalPages || 1);
+    }
+    return { phase, seeds };
+  }
+
+  async updatePhaseSeeding(phaseId, seedMapping) {
+    const mutation = `mutation UpdatePhaseSeeding($phaseId: ID!, $seedMapping: [UpdatePhaseSeedInfo]!) {
+      updatePhaseSeeding(phaseId: $phaseId, seedMapping: $seedMapping) { id }
+    }`;
+    const data = await this.request({ query: mutation, variables: { phaseId: String(phaseId), seedMapping } });
+    return data?.updatePhaseSeeding ?? null;
   }
 
   async reportScore({ setId, winnerId, gameNum = 1 }) {

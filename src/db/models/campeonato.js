@@ -54,7 +54,10 @@ const campeonatoSchema = new mongoose.Schema({
   startgg: {
     eventId: { type: String, default: null },
     tournamentId: { type: String, default: null },
-    url: { type: String, default: null }
+    url: { type: String, default: null },
+    phaseId: { type: String, default: null },
+    groupPhaseId: { type: String, default: null },
+    bracketPhaseId: { type: String, default: null }
   },
   criadoEm: { type: Date, default: Date.now }
 }, { timestamps: true });

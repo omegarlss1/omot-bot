@@ -3,7 +3,6 @@ const Time = require('../../../db/models/time');
 const Campeonato = require('../../../db/models/campeonato');
 const { emitir, EVENTOS } = require('../events');
 const { renderSingleBracketPng } = require('./canvasBracket');
-const { StartGGAdapter } = require('../adapters/StartGGAdapter');
 
 class BracketError extends Error {
   constructor(mensagem, code) {
@@ -130,6 +129,11 @@ function ehModoDuplasMescladas(modo) {
   return ['4v4', '6v6', '8v8', '10v10', '12v12'].includes(modo);
 }
 
+function ehEliminatoriaSimples(campeonato) {
+  const formato = String(campeonato.modalidade || campeonato.formato || 'single').toLowerCase();
+  return ['single', 'single-elimination', '1v1', 'x1', '1x1'].includes(formato);
+}
+
 async function gerarBracket(campeonatoId, { shuffle = true } = {}) {
   const campeonato = await Campeonato.findById(campeonatoId).lean();
   if (!campeonato) throw new BracketError('Campeonato não encontrado.', 'BRACKET_CAMP_NAO_ENCONTRADO');
@@ -144,42 +148,22 @@ async function gerarBracket(campeonatoId, { shuffle = true } = {}) {
   if (times.length < 4) {
     throw new BracketError('Mínimo de 4 times para gerar bracket.', 'BRACKET_MIN_TIMES');
   }
+  if (times.length > 16) {
+    throw new BracketError('Acima de 16 times, configure o bracket pelo Start.gg usando /startgg-vincular.', 'BRACKET_STARTGG_REQUIRED');
+  }
 
   const existing = await Partida.findOne({ campeonatoId, fase: 'R1' });
   if (existing) {
     throw new BracketError('Bracket R1 já existe. Limpe o campeonato antes de gerar novamente.', 'BRACKET_JA_EXISTE');
   }
 
-  const isSingle = ['single', '1v1', 'x1', '1x1'].includes(String(campeonato.modalidade || 'single').toLowerCase());
-  const isCanvas = times.length <= 16 && isSingle;
-  if (isCanvas) {
-    console.log(`[Bracket] Usando Canvas para ${times.length} times ${campeonato.modalidade}`);
-  } else {
-    console.log(`[Bracket] Usando Start.gg para ${times.length} times ${campeonato.modalidade}`);
-    if (!campeonato.startgg?.tournamentId) {
-      try {
-        const adapter = new StartGGAdapter();
-        const inicioStartGG = new Date(campeonato.dataEvento || campeonato.startAt || Date.now());
-        const torneio = await adapter.createTournament({
-          name: campeonato.nome,
-          slug: String(campeonato.nome).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
-          startAt: Math.floor(inicioStartGG.getTime() / 1000),
-          timezone: 'America/Sao_Paulo',
-          includeThirdPlace: campeonato.temTerceiroLugar !== false
-        });
-        if (!torneio?.id) throw new Error('Start.gg não retornou o ID do torneio.');
-        const participantes = times.flatMap((time) => (time.jogadores || []).map((jogador) => ({ gamerTag: jogador.nickSnapshot })));
-        await adapter.addParticipantsBulk(torneio.id, participantes);
-        await Campeonato.updateOne({ _id: campeonatoId }, { $set: {
-          'startgg.tournamentId': String(torneio.id),
-          'startgg.url': torneio.slug ? `https://start.gg/${torneio.slug}` : null,
-          startAt: inicioStartGG
-        } });
-      } catch (error) {
-        console.warn(`[Bracket] Start.gg indisponível, chave gerada localmente: ${error.message}`);
-      }
-    }
+  if (!ehEliminatoriaSimples(campeonato)) {
+    throw new BracketError(
+      'O Discord gera atualmente apenas Eliminatória simples para até 16 times. Esse formato ainda não está disponível localmente.',
+      'BRACKET_FORMAT_UNSUPPORTED'
+    );
   }
+  console.log(`[Bracket] Usando Canvas para ${times.length} times ${campeonato.modalidade}`);
 
   const todasChaves = parearChaves(times, shuffle ? Math.random : () => 0.5);
   const inicioBase = new Date(campeonato.dataEvento || campeonato.startAt || Date.now());
@@ -248,14 +232,14 @@ async function gerarBracket(campeonatoId, { shuffle = true } = {}) {
   return {
     totalPartidas: partidas.length,
     partidas,
-    canvas: isCanvas ? await renderSingleBracketPng({
+    canvas: await renderSingleBracketPng({
       times,
       incluirTerceiroLugar: campeonato.temTerceiroLugar !== false,
       baseadoEmInscricoes: campeonato.baseadoEmInscricoes !== false,
       limite: campeonato.limiteInscricoes || null,
       horarioInicio: campeonato.dataEvento || campeonato.horarioInicio || null,
       intervaloPartidasMin: campeonato.intervaloPartidasMin || 20
-    }) : null
+    })
   };
 }
 
@@ -267,11 +251,14 @@ async function previewBracket(campeonatoId) {
     throw new BracketError('Mínimo de 4 times para gerar bracket.', 'BRACKET_MIN_TIMES');
   }
 
-  const isSingle = ['single', '1v1', 'x1', '1x1'].includes(String(campeonato.modalidade || 'single').toLowerCase());
-  const isCanvas = times.length <= 16 && isSingle;
-  
-  if (!isCanvas) {
-    throw new BracketError('Preview apenas disponível para eliminatória simples (≤16 times).', 'BRACKET_PREVIEW_UNAVAILABLE');
+  if (times.length > 16) {
+    throw new BracketError('Acima de 16 times, configure o bracket pelo Start.gg usando /startgg-vincular.', 'BRACKET_STARTGG_REQUIRED');
+  }
+  if (!ehEliminatoriaSimples(campeonato)) {
+    throw new BracketError(
+      'O Discord gera atualmente apenas Eliminatória simples para até 16 times. Esse formato ainda não está disponível localmente.',
+      'BRACKET_FORMAT_UNSUPPORTED'
+    );
   }
 
   const todasChaves = parearChaves(times, () => 0.5); // deterministic for preview
