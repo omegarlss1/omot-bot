@@ -8,7 +8,6 @@ const ENV_BASE = {
   CARGO_BRONZE_ID: '4', CARGO_PRATA_ID: '5', CARGO_OURO_ID: '6',
   CARGO_PLATINA_ID: '7', CARGO_DIAMANTE_ID: '8', CARGO_CHAMPION_ID: '9',
   CARGO_GRAND_CHAMPION_ID: '10', CARGO_OMEGA_CHAMPION_ID: '11',
-  STARTGG_TOKEN: 't'
 };
 
 function comEnv(extra = {}, fn) {
@@ -31,7 +30,6 @@ test('eventos: novos eventos da Fase 3 registrados', () => {
     assert.equal(EVENTOS.TIME_DESCLASSIFICADO, 'time.desclassificado');
     assert.equal(EVENTOS.TIME_ATUALIZADO, 'time.atualizado');
     assert.equal(EVENTOS.PLACAR_AJUSTADO, 'placar.ajustado');
-    assert.equal(EVENTOS.STARTGG_SCORE_REPORTADO, 'startgg.score.reportado');
     assert.equal(EVENTOS.NOTIFICACAO_ENVIADA, 'notificacao.enviada');
   });
 });
@@ -261,6 +259,57 @@ test('inscreverTimeCompleto associa os nicks informados às contas Discord valid
       Time.countDocuments = originais.countDocuments;
       Time.create = originais.create;
       PerfilMembro.findOne = originais.perfilFindOne;
+    }
+  });
+});
+
+test('anunciarInscricaoPublicamente publica apenas o nome do time e o total de inscrições', async () => {
+  await comEnv({}, async () => {
+    const Campeonato = require('../src/db/models/campeonato');
+    const Time = require('../src/db/models/time');
+    const { anunciarInscricaoPublicamente } = require('../src/features/campeonato/interactions');
+    const originais = {
+      campeonatoFindById: Campeonato.findById,
+      timeFindById: Time.findById,
+      timeCountDocuments: Time.countDocuments
+    };
+    const mensagens = [];
+    Campeonato.findById = () => ({
+      lean: async () => ({
+        nome: 'Copa Ômega',
+        canais: { inscricoes: 'inscricoes-id' }
+      })
+    });
+    Time.findById = () => ({
+      lean: async () => ({
+        nome: 'Time das Corujas',
+        jogadores: [{ nickSnapshot: 'nick-privado', telefone: '5511999999999' }]
+      })
+    });
+    Time.countDocuments = async () => 7;
+
+    try {
+      await anunciarInscricaoPublicamente('campeonato-id', 'time-id', {
+        channels: {
+          fetch: async (id) => ({
+            id,
+            isTextBased: () => true,
+            send: async (payload) => mensagens.push(payload)
+          })
+        }
+      });
+
+      assert.equal(mensagens.length, 1);
+      assert.equal(
+        mensagens[0].content,
+        '✅ **Time das Corujas** se inscreveu em **Copa Ômega**! Já são **7 inscrições**.'
+      );
+      assert.doesNotMatch(mensagens[0].content, /nick-privado|5511999999999/);
+      assert.equal(mensagens[0].embeds, undefined);
+    } finally {
+      Campeonato.findById = originais.campeonatoFindById;
+      Time.findById = originais.timeFindById;
+      Time.countDocuments = originais.timeCountDocuments;
     }
   });
 });
@@ -519,40 +568,6 @@ test('notificacoes.notificarCampeao - sem client', async (t) => {
       assert.match(enviado.msg.embeds[0].title, /campeão/i);
       assert.match(enviado.msg.embeds[0].description, /Time A/);
     });
-  });
-});
-
-test('placar: integracao StartGG - retorna sem_set_id quando partida nao tem startggSetId', () => {
-  comEnv({}, async () => {
-    const { _tentarReportarStartGG, _setAdapter, _setModels } = require('../src/features/campeonato/services/placar');
-    let chamadas = 0;
-    _setAdapter({ reportScore: async () => { chamadas++; return { id: 'set1' }; } });
-    _setModels({
-      partida: { findById: async () => ({ startggSetId: null, campeonatoId: 'c1' }) },
-      campeonato: { findById: async () => ({ startgg: { tournamentId: 't1' } }) }
-    });
-    const r = await _tentarReportarStartGG('p1', 'tA', '3x1');
-    assert.equal(r.ok, false);
-    assert.equal(r.motivo, 'SEM_SET_ID');
-    assert.equal(chamadas, 0);
-  });
-});
-
-test('placar: integracao StartGG - chama reportScore quando setId e tournamentId existem', () => {
-  comEnv({}, async () => {
-    const { _tentarReportarStartGG, _setAdapter, _setModels } = require('../src/features/campeonato/services/placar');
-    let chamadas = 0;
-    let ultima = null;
-    _setAdapter({ reportScore: async (args) => { chamadas++; ultima = args; return { id: 'set-novo', state: 'completed' }; } });
-    _setModels({
-      partida: { findById: async () => ({ startggSetId: 'set-abc', campeonatoId: 'c1' }) },
-      campeonato: { findById: async () => ({ startgg: { tournamentId: 't1' } }) }
-    });
-    const r = await _tentarReportarStartGG('p1', 'tA', '3x1');
-    assert.equal(r.ok, true);
-    assert.equal(chamadas, 1);
-    assert.equal(ultima.setId, 'set-abc');
-    assert.equal(ultima.winnerId, 'tA');
   });
 });
 

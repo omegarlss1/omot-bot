@@ -11,7 +11,6 @@ const ENV_BASE = () => ({
   CARGO_RLSIDESWIPE_ID: '1', CARGO_JOGOSDIVERSOS_ID: '2',
   CARGO_ORGANIZADORCAMPS_ID: '3',
   ...Object.fromEntries(RANK_KEYS.map((k, i) => [`CARGO_${k.toUpperCase()}_ID`, String(10 + i)])),
-  STARTGG_TOKEN: 'tok'
 });
 
 function comEnv(extra = {}) {
@@ -85,16 +84,26 @@ test('secrets.mascarar', async (t) => {
 
 test('secrets.redacaoSegura', async (t) => {
   await t.test('substitui segredos em strings', () => {
-    process.env.STARTGG_TOKEN = 'minha-chave-secreta-1234';
-    const out = redacaoSegura('Authorization: Bearer minha-chave-secreta-1234 fim');
-    assert.equal(out[0], 'Authorization: Bearer <STARTGG_TOKEN> fim');
-    delete process.env.STARTGG_TOKEN;
+    const tokenOriginal = process.env.TOKEN;
+    try {
+      process.env.TOKEN = 'opaque-test-value-1234';
+      const out = redacaoSegura(`Authorization: ${process.env.TOKEN} fim`);
+      assert.equal(out[0], 'Authorization: <TOKEN> fim');
+    } finally {
+      if (tokenOriginal === undefined) delete process.env.TOKEN;
+      else process.env.TOKEN = tokenOriginal;
+    }
   });
 
-  await t.test('não substitui quando a var não está setada', () => {
-    delete process.env.STARTGG_TOKEN;
-    const out = redacaoSegura('texto sem segredo');
-    assert.equal(out[0], 'texto sem segredo');
+  await t.test('nao substitui quando a variavel nao esta setada', () => {
+    const tokenOriginal = process.env.TOKEN;
+    try {
+      delete process.env.TOKEN;
+      const out = redacaoSegura('texto sem segredo');
+      assert.equal(out[0], 'texto sem segredo');
+    } finally {
+      if (tokenOriginal !== undefined) process.env.TOKEN = tokenOriginal;
+    }
   });
 });
 

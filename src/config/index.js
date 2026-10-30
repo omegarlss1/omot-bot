@@ -53,10 +53,6 @@ module.exports = {
       RANKS.map((r) => [r.key, optionalEnv(`CARGO_${r.key.toUpperCase()}_ID`, null)])
     )
   },
-  startgg: {
-    token: requireEnv('STARTGG_TOKEN'),
-    apiUrl: optionalEnv('STARTGG_API_URL', 'https://api.start.gg/gql/alpha')
-  },
   lfg: {
     cooldownMs: 5 * 60 * 1000,
     limpezaMensagemMs: 2 * 60 * 1000

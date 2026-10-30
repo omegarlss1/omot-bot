@@ -149,7 +149,7 @@ async function gerarBracket(campeonatoId, { shuffle = true } = {}) {
     throw new BracketError('Mínimo de 4 times para gerar bracket.', 'BRACKET_MIN_TIMES');
   }
   if (times.length > 16) {
-    throw new BracketError('Acima de 16 times, configure o bracket pelo Start.gg usando /startgg-vincular.', 'BRACKET_STARTGG_REQUIRED');
+    throw new BracketError('O bracket no Discord está limitado a 16 times.', 'BRACKET_MAX_TIMES');
   }
 
   const existing = await Partida.findOne({ campeonatoId, fase: 'R1' });
@@ -252,7 +252,7 @@ async function previewBracket(campeonatoId) {
   }
 
   if (times.length > 16) {
-    throw new BracketError('Acima de 16 times, configure o bracket pelo Start.gg usando /startgg-vincular.', 'BRACKET_STARTGG_REQUIRED');
+    throw new BracketError('O bracket no Discord está limitado a 16 times.', 'BRACKET_MAX_TIMES');
   }
   if (!ehEliminatoriaSimples(campeonato)) {
     throw new BracketError(

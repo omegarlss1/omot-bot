@@ -26,7 +26,7 @@ function mascarar(segredo) {
   return `${segredo.slice(0, 4)}…${segredo.slice(-4)}`;
 }
 
-const SEGREDO_REDATOR = ['TOKEN', 'DISCORD_TOKEN', 'MONGODB_URI', 'STARTGG_TOKEN'];
+const SEGREDO_REDATOR = ['TOKEN', 'DISCORD_TOKEN', 'MONGODB_URI'];
 
 function redacaoSegura(...args) {
   return args.map((arg) => {
@@ -47,7 +47,7 @@ const ENV_OBRIGATORIAS = [
   'CARGO_RLSIDESWIPE_ID', 'CARGO_JOGOSDIVERSOS_ID', 'CARGO_ORGANIZADORCAMPS_ID',
   'CARGO_BRONZE_ID', 'CARGO_PRATA_ID', 'CARGO_OURO_ID', 'CARGO_PLATINA_ID',
   'CARGO_DIAMANTE_ID', 'CARGO_CHAMPION_ID', 'CARGO_GRAND_CHAMPION_ID',
-  'CARGO_OMEGA_CHAMPION_ID', 'STARTGG_TOKEN'
+  'CARGO_OMEGA_CHAMPION_ID'
 ];
 
 function validarEnv() {

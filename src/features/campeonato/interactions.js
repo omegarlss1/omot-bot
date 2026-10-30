@@ -159,6 +159,29 @@ async function atualizarPainelOrganizadorCampeonato(campeonatoId) {
   return true;
 }
 
+async function anunciarInscricaoPublicamente(campeonatoId, timeId, client = clientPainelOrganizador) {
+  if (!client) throw new Error('Cliente do Discord não configurado para anunciar inscrições.');
+  const [campeonato, time, totalInscritos] = await Promise.all([
+    Campeonato.findById(campeonatoId).lean(),
+    Time.findById(timeId).lean(),
+    Time.countDocuments({ campeonatoId })
+  ]);
+  if (!campeonato) throw new Error(`Campeonato não encontrado ao anunciar inscrição: ${campeonatoId}.`);
+  if (!time) throw new Error(`Time não encontrado ao anunciar inscrição: ${timeId}.`);
+  if (!campeonato.canais?.inscricoes) {
+    throw new Error(`Canal de inscrições não configurado para o campeonato ${campeonatoId}.`);
+  }
+
+  const canal = await client.channels.fetch(campeonato.canais.inscricoes);
+  if (!canal?.isTextBased?.()) {
+    throw new Error(`Canal de inscrições inválido para o campeonato ${campeonatoId}.`);
+  }
+  const nomeTime = time.nome || time.jogadores?.[0]?.nickSnapshot || 'Novo participante';
+  return canal.send({
+    content: `✅ **${nomeTime}** se inscreveu em **${campeonato.nome}**! Já são **${totalInscritos} ${totalInscritos === 1 ? 'inscrição' : 'inscrições'}**.`
+  });
+}
+
 function solicitarAtualizacaoPainelOrganizador(campeonatoId) {
   if (!campeonatoId || !clientPainelOrganizador) return;
   const id = String(campeonatoId);
@@ -187,8 +210,8 @@ function setCampeonatoClient(client) {
   ];
   eventosQueAtualizamPainel.forEach((nomeEvento) => {
     eventosCampeonato.on(nomeEvento, async (payload = {}) => {
+      let campeonatoId = payload.campeonatoId;
       try {
-        let campeonatoId = payload.campeonatoId;
         if (!campeonatoId && payload.partidaId) {
           const partida = await Partida.findById(payload.partidaId).select('campeonatoId').lean();
           campeonatoId = partida?.campeonatoId;
@@ -200,6 +223,13 @@ function setCampeonatoClient(client) {
         solicitarAtualizacaoPainelOrganizador(campeonatoId);
       } catch (error) {
         console.error(`[campeonato.painel] falha ao localizar painel após ${nomeEvento}:`, error);
+      }
+      if (nomeEvento === EVENTOS.INSCRICAO_REALIZADA) {
+        try {
+          await anunciarInscricaoPublicamente(campeonatoId, payload.timeId);
+        } catch (error) {
+          console.error(`[campeonato.inscricao] falha ao publicar anúncio público para ${campeonatoId}:`, error);
+        }
       }
     });
   });
@@ -2165,58 +2195,6 @@ async function onBotaoGerarBracket(interaction) {
   // Generate preview
   await interaction.deferReply({ flags: 64 });
   try {
-    const totalTimes = await Time.countDocuments({ campeonatoId });
-    if (totalTimes > 16) {
-      const { configurarBracketStartGG, StartGGBracketError } = require('./services/startggBracket');
-      try {
-        const resultado = await configurarBracketStartGG(campeonatoId);
-        const formato = campeonato.modalidade || campeonato.formato || 'não definido';
-        const mensagem = {
-          title: `Bracket configurado no Start.gg — ${campeonato.nome}`,
-          description: [
-            `**Formato:** ${formato}`,
-            `**Times:** ${resultado.entrantCount}`,
-            `[Abrir evento no Start.gg](${resultado.url})`,
-            String(formato).toLowerCase() === 'grupos-mata-mata'
-              ? 'A promoção dos dois primeiros de cada grupo para o mata-mata deve estar configurada manualmente no Start.gg.'
-              : null
-          ].filter(Boolean).join('\n'),
-          color: 0xFF6B00
-        };
-        try {
-          if (!campeonato.canais?.partidas) {
-            throw new Error('Canal de partidas não configurado.');
-          }
-          const canalPartidas = await interaction.guild.channels.fetch(campeonato.canais.partidas);
-          if (!canalPartidas?.isTextBased?.()) {
-            throw new Error('Canal de partidas não encontrado ou não é textual.');
-          }
-          await canalPartidas.send({ embeds: [mensagem] });
-          return interaction.editReply({
-            content: `✅ Bracket configurado no Start.gg e anunciado em <#${campeonato.canais.partidas}>: ${resultado.url}`,
-            embeds: [],
-            components: []
-          });
-        } catch (error) {
-          console.error('[gerarBracket] Bracket configurado, mas não foi possível anunciar no Discord:', error);
-          return interaction.editReply({
-            content: `✅ Bracket configurado no Start.gg, mas não foi possível anunciar no canal de partidas. Link: ${resultado.url}`,
-            embeds: [],
-            components: []
-          });
-        }
-      } catch (error) {
-        if (!(error instanceof StartGGBracketError)) {
-          console.error('[gerarBracket] Falha ao configurar bracket no Start.gg:', error);
-        }
-        return interaction.editReply({
-          content: `❌ Não foi possível configurar o bracket no Start.gg: ${String(error.message || 'erro desconhecido').slice(0, 1_500)}`,
-          embeds: [],
-          components: []
-        });
-      }
-    }
-
     const { previewBracket } = require('./services/bracket');
     const preview = await previewBracket(campeonatoId);
 
@@ -3784,5 +3762,6 @@ module.exports = {
   publicarPaineisCampeonato,
   buildPainelOrganizadorCampeonato,
   atualizarPainelOrganizadorCampeonato,
+  anunciarInscricaoPublicamente,
   setCampeonatoClient
 };

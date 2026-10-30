@@ -39,7 +39,6 @@ const timeSchema = new mongoose.Schema({
   derrotas: { type: Number, default: 0 },
   gameWinPercent: { type: Number, default: null },
   buchholz: { type: Number, default: null },
-  startggEntrantId: { type: String, default: null },
   penalidades: { type: Number, default: 0 },
   woTomados: { type: Number, default: 0 },
   woDados: { type: Number, default: 0 },

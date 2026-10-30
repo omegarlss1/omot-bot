@@ -8,7 +8,6 @@ const ENV_BASE = {
   CARGO_BRONZE_ID: '4', CARGO_PRATA_ID: '5', CARGO_OURO_ID: '6',
   CARGO_PLATINA_ID: '7', CARGO_DIAMANTE_ID: '8', CARGO_CHAMPION_ID: '9',
   CARGO_GRAND_CHAMPION_ID: '10', CARGO_OMEGA_CHAMPION_ID: '11',
-  STARTGG_TOKEN: 't'
 };
 
 function comEnv(extra = {}, fn) {
@@ -318,23 +317,6 @@ test('handlers da Fase 2 registrados', async (t) => {
       assert.ok(r.selects.some(({ pattern }) => pattern === 'select_config_simultaneo'));
       assert.ok(r.selects.some(({ pattern }) => pattern === 'select_config_entrada'));
       assert.ok(r.buttons.some(({ pattern }) => pattern === 'btn_config_continuar'));
-    });
-  });
-});
-
-test('StartGGAdapter: métodos compatíveis com o schema disponível', async (t) => {
-  await t.test('instancia e tem métodos', () => {
-    comEnv({}, () => {
-      const { StartGGAdapter } = require('../src/features/campeonato/adapters/StartGGAdapter');
-      const a = new StartGGAdapter();
-      assert.equal(typeof a.getEventById, 'function');
-      assert.equal(typeof a.getEventBySlug, 'function');
-      assert.equal(typeof a.getEventEntrants, 'function');
-      assert.equal(typeof a.upsertPhase, 'function');
-      assert.equal(typeof a.getPhaseSeeds, 'function');
-      assert.equal(typeof a.updatePhaseSeeding, 'function');
-      assert.equal(typeof a.reportScore, 'function');
-      assert.equal(typeof a.ping, 'function');
     });
   });
 });

@@ -1,7 +1,5 @@
 const Time = require('../../../db/models/time');
 const Partida = require('../../../db/models/partida');
-const Campeonato = require('../../../db/models/campeonato');
-const { StartGGAdapter } = require('../adapters/StartGGAdapter');
 const regulamento = require('../../../config/regulamento');
 const { emitir, EVENTOS } = require('../events');
 const TwoTeamsTiebreaker = require('../strategies/TwoTeamsTiebreaker');
@@ -106,20 +104,6 @@ async function calcularClassificacao(campeonatoId) {
   }
   const partidas = await Partida.find({ campeonatoId }).lean();
   const pontuacao = construirPontuacaoBase(times, partidas);
-  const campeonato = await Campeonato.findById(campeonatoId).lean();
-  let startggMetrics = new Map();
-  if (campeonato?.startgg?.tournamentId && times.some((time) => time.startggEntrantId)) {
-    try {
-      startggMetrics = await new StartGGAdapter().fetchStandingsMetrics(campeonato.startgg.tournamentId);
-      for (const item of pontuacao) {
-        const time = times.find((candidate) => String(candidate._id) === item.timeId);
-        const metric = time?.startggEntrantId && startggMetrics.get(String(time.startggEntrantId));
-        if (metric) Object.assign(item, metric);
-      }
-    } catch (error) {
-      console.warn(`[classificacao] Start.gg indisponível, usando fallback local: ${error.message}`);
-    }
-  }
 
   const ordenado = [...pontuacao].sort((a, b) => {
     if (b.pontos !== a.pontos) return b.pontos - a.pontos;
