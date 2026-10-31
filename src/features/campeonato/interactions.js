@@ -2386,12 +2386,12 @@ async function onBotaoGerarBracket(interaction) {
     if (existing.bracketMeta?.canalFase) {
       return interaction.reply({
         content: '⚠️ A chave já foi gerada. Você pode tentar novamente para concluir ou atualizar a publicação das partidas.',
-        components: [toActionRows([{
+        components: toActionRows([{
           type: 2,
           style: 3,
           label: 'Continuar publicação',
           custom_id: `btn_confirmar_gerar_bracket_${campeonatoId}`
-        }])],
+        }]),
         flags: 64
       });
     }
@@ -2432,7 +2432,7 @@ async function onBotaoGerarBracket(interaction) {
     return interaction.editReply({
       embeds: [embed],
       files: preview.canvas ? [new AttachmentBuilder(preview.canvas, { name: `bracket-${campeonato.rank}.png` })] : [],
-      components: [toActionRows([buttons])]
+      components: toActionRows([buttons])
     });
   } catch (error) {
     if (error instanceof BracketError) {

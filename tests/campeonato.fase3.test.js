@@ -75,6 +75,61 @@ test('painel consolidado lista times, check-ins e placares com ações administr
   });
 });
 
+test('preview do bracket envia ActionRows sem aninhamento extra', async () => {
+  const Campeonato = require('../src/db/models/campeonato');
+  const Partida = require('../src/db/models/partida');
+  const bracketService = require('../src/features/campeonato/services/bracket');
+  const { register } = require('../src/features/campeonato/interactions');
+  const campeonatoId = 'a'.repeat(24);
+  const customId = `btn_camp_gerar_bracket_${campeonatoId}`;
+  const originals = [
+    [Campeonato, 'findById'],
+    [Partida, 'findOne'],
+    [bracketService, 'previewBracket']
+  ].map(([target, key]) => [target, key, Object.getOwnPropertyDescriptor(target, key)]);
+  Campeonato.findById = () => ({ lean: async () => ({ nome: 'Copa Ômega', rank: 'ouro' }) });
+  Partida.findOne = () => ({ lean: async () => null });
+  bracketService.previewBracket = async () => ({
+    partidas: [],
+    formato: 'single',
+    modo: '1v1',
+    intervalo: 15,
+    totalPartidas: 0,
+    partidasExibidas: 0,
+    canvas: null
+  });
+
+  try {
+    let handler;
+    const registry = new Proxy({}, {
+      get: (_target, method) => (...args) => {
+        if (method === 'button' && args[0] instanceof RegExp && args[0].test(customId)) {
+          handler = args[1];
+        }
+      }
+    });
+    register(registry);
+    assert.equal(typeof handler, 'function');
+
+    let response;
+    await handler({
+      customId,
+      member: { permissions: { has: () => true } },
+      deferReply: async () => {},
+      editReply: async (options) => { response = options; }
+    });
+
+    assert.equal(response.components.length, 1);
+    assert.equal(Array.isArray(response.components[0]), false);
+    assert.equal(response.components[0].toJSON().components.length, 2);
+  } finally {
+    for (const [target, key, descriptor] of originals) {
+      if (descriptor) Object.defineProperty(target, key, descriptor);
+      else delete target[key];
+    }
+  }
+});
+
 test('painel de rank arquivado não oferece ações administrativas', () => {
   comEnv({}, () => {
     const { buildPainelOrganizadorCampeonato } = require('../src/features/campeonato/interactions');
