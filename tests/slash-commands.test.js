@@ -78,6 +78,33 @@ test('slash /painel-campeonato', async (t) => {
       assert.equal(typeof cmd.execute, 'function');
     });
   });
+
+  await t.test('monta embed premium com anexos e apenas o botão de criação', async () => {
+    const cmd = require('../src/bot/commands/painel-campeonato');
+    const payload = await cmd.buildPayload();
+    const [embed] = payload.embeds;
+    const [button] = payload.components[0].components;
+
+    assert.equal(embed.title, '🏆 Central de Campeonatos');
+    assert.equal(embed.description, '**Crie e gerencie seus campeonatos em 2 minutos.**\n\nOrganize inscrições, partidas e premiações sem sair do Discord.');
+    assert.equal(embed.color, 0xFFD700);
+    assert.deepEqual(embed.thumbnail, { url: 'attachment://trofeu_dourado.png' });
+    assert.deepEqual(embed.footer, {
+      text: 'Ômega Bot • Painel fixo • /painel_campeonato',
+      icon_url: 'attachment://omega_logo.png'
+    });
+    assert.equal(payload.components.length, 1);
+    assert.equal(button.data.custom_id, 'criar_campeonato');
+    assert.equal(button.data.style, 3);
+    assert.equal(button.data.label, '＋ Criar Novo Campeonato');
+    assert.equal(button.data.emoji.name, '🏆');
+    assert.deepEqual(payload.files.map((file) => file.name), ['trofeu_dourado.png', 'omega_logo.png']);
+    for (const file of payload.files) {
+      const metadata = await require('sharp')(file.attachment).metadata();
+      assert.equal(metadata.width, 80);
+      assert.equal(metadata.height, 80);
+    }
+  });
 });
 
 test('slash /painel-hub', async (t) => {

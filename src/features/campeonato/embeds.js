@@ -97,13 +97,16 @@ function embedCentralCampeonatos() {
   return {
     embeds: [{
       title: '🏆 Central de Campeonatos',
-      description: 'Crie e gerencie campeonatos em 2 minutos.',
+      description: '**Crie e gerencie seus campeonatos em 2 minutos.**\n\nOrganize inscrições, partidas e premiações sem sair do Discord.',
       color: 0xFFD700,
-      thumbnail: { url: 'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f3c6.png' },
-      footer: { text: 'Ômega Bot • Painel fixo' }
+      thumbnail: { url: 'attachment://trofeu_dourado.png' },
+      footer: {
+        text: 'Ômega Bot • Painel fixo • /painel_campeonato',
+        icon_url: 'attachment://omega_logo.png'
+      }
     }],
     components: [[
-      { type: 2, style: 3, label: 'Criar Novo Campeonato', emoji: { name: '➕' }, custom_id: 'btn_novo_campeonato' }
+      { type: 2, style: 3, label: '＋ Criar Novo Campeonato', emoji: { name: '🏆' }, custom_id: 'criar_campeonato' }
     ]]
   };
 }

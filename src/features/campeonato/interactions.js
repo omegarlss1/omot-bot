@@ -4140,6 +4140,7 @@ async function onTrocarCapitao(interaction) {
 
 function register(registry) {
   registry.button('btn_campeonato_criar', onAbrirPainelCriacao);
+  registry.button('criar_campeonato', onAbrirPainelCriacao);
   registry.button('btn_novo_campeonato', onAbrirPainelCriacao);
   // FLUXO 2 - Config panel
   registry.modal('modal_config_campeonato_dados', onSubmitConfigDados);
