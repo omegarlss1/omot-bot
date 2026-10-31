@@ -836,64 +836,52 @@ function buildConfigPanel(userId, configOverride) {
         inline: true
       }
     ]
-    : [
-      {
-        name: `${cfg.modo ? '✅' : '⚔️'} Modo de jogo`,
-        value: cfg.modo ? getModoLabel(cfg.modo) : 'Escolha um modo abaixo',
-        inline: true
-      },
-      {
-        name: `${nomeRanks.length ? '✅' : '🏅'} Ranks`,
-        value: nomeRanks.length ? `${nomeRanks.join('  ·  ')} (${nomeRanks.length})` : 'Selecione um ou mais ranks',
-        inline: true
-      },
-      {
-        name: `${cfg.simultaneo === false || cfg.simultaneo === true ? '✅' : '⏱️'} Simultaneidade`,
-        value: cfg.simultaneo === false ? 'Escalonadas' : cfg.simultaneo === true ? 'Simultâneas' : 'Escolha uma opção abaixo',
-        inline: true
-      },
-      {
-        name: `${typeof cfg.baseadoEmInscricoes === 'boolean' ? '✅' : '👥'} Entrada`,
-        value: cfg.baseadoEmInscricoes === true
-          ? 'Times ilimitados'
-          : cfg.baseadoEmInscricoes === false
-            ? 'Definir limite de times'
-            : 'Escolha como os times se inscrevem',
-        inline: true
-      }
-    ];
+    : [];
+  const descricaoEtapaUm = `**${cfg.nome}** • ${dataInicio} às ${cfg.horarioInicio}\n` +
+    `Limite inscrições: ${dataLimite}\n\n` +
+    'Selecione as opções abaixo. Ranks pode ter múltipla escolha.' +
+    (nomeRanks.length ? `\n\nRanks: ${nomeRanks.join(', ')} (${nomeRanks.length})` : '');
   const embed = {
-    title: avancado ? '⚙️ Configurar campeonato — Etapa 2/2' : '🏆 Configurar campeonato — Etapa 1/2',
-    description: `${avancado ? '●━━━━━━━━●' : '●━━━━━━━━○'}  **Etapa ${avancado ? '2' : '1'} de 2**\n` +
-      `**${cfg.nome}** · ${dataInicio} às ${cfg.horarioInicio} · inscrições até ${dataLimite}\n` +
-      (avancado ? 'Revise o resumo e escolha formato e limite.' : 'Escolha uma opção em cada menu. Os ranks podem ser combinados.') +
-      (cfg.descricao ? `\n\n_${cfg.descricao}_` : ''),
+    title: avancado ? '⚙️ Configurar campeonato — Etapa 2/2' : '⚙️ Configurar Campeonato — Etapa 1/2',
+    description: avancado
+      ? `●━━━━━━━━●  **Etapa 2 de 2**\n**${cfg.nome}** · ${dataInicio} às ${cfg.horarioInicio} · inscrições até ${dataLimite}\nRevise o resumo e escolha formato e limite.${cfg.descricao ? `\n\n_${cfg.descricao}_` : ''}`
+      : descricaoEtapaUm,
     color: 0xFF8C00,
-    fields: campos
+    ...(avancado ? { fields: campos } : {})
   };
 
   const botoes = [];
   const componentes = [];
   if (!avancado) {
     const modos = [
-      ['1v1', 'Duelos (x1)'],
-      ['2v2', 'Duplas (x2)'],
-      ['3v3', 'Triplas (x3)'],
-      ['4v4', 'Quartetos (x4)'],
-      ['6v6', 'Sextetos (x6)'],
-      ['8v8', 'Octetos (x8)'],
-      ['10v10', '10 jogadores'],
-      ['12v12', '12 jogadores']
+      { value: 'duelos', modo: '1v1', label: 'Duelos (x1)', emoji: '⚔️', description: '1v1' },
+      { value: 'duplas', modo: '2v2', label: 'Duplas (x2)', emoji: '👥', description: '2v2' },
+      { value: 'squad', modo: '4v4', label: 'Esquadrões (x4)', emoji: '🛡️', description: '4v4' },
+      { value: '3v3', modo: '3v3', label: 'Triplas (x3)', emoji: '⚔️', description: '3v3' },
+      { value: '6v6', modo: '6v6', label: 'Sextetos (x6)', emoji: '👥', description: '6v6' },
+      { value: '8v8', modo: '8v8', label: 'Octetos (x8)', emoji: '👥', description: '8v8' },
+      { value: '10v10', modo: '10v10', label: '10 jogadores', emoji: '👥', description: '10v10' },
+      { value: '12v12', modo: '12v12', label: '12 jogadores', emoji: '👥', description: '12v12' }
     ];
     const selectModo = new StringSelectMenuBuilder()
-      .setCustomId('select_config_modo')
-      .setPlaceholder('⚔️ Modo de jogo')
-      .addOptions(modos.map(([value, label]) => ({ label: `⚔️ ${label}`, value, default: cfg.modo === value })));
-    const selectRanks = new StringSelectMenuBuilder()
-      .setCustomId('select_config_ranks')
-      .setPlaceholder(`🏅 Ranks (${nomeRanks.length || 'selecione'})`)
+      .setCustomId('modo_jogo')
+      .setPlaceholder('⚔️ Escolha o modo de jogo')
       .setMinValues(1)
-      .setMaxValues(Math.min(10, config.ranks.length))
+      .setMaxValues(1)
+      .addOptions(modos.map(({ value, modo, label, emoji, description }) => ({
+        label,
+        value,
+        emoji,
+        description,
+        default: cfg.modo === modo
+      })));
+    const selectRanks = new StringSelectMenuBuilder()
+      .setCustomId('ranks_selecao')
+      .setPlaceholder(nomeRanks.length
+        ? `${nomeRanks.length} rank${nomeRanks.length === 1 ? '' : 's'} selecionado${nomeRanks.length === 1 ? '' : 's'}`
+        : '🏅 Selecione os ranks que você vai cuidar')
+      .setMinValues(1)
+      .setMaxValues(Math.min(8, config.ranks.length))
       .addOptions(config.ranks.map((rank) => ({
         label: rank.label,
         value: rank.key,
@@ -901,18 +889,22 @@ function buildConfigPanel(userId, configOverride) {
         default: cfg.ranksSelecionados?.includes(rank.key) || false
       })));
     const selectSimultaneo = new StringSelectMenuBuilder()
-      .setCustomId('select_config_simultaneo')
-      .setPlaceholder('⏱️ Simultaneidade')
+      .setCustomId('simultaneidade')
+      .setPlaceholder('⏱️ Partidas simultâneas ou sequenciais?')
+      .setMinValues(1)
+      .setMaxValues(1)
       .addOptions([
-        { label: 'Simultâneas', value: 'true', default: cfg.simultaneo !== false },
-        { label: 'Escalonadas', value: 'false', default: cfg.simultaneo === false }
+        { label: 'Simultâneas', value: 'simultaneas', description: 'Várias partidas ao mesmo tempo', default: cfg.simultaneo === true },
+        { label: 'Sequenciais', value: 'sequenciais', description: 'Uma partida por vez', default: cfg.simultaneo === false }
       ]);
     const selectEntrada = new StringSelectMenuBuilder()
-      .setCustomId('select_config_entrada')
-      .setPlaceholder('👥 Entrada')
+      .setCustomId('modo_entrada')
+      .setPlaceholder('👥 Limite de times?')
+      .setMinValues(1)
+      .setMaxValues(1)
       .addOptions([
-        { label: 'Times ilimitados', value: 'true', default: cfg.baseadoEmInscricoes === true },
-        { label: 'Definir limite de times', value: 'false', default: cfg.baseadoEmInscricoes === false }
+        { label: 'Times Ilimitados', value: 'ilimitados', description: 'Sem limite, formato após inscrições', default: cfg.baseadoEmInscricoes === true },
+        { label: 'Definir Limite', value: 'definir_limite', description: 'Defina limite e já pré-agende formato', default: cfg.baseadoEmInscricoes === false }
       ]);
     componentes.push(
       new ActionRowBuilder().addComponents(selectModo),
@@ -922,12 +914,13 @@ function buildConfigPanel(userId, configOverride) {
     );
     botoes.push(
       new ButtonBuilder()
-        .setCustomId('btn_config_continuar')
-        .setLabel('Continuar')
+        .setCustomId('continuar_etapa1')
+        .setLabel('Continuar →')
         .setStyle(ButtonStyle.Primary)
+        .setEmoji('➡️')
         .setDisabled(!cfg.modo || !cfg.ranksSelecionados?.length || typeof cfg.baseadoEmInscricoes !== 'boolean'),
       new ButtonBuilder()
-        .setCustomId('btn_config_cancelar')
+        .setCustomId('cancelar_camp')
         .setLabel('Cancelar')
         .setStyle(ButtonStyle.Danger)
     );
@@ -3637,7 +3630,9 @@ async function onSelectConfigModo(interaction) {
   if (!cfg) {
     return interaction.update({ content: 'Sessão expirada.', embeds: [], components: [] });
   }
-  const modo = interaction.values[0];
+  const modoSelecionado = interaction.values[0];
+  const modosMapeados = { duelos: '1v1', duplas: '2v2', squad: '4v4' };
+  const modo = modosMapeados[modoSelecionado] || modoSelecionado;
   if (!['1v1', '2v2', '3v3', '4v4', '6v6', '8v8', '10v10', '12v12'].includes(modo)) {
     return interaction.update({ ...buildConfigPanel(userId), content: 'Modo inválido. Escolha uma das opções disponíveis.' });
   }
@@ -3657,7 +3652,12 @@ async function onSelectConfigRanks(interaction) {
   const userId = interaction.user.id;
   const cfg = configPainel.get(`camp:config:${userId}`);
   if (!cfg) return interaction.reply({ content: 'Sessão expirada.', flags: 64 });
-  cfg.ranksSelecionados = interaction.values;
+  const ranksValidos = new Set(config.ranks.map((rank) => rank.key));
+  const ranksSelecionados = interaction.values.filter((rank) => ranksValidos.has(rank));
+  if (!ranksSelecionados.length || ranksSelecionados.length > 8) {
+    return atualizarPainelConfig(interaction, userId, 'onSelectConfigRanks');
+  }
+  cfg.ranksSelecionados = ranksSelecionados;
   configPainel.set(`camp:config:${userId}`, cfg);
   return atualizarPainelConfig(interaction, userId, 'onSelectConfigRanks');
 }
@@ -3669,7 +3669,7 @@ async function onSelectConfigSimultaneo(interaction) {
   const userId = interaction.user.id;
   const cfg = configPainel.get(`camp:config:${userId}`);
   if (!cfg) return interaction.reply({ content: 'Sessão expirada.', flags: 64 });
-  cfg.simultaneo = interaction.values[0] === 'true';
+  cfg.simultaneo = ['true', 'simultaneas'].includes(interaction.values[0]);
   configPainel.set(`camp:config:${userId}`, cfg);
   return atualizarPainelConfig(interaction, userId, 'onSelectConfigSimultaneo');
 }
@@ -3681,7 +3681,7 @@ async function onSelectConfigEntrada(interaction) {
   const userId = interaction.user.id;
   const cfg = configPainel.get(`camp:config:${userId}`);
   if (!cfg) return interaction.reply({ content: 'Sessão expirada.', flags: 64 });
-  cfg.baseadoEmInscricoes = interaction.values[0] === 'true';
+  cfg.baseadoEmInscricoes = ['true', 'ilimitados'].includes(interaction.values[0]);
   if (cfg.baseadoEmInscricoes) {
     cfg.formato = null;
     cfg.limiteInscricoes = null;
@@ -4150,6 +4150,7 @@ function register(registry) {
   registry.button('btn_config_dados', onConfigDados);
   registry.button('btn_config_simultaneo', onConfigSimultaneo);
   registry.button('btn_config_modo', onConfigModo);
+  registry.select('modo_jogo', onSelectConfigModo);
   registry.select('select_config_modo', onSelectConfigModo);
   registry.button('btn_config_tipo_dupla', onConfigTipoDupla);
   registry.select('select_config_tipo_dupla', onSelectConfigTipoDupla);
@@ -4164,12 +4165,17 @@ function register(registry) {
   registry.button('btn_config_formato', onConfigFormato);
   registry.select('select_config_formato', onSelectConfigFormato);
   registry.button('btn_config_criar', onConfigCriar);
+  registry.button('continuar_etapa1', onConfigContinuar);
   registry.button('btn_config_continuar', onConfigContinuar);
   registry.button('btn_config_voltar', onConfigVoltar);
   registry.button('btn_config_limite', onConfigLimite);
+  registry.button('cancelar_camp', onConfigCancelar);
   registry.button('btn_config_cancelar', onConfigCancelar);
+  registry.select('ranks_selecao', onSelectConfigRanks);
   registry.select('select_config_ranks', onSelectConfigRanks);
+  registry.select('simultaneidade', onSelectConfigSimultaneo);
   registry.select('select_config_simultaneo', onSelectConfigSimultaneo);
+  registry.select('modo_entrada', onSelectConfigEntrada);
   registry.select('select_config_entrada', onSelectConfigEntrada);
   registry.modal('modal_config_limite_manual', onSubmitConfigLimite);
   registry.button(/^btn_camp_rank_toggle_(bronze|prata|ouro|platina|diamante|champion|grand_champion|omega_champion)$/, onToggleRank);

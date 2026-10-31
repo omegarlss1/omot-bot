@@ -269,17 +269,65 @@ test('painel de criação empilha escolhas gerais e mostra opções condicionais
     const idsGerais = linhasGerais.flat().map((componente) => componente.custom_id);
     assert.equal(linhasGerais.length, 5);
     assert.deepEqual(idsGerais.slice(0, 4), [
-      'select_config_modo',
-      'select_config_ranks',
-      'select_config_simultaneo',
-      'select_config_entrada'
+      'modo_jogo',
+      'ranks_selecao',
+      'simultaneidade',
+      'modo_entrada'
     ]);
-    const menuEntrada = linhasGerais.flat().find((componente) => componente.custom_id === 'select_config_entrada');
+    assert.equal(painelGeral.embeds[0].title, '⚙️ Configurar Campeonato — Etapa 1/2');
+    assert.equal(painelGeral.embeds[0].description,
+      '**Copa Ômega** • 01/12/2026 às 19:00\nLimite inscrições: 30/11/2026\n\nSelecione as opções abaixo. Ranks pode ter múltipla escolha.\n\nRanks: 🥇 Ouro (1)');
+    assert.equal('fields' in painelGeral.embeds[0], false);
+    const [menuModo, menuRanks, menuSimultaneidade, menuEntrada] = linhasGerais.slice(0, 4).map((linha) => linha[0]);
+    assert.deepEqual(
+      [menuModo.custom_id, menuModo.placeholder, menuModo.min_values, menuModo.max_values],
+      ['modo_jogo', '⚔️ Escolha o modo de jogo', 1, 1]
+    );
+    assert.deepEqual(menuModo.options.slice(0, 3).map(({ label, value, emoji, description }) => ({
+      label, value, emoji: emoji.name, description
+    })), [
+      { label: 'Duelos (x1)', value: 'duelos', emoji: '⚔️', description: '1v1' },
+      { label: 'Duplas (x2)', value: 'duplas', emoji: '👥', description: '2v2' },
+      { label: 'Esquadrões (x4)', value: 'squad', emoji: '🛡️', description: '4v4' }
+    ]);
+    assert.deepEqual(
+      [menuRanks.custom_id, menuRanks.min_values, menuRanks.max_values, menuRanks.placeholder],
+      ['ranks_selecao', 1, 8, '1 rank selecionado']
+    );
+    assert.equal(menuRanks.options.length, 8);
+    assert.deepEqual(
+      [menuSimultaneidade.custom_id, menuSimultaneidade.min_values, menuSimultaneidade.max_values],
+      ['simultaneidade', 1, 1]
+    );
+    assert.deepEqual(
+      [menuEntrada.custom_id, menuEntrada.min_values, menuEntrada.max_values],
+      ['modo_entrada', 1, 1]
+    );
     assert.deepEqual(menuEntrada.options.map((opcao) => opcao.label), [
-      'Times ilimitados',
-      'Definir limite de times'
+      'Times Ilimitados',
+      'Definir Limite'
     ]);
-    assert.ok(idsGerais.includes('btn_config_continuar'));
+    assert.ok(idsGerais.includes('continuar_etapa1'));
+    assert.ok(idsGerais.includes('cancelar_camp'));
+    const [botaoContinuar, botaoCancelar] = linhasGerais[4];
+    assert.deepEqual(
+      [botaoContinuar.custom_id, botaoContinuar.label, botaoContinuar.style, botaoContinuar.emoji.name],
+      ['continuar_etapa1', 'Continuar →', 1, '➡️']
+    );
+    assert.deepEqual(
+      [botaoCancelar.custom_id, botaoCancelar.label, botaoCancelar.style],
+      ['cancelar_camp', 'Cancelar', 4]
+    );
+    const painelComTresRanks = buildConfigPanel('organizador', {
+      ...configBase,
+      ranksSelecionados: ['omega_champion', 'champion', 'diamante'],
+      etapa: 'geral',
+      modo: null,
+      baseadoEmInscricoes: null
+    });
+    const ranksSelecionados = painelComTresRanks.components[1].toJSON().components[0];
+    assert.equal(ranksSelecionados.placeholder, '3 ranks selecionados');
+    assert.ok(painelComTresRanks.embeds[0].description.endsWith('(3)'));
 
     const painelManual = buildConfigPanel('organizador', {
       ...configBase,
@@ -297,7 +345,7 @@ test('painel de criação empilha escolhas gerais e mostra opções condicionais
     assert.ok(!menuFormato.options.some((opcao) => opcao.value === 'grupos-mata-mata'));
     assert.ok(idsManuais.includes('btn_config_limite'));
     assert.ok(!idsManuais.includes('btn_config_participantes'));
-    assert.ok(!idsManuais.includes('select_config_entrada'));
+    assert.ok(!idsManuais.includes('modo_entrada'));
     const botaoCriar = linhasManuais.flat().find((componente) => componente.custom_id === 'btn_config_criar');
     assert.equal(botaoCriar.disabled, true);
 

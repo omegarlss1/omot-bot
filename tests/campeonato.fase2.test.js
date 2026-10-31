@@ -507,8 +507,8 @@ test('handlers da Fase 2 registrados', async (t) => {
       const interactions = require('../src/features/campeonato/interactions');
       const r = new InteractionRegistry();
       interactions.register(r);
-      assert.equal(r.buttons.length, 68);
-      assert.equal(r.selects.length, 20);
+      assert.equal(r.buttons.length, 70);
+      assert.equal(r.selects.length, 24);
       assert.equal(r.modals.length, 13);
       assert.ok(r.buttons.some(({ pattern }) => pattern === 'btn_config_simultaneo'));
       assert.ok(r.buttons.some(({ pattern }) => pattern === 'btn_config_tipo_dupla'));
@@ -517,6 +517,12 @@ test('handlers da Fase 2 registrados', async (t) => {
       assert.ok(r.selects.some(({ pattern }) => pattern === 'select_config_simultaneo'));
       assert.ok(r.selects.some(({ pattern }) => pattern === 'select_config_entrada'));
       assert.ok(r.buttons.some(({ pattern }) => pattern === 'btn_config_continuar'));
+      assert.ok(r.buttons.some(({ pattern }) => pattern === 'continuar_etapa1'));
+      assert.ok(r.buttons.some(({ pattern }) => pattern === 'cancelar_camp'));
+      assert.ok(r.selects.some(({ pattern }) => pattern === 'modo_jogo'));
+      assert.ok(r.selects.some(({ pattern }) => pattern === 'ranks_selecao'));
+      assert.ok(r.selects.some(({ pattern }) => pattern === 'simultaneidade'));
+      assert.ok(r.selects.some(({ pattern }) => pattern === 'modo_entrada'));
       assert.ok(r.buttons.some(({ pattern }) =>
         pattern instanceof RegExp && pattern.test(`btn_camp_ver_bracket_${'a'.repeat(24)}`)
       ));
