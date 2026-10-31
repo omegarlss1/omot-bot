@@ -121,8 +121,8 @@ test('painel de criação empilha escolhas gerais e mostra opções condicionais
     ]);
     const menuEntrada = linhasGerais.flat().find((componente) => componente.custom_id === 'select_config_entrada');
     assert.deepEqual(menuEntrada.options.map((opcao) => opcao.label), [
-      'Jogadores ilimitados',
-      'Definir limite de jogadores'
+      'Times ilimitados',
+      'Definir limite de times'
     ]);
     assert.ok(idsGerais.includes('btn_config_continuar'));
 
@@ -133,7 +133,7 @@ test('painel de criação empilha escolhas gerais e mostra opções condicionais
       tipoDupla: 'FIXA',
       baseadoEmInscricoes: false,
       formato: null,
-      limiteInscricoes: 2
+      limiteInscricoes: 4
     });
     const linhasManuais = painelManual.components.map((linha) => linha.toJSON().components);
     const idsManuais = linhasManuais.flat().map((componente) => componente.custom_id);
@@ -153,7 +153,7 @@ test('painel de criação empilha escolhas gerais e mostra opções condicionais
       tipoDupla: 'FIXA',
       baseadoEmInscricoes: false,
       formato: 'single',
-      limiteInscricoes: 2
+      limiteInscricoes: 4
     });
     const botoesManualComFormato = painelManualComFormato.components
       .flatMap((linha) => linha.toJSON().components);
@@ -175,6 +175,27 @@ test('painel de criação empilha escolhas gerais e mostra opções condicionais
     assert.ok(!idsAbertos.includes('btn_config_limite'));
     assert.ok(!idsAbertos.includes('select_config_tipo_dupla'));
     assert.ok(idsAbertos.includes('select_config_formato'));
+  });
+});
+
+test('configuração exige limite compatível e bloqueia grupos abaixo de oito times', () => {
+  comEnv({}, () => {
+    const { isConfigComplete, obterFormatosDisponiveis } = require('../src/features/campeonato/interactions');
+    const configBase = {
+      modo: '2v2',
+      tipoDupla: 'FIXA',
+      ranksSelecionados: ['ouro'],
+      baseadoEmInscricoes: false
+    };
+    assert.equal(isConfigComplete({ ...configBase, formato: 'single', limiteInscricoes: 3 }), false);
+    assert.equal(isConfigComplete({ ...configBase, formato: 'single', limiteInscricoes: 4 }), true);
+    assert.equal(isConfigComplete({ ...configBase, formato: 'single', limiteInscricoes: 500 }), true);
+    assert.equal(isConfigComplete({ ...configBase, formato: 'grupos-mata-mata', limiteInscricoes: 7 }), false);
+    assert.equal(isConfigComplete({ ...configBase, formato: 'grupos-mata-mata', limiteInscricoes: 8 }), true);
+    assert.ok(!obterFormatosDisponiveis({ ...configBase, limiteInscricoes: 4 })
+      .some((formato) => formato.value === 'grupos-mata-mata'));
+    assert.ok(obterFormatosDisponiveis({ ...configBase, baseadoEmInscricoes: true })
+      .some((formato) => formato.value === 'grupos-mata-mata'));
   });
 });
 

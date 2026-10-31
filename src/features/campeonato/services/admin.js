@@ -106,10 +106,12 @@ async function desclassificarTime({ timeId, motivo = null, executadoPor = null }
     status: { $nin: ['FINALIZADA', 'WO', 'CANCELADA'] }
   });
   for (const p of oponentes) {
+    const vencedorId = String(p.timeA) === String(timeId) ? p.timeB : p.timeA;
     await Partida.updateOne(
       { _id: p._id },
-      { $set: { status: 'WO', vencedorId: String(p.timeA) === String(timeId) ? p.timeB : p.timeA } }
+      { $set: { status: 'WO', vencedorId } }
     );
+    emitir(EVENTOS.PARTIDA_FINALIZADA, { partidaId: String(p._id), vencedorId, porWO: true });
   }
   emitir(EVENTOS.TIME_DESCLASSIFICADO, {
     timeId: String(timeId),

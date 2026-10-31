@@ -20,6 +20,9 @@ function parsePlacar(texto) {
 async function enviarPlacar({ partidaId, timeId, userId, placar, prints = [], duelos = [], dueloIndex = null }) {
   const partida = await Partida.findById(partidaId);
   if (!partida) throw new PlacarError('Partida não encontrada.', 'PLACAR_PARTIDA_NAO_ENCONTRADA');
+  if (!partida.timeA || !partida.timeB) {
+    throw new PlacarError('Esta partida ainda aguarda a definição dos dois times.', 'PLACAR_TIMES_INDEFINIDOS');
+  }
   if (partida.status !== 'AGUARDANDO_PLACAR' && partida.status !== 'AGUARDANDO_VALIDACAO') {
     throw new PlacarError('Partida não está aguardando placar.', 'PLACAR_STATUS_INCORRETO');
   }
@@ -31,6 +34,11 @@ async function enviarPlacar({ partidaId, timeId, userId, placar, prints = [], du
   const parsed = parsePlacar(placar);
   if (!parsed) {
     throw new PlacarError('Formato de placar inválido. Use "2x1", "3x0" etc.', 'PLACAR_FORMATO');
+  }
+  if (parsed.golsA === parsed.golsB
+    && partida.bracketMeta?.formato
+    && !['round-robin', 'grupos-mata-mata'].includes(partida.bracketMeta.formato)) {
+    throw new PlacarError('Partidas eliminatórias não podem terminar empatadas. Informe um placar com vencedor.', 'PLACAR_EMPATE_ELIMINATORIA');
   }
   const ehTimeA = String(partida.timeA) === String(timeId);
   const ehTimeB = String(partida.timeB) === String(timeId);
@@ -100,7 +108,7 @@ async function validarPlacar({ partidaId, userId, timeId, aceito }) {
     const todosValidados = partida.validacao?.timeAValidou && partida.validacao?.timeBValidou;
     if (todosValidados) {
       const resultado = calcularVencedorDuplas(partida.duelos);
-      vencedorId = resultado.vencedorId;
+      vencedorId = resultado.lado === 'A' ? partida.timeA : resultado.lado === 'B' ? partida.timeB : null;
       if (vencedorId) {
         novoEstado.status = 'FINALIZADA';
         novoEstado.vencedorId = vencedorId;

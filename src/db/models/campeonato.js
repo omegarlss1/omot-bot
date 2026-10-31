@@ -24,7 +24,7 @@ const campeonatoSchema = new mongoose.Schema({
   status: { type: String, enum: STATUS, default: 'INSCRICOES_ABERTAS' },
   maxJogadoresPorTime: { type: Number, required: true, min: 1, max: 12 },
   baseadoEmInscricoes: { type: Boolean, default: true },
-  limiteInscricoes: { type: Number, default: null, min: 2 },
+  limiteInscricoes: { type: Number, default: null, min: 4 },
   modalidade: { type: String, enum: ['single', 'double', 'round-robin', 'grupos-mata-mata'], default: null },
   temTerceiroLugar: { type: Boolean, default: true },
   dataEvento: { type: Date, default: null },
@@ -38,8 +38,10 @@ const campeonatoSchema = new mongoose.Schema({
     prints: { type: String, default: null },
     organizador: { type: String, default: null },
     avisos: { type: String, default: null },
-    geral: { type: String, default: null }
+    geral: { type: String, default: null },
+    fases: { type: mongoose.Schema.Types.Mixed, default: () => ({}) }
   },
+  bracket: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
   painelOrganizador: {
     fixaMessageId: { type: String, default: null },
     dinamicaMessageId: { type: String, default: null },

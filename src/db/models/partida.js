@@ -66,6 +66,9 @@ const partidaSchema = new mongoose.Schema({
     timeBValidou: { type: Boolean, default: false }
   },
   duelos: { type: [dueloSchema], default: [] },
+  bracketMeta: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
+  canalDiscordId: { type: String, default: null },
+  mensagemDiscordId: { type: String, default: null },
   criadoEm: { type: Date, default: Date.now }
 }, { timestamps: true });
 

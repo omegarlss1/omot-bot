@@ -1,4 +1,4 @@
-const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder, UserSelectMenuBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } = require('discord.js');
+const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder, UserSelectMenuBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder, ChannelType } = require('discord.js');
 const config = require('../../config');
 const { embedCriarEvento, embedSelecionarRanks, embedEventoCriado, embedPainelInscricao, embedInscricaoConfirmada, embedResumoCorte, embedMenuFormato, embedPainelPartida, embedPlacarEnviado, embedDisputaOrganizador, embedBracket, embedClassificacao, embedCampeaoDefinido, embedPainelAdmin, embedCancelamentoConfirmado, embedReaberturaConfirmada, embedTimeDesclassificado, embedPlacarAjustado, toActionRows, montarComponentes } = require('./embeds');
 const { criarEvento, EventoError } = require('./service');
@@ -6,7 +6,8 @@ const { gerarDescricaoEvento } = require('./services/duracao');
 const { inscreverCapitao, inscreverTimeCompleto, inscreverJogadorManual, fecharInscricoes, executarCorte, definirFormato, findCampeonatoPorCanalInscricao, findCampeonatoPorCanal, listarInscricoes, InscricaoError } = require('./services/inscricao');
 const { validarInscricao, InscricaoError: ValidacaoInscricaoError } = require('./validators/inscricao');
 const { CorteError } = require('./validators/corte');
-const { gerarBracket, BracketError } = require('./services/bracket');
+const { gerarBracket, BracketError, propagarResultadoPartida, obterFormatoCampeonato } = require('./services/bracket');
+const { minimoTimesFormato } = require('./services/formatos');
 const { registrarCheckIn, registrarCheckInOrganizador, verificarAdversarioFaltou, registrarWO, CheckinError } = require('./services/checkin');
 const { enviarPlacar, validarPlacar, parsePlacar, PlacarError } = require('./services/placar');
 const { placarEhValido } = require('./validators/placar');
@@ -182,6 +183,143 @@ async function anunciarInscricaoPublicamente(campeonatoId, timeId, client = clie
   });
 }
 
+function fasesDoFormato(formato) {
+  const fases = {
+    single: [{ key: 'mata-mata', nome: 'mata-mata' }],
+    double: [
+      { key: 'winners', nome: 'winners' },
+      { key: 'losers', nome: 'losers' },
+      { key: 'final', nome: 'final' }
+    ],
+    'round-robin': [{ key: 'round-robin', nome: 'round-robin' }],
+    'grupos-mata-mata': [
+      { key: 'groups', nome: 'grupos' },
+      { key: 'mata-mata', nome: 'mata-mata' }
+    ]
+  };
+  const resultado = fases[formato];
+  if (!resultado) throw new Error(`Formato sem canais de fase configurados: ${formato}.`);
+  return resultado;
+}
+
+async function criarCanaisFases(guild, campeonato, formato) {
+  const fases = fasesDoFormato(formato);
+  const botId = guild.client?.user?.id || guild.members.me?.id;
+  if (!botId) throw new Error('Não foi possível identificar o bot ao criar os canais das fases.');
+  const permissoes = [
+    { id: guild.roles.everyone.id, deny: PERMISSOES_LEITURA },
+    permOrgao(),
+    permBot(botId),
+    permRank(campeonato.rank)
+  ];
+  const criados = {};
+  for (const fase of fases) {
+    const idSalvo = campeonato.canais?.fases?.[fase.key];
+    let canal = idSalvo ? await guild.channels.fetch(idSalvo).catch((error) => {
+      if (error?.code === 10003) return null;
+      throw error;
+    }) : null;
+    if (!canal) {
+      canal = await guild.channels.create({
+        name: `${campeonato.rank}-${fase.nome}`.slice(0, 100),
+        type: ChannelType.GuildText,
+        ...(campeonato.categoriaId ? { parent: campeonato.categoriaId } : {}),
+        permissionOverwrites: permissoes,
+        topic: `Partidas da fase ${fase.nome} do campeonato ${campeonato.nome}.`,
+        reason: `Criação da fase ${fase.nome} do campeonato ${campeonato.nome}`
+      });
+      await Campeonato.updateOne(
+        { _id: campeonato._id },
+        { $set: { [`canais.fases.${fase.key}`]: canal.id } }
+      );
+    }
+    if (!canal?.isTextBased?.()) {
+      throw new Error(`O canal da fase ${fase.nome} não é um canal de texto.`);
+    }
+    criados[fase.key] = canal;
+  }
+  return criados;
+}
+
+function nomeTimeParaPartida(time) {
+  return String(time?.nome || 'A definir').replace(/[*_`~|]/g, '\\$&').slice(0, 80);
+}
+
+function statusPartidaParaMensagem(partida) {
+  const rotulos = {
+    AGUARDANDO_CHECKIN: '⏳ Aguardando check-in',
+    AGUARDANDO_PLACAR: '🎮 Em andamento',
+    AGUARDANDO_VALIDACAO: '🧾 Aguardando validação do placar',
+    EM_DISPUTA_ORGANIZADOR: '⚖️ Em análise da organização',
+    FINALIZADA: '🏆 Finalizada',
+    CANCELADA: '❌ Cancelada',
+    WO: '🚫 Finalizada por W.O.'
+  };
+  return rotulos[partida.status] || partida.status;
+}
+
+function placarPartidaParaMensagem(partida) {
+  const texto = partida.placarEnviado?.timeA?.placar || partida.placarEnviado?.timeB?.placar;
+  const placar = String(texto || '').match(/^(\d+)\s*[xX]\s*(\d+)$/);
+  return placar ? `${placar[1]} x ${placar[2]}` : '0 x 0';
+}
+
+function construirMensagemPartida(partida, timeA, timeB) {
+  const numero = Number(String(partida.bracketMeta?.matchKey || '').match(/\d+$/)?.[0]) || partida.rodada || 1;
+  const horario = partida.estimatedStartAt
+    ? `<t:${Math.floor(new Date(partida.estimatedStartAt).getTime() / 1000)}:t>`
+    : 'horário a definir';
+  const [golsA, golsB] = placarPartidaParaMensagem(partida).split(' x ');
+  const checkA = partida.checkIns?.timeA?.fez ? '✅' : '⏳';
+  const checkB = partida.checkIns?.timeB?.fez ? '✅' : '⏳';
+  return `**Partida ${numero}** (${horario}) — **${nomeTimeParaPartida(timeA)} ${golsA}** vs **${golsB} ${nomeTimeParaPartida(timeB)}**\n` +
+    `Status: **${statusPartidaParaMensagem(partida)}** | Check-in: ${checkA} ${nomeTimeParaPartida(timeA)} · ${checkB} ${nomeTimeParaPartida(timeB)}`;
+}
+
+async function publicarPartidaDiscord(partidaId, client = clientPainelOrganizador) {
+  if (!client) throw new Error('Cliente do Discord não configurado para publicar partidas.');
+  const partida = await Partida.findById(partidaId);
+  if (!partida) throw new Error(`Partida não encontrada para publicação: ${partidaId}.`);
+  const campeonato = await Campeonato.findById(partida.campeonatoId).lean();
+  if (!campeonato) throw new Error(`Campeonato não encontrado para publicar partida ${partidaId}.`);
+  const faseKey = partida.bracketMeta?.canalFase;
+  const canalId = campeonato.canais?.fases?.[faseKey];
+  if (!canalId) throw new Error(`Canal da fase ${faseKey || 'desconhecida'} não configurado.`);
+  const canal = await client.channels.fetch(canalId);
+  if (!canal?.isTextBased?.()) throw new Error(`Canal da fase ${faseKey} inválido.`);
+  const idsTimes = [partida.timeA, partida.timeB].filter(Boolean);
+  const times = await Time.find({ _id: { $in: idsTimes } }).lean();
+  const porId = new Map(times.map((time) => [String(time._id), time]));
+  const timeA = porId.get(String(partida.timeA));
+  const timeB = porId.get(String(partida.timeB));
+  const controles = embedPainelPartida({ partida, timeA, timeB }).components[0]
+    .map((botao) => ({
+      ...botao,
+      disabled: !partida.timeA || !partida.timeB || ['FINALIZADA', 'CANCELADA', 'WO'].includes(partida.status)
+    }));
+  const payload = {
+    content: construirMensagemPartida(partida, timeA, timeB),
+    components: toActionRows([controles]),
+    allowedMentions: { parse: [] }
+  };
+
+  if (partida.mensagemDiscordId && partida.canalDiscordId === canalId) {
+    const mensagem = await canal.messages.fetch(partida.mensagemDiscordId).catch((error) => {
+      if (error?.code === 10008) return null;
+      throw error;
+    });
+    if (mensagem) {
+      await mensagem.edit(payload);
+      return mensagem;
+    }
+  }
+  const mensagem = await canal.send(payload);
+  partida.canalDiscordId = canal.id;
+  partida.mensagemDiscordId = mensagem.id;
+  await partida.save();
+  return mensagem;
+}
+
 function solicitarAtualizacaoPainelOrganizador(campeonatoId) {
   if (!campeonatoId || !clientPainelOrganizador) return;
   const id = String(campeonatoId);
@@ -202,7 +340,7 @@ function setCampeonatoClient(client) {
   if (listenersPainelOrganizadorRegistrados) return;
   const eventosQueAtualizamPainel = [
     EVENTOS.INSCRICAO_REALIZADA, EVENTOS.INSCRICOES_FECHADAS, EVENTOS.CORTE_REALIZADO,
-    EVENTOS.FORMATO_ESCOLHIDO, EVENTOS.PARTIDA_CRIADA, EVENTOS.CHECKIN_REALIZADO,
+    EVENTOS.FORMATO_ESCOLHIDO, EVENTOS.PARTIDA_CRIADA, EVENTOS.PARTIDA_ATUALIZADA, EVENTOS.CHECKIN_REALIZADO,
     EVENTOS.PLACAR_ENVIADO, EVENTOS.PLACAR_VALIDADO, EVENTOS.PLACAR_CONTESTADO,
     EVENTOS.PLACAR_DEFINIDO_ORG, EVENTOS.WO_REGISTRADO, EVENTOS.PARTIDA_FINALIZADA,
     EVENTOS.CAMPEONATO_CANCELADO, EVENTOS.CAMPEONATO_REABERTO, EVENTOS.TIME_DESCLASSIFICADO,
@@ -229,6 +367,29 @@ function setCampeonatoClient(client) {
           await anunciarInscricaoPublicamente(campeonatoId, payload.timeId);
         } catch (error) {
           console.error(`[campeonato.inscricao] falha ao publicar anúncio público para ${campeonatoId}:`, error);
+        }
+      }
+      if (payload.partidaId) {
+        try {
+          const partida = await Partida.findById(payload.partidaId).select('bracketMeta').lean();
+          if (partida?.bracketMeta?.canalFase) {
+            if (nomeEvento === EVENTOS.PARTIDA_FINALIZADA) {
+              await propagarResultadoPartida(payload.partidaId);
+            }
+            if (nomeEvento === EVENTOS.PARTIDA_ATUALIZADA
+              || nomeEvento === EVENTOS.CHECKIN_REALIZADO
+              || nomeEvento === EVENTOS.PLACAR_ENVIADO
+              || nomeEvento === EVENTOS.PLACAR_VALIDADO
+              || nomeEvento === EVENTOS.PLACAR_CONTESTADO
+              || nomeEvento === EVENTOS.PLACAR_DEFINIDO_ORG
+              || nomeEvento === EVENTOS.WO_REGISTRADO
+              || nomeEvento === EVENTOS.PARTIDA_FINALIZADA
+              || nomeEvento === EVENTOS.PLACAR_AJUSTADO) {
+              await publicarPartidaDiscord(payload.partidaId, client);
+            }
+          }
+        } catch (error) {
+          console.error(`[campeonato.partida] falha ao propagar ou atualizar partida ${payload.partidaId}:`, error);
         }
       }
     });
@@ -487,11 +648,11 @@ function buildConfigPanel(userId, configOverride) {
       `**Modo:** ${cfg.modo ? getModoLabel(cfg.modo) : 'Não selecionado'}\n` +
       `**Ranks:** ${nomeRanks}\n` +
       `**Simultaneidade:** ${cfg.simultaneo === false ? 'Escalonadas' : 'Simultâneas'}\n` +
-      `**Entrada:** ${cfg.baseadoEmInscricoes === true ? 'Jogadores ilimitados' : cfg.baseadoEmInscricoes === false ? 'Definir limite de jogadores' : 'Não selecionada'}` +
+      `**Entrada:** ${cfg.baseadoEmInscricoes === true ? 'Times ilimitados' : cfg.baseadoEmInscricoes === false ? 'Limitar número de times' : 'Não selecionada'}` +
       (avancado ? `\n**Tipo de equipe:** ${modoPermiteTipoDupla(cfg.modo) ? (cfg.tipoDupla || 'Não selecionado') : 'Não se aplica'}` +
         `\n**Formato:** ${cfg.formato || 'Não selecionado'}` +
         (cfg.baseadoEmInscricoes === false
-          ? `\n**Limite de jogadores:** ${cfg.limiteInscricoes || 'Sem limite'}`
+          ? `\n**Limite de times:** ${cfg.limiteInscricoes || 'Não definido'}`
           : '') : '') +
       (cfg.descricao ? `\n\n${cfg.descricao}` : ''),
     color: 0xFF6B00
@@ -536,8 +697,8 @@ function buildConfigPanel(userId, configOverride) {
       .setCustomId('select_config_entrada')
       .setPlaceholder('4. Escolha o modo de entrada')
       .addOptions([
-        { label: 'Jogadores ilimitados', value: 'true', default: cfg.baseadoEmInscricoes === true },
-        { label: 'Definir limite de jogadores', value: 'false', default: cfg.baseadoEmInscricoes === false }
+        { label: 'Times ilimitados', value: 'true', default: cfg.baseadoEmInscricoes === true },
+        { label: 'Definir limite de times', value: 'false', default: cfg.baseadoEmInscricoes === false }
       ]);
     componentes.push(
       new ActionRowBuilder().addComponents(selectModo),
@@ -567,11 +728,19 @@ function buildConfigPanel(userId, configOverride) {
         ]);
       componentes.push(new ActionRowBuilder().addComponents(selectTipoDupla));
     }
+    if (cfg.baseadoEmInscricoes === false) {
+      const botaoLimite = new ButtonBuilder()
+        .setCustomId('btn_config_limite')
+        .setLabel(cfg.limiteInscricoes ? `Limite: ${cfg.limiteInscricoes} times` : 'Definir limite de times')
+        .setStyle(ButtonStyle.Secondary);
+      componentes.push(new ActionRowBuilder().addComponents(botaoLimite));
+    }
     const formatos = obterFormatosDisponiveis(cfg);
     if (cfg.formato && !formatos.some((formato) => formato.value === cfg.formato)) cfg.formato = null;
     const selectFormato = new StringSelectMenuBuilder()
       .setCustomId('select_config_formato')
       .setPlaceholder('Escolha o formato das partidas')
+      .setDisabled(cfg.baseadoEmInscricoes === false && Number(cfg.limiteInscricoes) < 4)
       .addOptions(formatos.map((formato) => ({
         label: formato.label,
         value: formato.value,
@@ -579,14 +748,6 @@ function buildConfigPanel(userId, configOverride) {
         default: cfg.formato === formato.value
       })));
     componentes.push(new ActionRowBuilder().addComponents(selectFormato));
-    if (cfg.baseadoEmInscricoes === false) {
-      botoes.push(
-        new ButtonBuilder()
-          .setCustomId('btn_config_limite')
-          .setLabel(cfg.limiteInscricoes ? `Limite: ${cfg.limiteInscricoes} jogadores` : 'Definir limite de jogadores')
-          .setStyle(ButtonStyle.Secondary)
-      );
-    }
     botoes.push(
       new ButtonBuilder()
         .setCustomId('btn_config_voltar')
@@ -633,7 +794,10 @@ function isConfigComplete(cfg) {
   if (!cfg.modo) return false;
   if (modoPermiteTipoDupla(cfg.modo) && !['FIXA', 'SORTEADA'].includes(cfg.tipoDupla)) return false;
   if (!cfg.ranksSelecionados?.length) return false;
-  return typeof cfg.baseadoEmInscricoes === 'boolean' && !!cfg.formato;
+  if (typeof cfg.baseadoEmInscricoes !== 'boolean' || !cfg.formato) return false;
+  if (cfg.baseadoEmInscricoes === false
+    && (!Number.isInteger(cfg.limiteInscricoes) || cfg.limiteInscricoes < minimoTimesFormato(cfg.formato))) return false;
+  return true;
 }
 
 function obterFormatosDisponiveis(cfg) {
@@ -643,8 +807,8 @@ function obterFormatosDisponiveis(cfg) {
     { value: 'round-robin', label: 'Round robin', description: 'Todos contra todos' },
     { value: 'grupos-mata-mata', label: 'Grupos + mata-mata', description: 'Fase de grupos e eliminatória' }
   ];
-  const totalConhecido = cfg.limiteInscricoes || 0;
-  return totalConhecido > 0 && totalConhecido < 4
+  const totalConhecido = Number(cfg.limiteInscricoes) || 0;
+  return cfg.baseadoEmInscricoes === false && totalConhecido < minimoTimesFormato('grupos-mata-mata')
     ? formatos.filter((formato) => formato.value !== 'grupos-mata-mata')
     : formatos;
 }
@@ -656,7 +820,7 @@ function getSectionPreview(cfg, key) {
     case 'modo': return cfg.modo ? getModoLabel(cfg.modo) : '—';
     case 'tipoDupla': return modoPermiteTipoDupla(cfg.modo) ? (cfg.tipoDupla || 'Escolha fixa ou sorteada') : 'Não se aplica';
     case 'ranks': return cfg.ranksSelecionados?.length ? cfg.ranksSelecionados.map((r) => (config.ranks.find((cr) => cr.key === r)?.label || r)).join(', ') : '—';
-    case 'entrada': return cfg.baseadoEmInscricoes === true ? 'Jogadores ilimitados' : cfg.baseadoEmInscricoes === false ? 'Definir limite de jogadores' : '—';
+    case 'entrada': return cfg.baseadoEmInscricoes === true ? 'Times ilimitados' : cfg.baseadoEmInscricoes === false ? 'Limitar número de times' : '—';
     case 'formato': return cfg.formato || '—';
     case 'criar': return isConfigComplete(cfg) ? 'Pronto para criar' : 'Complete as seções acima';
     default: return '—';
@@ -1446,9 +1610,22 @@ async function onBotaoFecharInscricoes(interaction) {
     return safeReply(interaction, { content: `❌ Campeonato não encontrado.`, flags: 64 });
   }
   
-  // Toggle: if already closed, reopen; else close
-  const novoStatus = campeonato.status === 'INSCRICOES_FECHADAS' ? 'INSCRICOES_ABERTAS' : 'INSCRICOES_FECHADAS';
-  await Campeonato.updateOne({ _id: campeonatoId }, { $set: { status: novoStatus } });
+  let novoStatus;
+  try {
+    if (campeonato.status === 'INSCRICOES_FECHADAS') {
+      novoStatus = 'INSCRICOES_ABERTAS';
+      await Campeonato.updateOne({ _id: campeonatoId }, { $set: { status: novoStatus } });
+    } else {
+      await fecharInscricoes(campeonatoId);
+      novoStatus = 'INSCRICOES_FECHADAS';
+    }
+  } catch (error) {
+    if (error instanceof InscricaoError) {
+      return safeReply(interaction, { content: error.message, flags: 64 });
+    }
+    console.error('[campeonato.inscricoes] falha ao alterar inscrições:', error);
+    return safeReply(interaction, { content: 'Não foi possível alterar o status das inscrições.', flags: 64 });
+  }
   solicitarAtualizacaoPainelOrganizador(campeonatoId);
   
   const inscricoes = await listarInscricoes(campeonatoId);
@@ -1579,8 +1756,8 @@ function montarPainelEdicaoEvento(evento, campeonatos) {
     .setCustomId(`select_camp_editar_entrada_${evento._id}`)
     .setPlaceholder('Modo de entrada')
     .addOptions([
-      { label: 'Jogadores ilimitados', value: 'true', default: principal.baseadoEmInscricoes === true },
-      { label: 'Definir limite de jogadores', value: 'false', default: principal.baseadoEmInscricoes === false }
+      { label: 'Times ilimitados', value: 'true', default: principal.baseadoEmInscricoes === true },
+      { label: 'Definir limite de times', value: 'false', default: principal.baseadoEmInscricoes === false }
     ]);
   const selectDupla = new StringSelectMenuBuilder()
     .setCustomId(`select_camp_editar_dupla_${evento._id}`)
@@ -1594,10 +1771,12 @@ function montarPainelEdicaoEvento(evento, campeonatos) {
     { value: 'double-elimination', label: 'Eliminatória dupla' },
     { value: 'round-robin', label: 'Round robin' },
     { value: 'grupos-mata-mata', label: 'Grupos + mata-mata' }
-  ];
+  ].filter((formato) => principal.baseadoEmInscricoes !== false
+    || Number(principal.limiteInscricoes) >= minimoTimesFormato(formato.value));
   const selectFormato = new StringSelectMenuBuilder()
     .setCustomId(`select_camp_editar_formato_${evento._id}`)
     .setPlaceholder('Formato das partidas')
+    .setDisabled(principal.baseadoEmInscricoes === false && Number(principal.limiteInscricoes) < 4)
     .addOptions(formatos.map((formato) => ({
       ...formato,
       default: principal.formato === formato.value
@@ -1609,7 +1788,7 @@ function montarPainelEdicaoEvento(evento, campeonatos) {
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId(`btn_camp_editar_avancado_${evento._id}`)
-      .setLabel('Definir limite de jogadores')
+      .setLabel('Definir limite de times')
       .setStyle(ButtonStyle.Secondary)
   );
   return {
@@ -1687,12 +1866,14 @@ function criarModalConfiguracoesEvento(evento, campeonatos) {
   const principal = campeonatos[0];
   const modal = new ModalBuilder()
     .setCustomId(`modal_camp_editar_avancado_${evento._id}`)
-    .setTitle('Editar limite de jogadores');
+    .setTitle('Editar limite de times');
   const input = new TextInputBuilder()
     .setCustomId('edit_limite_times')
-    .setLabel('Limite de jogadores (vazio = sem limite)')
+    .setLabel(principal.baseadoEmInscricoes === false
+      ? `Limite de times (mínimo ${minimoTimesFormato(principal.modalidade || principal.formato)})`
+      : 'Limite de times (em branco para sem limite)')
     .setStyle(TextInputStyle.Short)
-    .setRequired(false);
+    .setRequired(principal.baseadoEmInscricoes === false);
   if (principal.limiteInscricoes != null) input.setValue(String(principal.limiteInscricoes));
   modal.addComponents(new ActionRowBuilder().addComponents(input));
   return modal;
@@ -1792,7 +1973,14 @@ async function onSubmitConfiguracoesEvento(interaction) {
     const { campeonatos } = await obterEventoEditavelPorEvento(match[1]);
     const textoLimite = textoCampo(interaction, 'edit_limite_times');
     const limite = textoLimite ? Number(textoLimite) : null;
-    if (textoLimite && (!Number.isInteger(limite) || limite < 2)) throw new Error('O limite deve ser um número inteiro igual ou maior que 2.');
+    if (textoLimite && (!Number.isSafeInteger(limite) || limite < 4)) throw new Error('O limite deve ser um número inteiro de times igual ou maior que 4.');
+    if (campeonatos.some((camp) => camp.baseadoEmInscricoes === false && limite === null)) {
+      throw new Error('🔴 Um limite de times é obrigatório enquanto as inscrições forem limitadas.');
+    }
+    if (limite !== null && campeonatos.some((camp) =>
+      camp.baseadoEmInscricoes === false && limite < minimoTimesFormato(camp.modalidade || camp.formato))) {
+      throw new Error('🔴 O limite é menor que a quantidade mínima exigida pelo formato selecionado.');
+    }
     if (limite !== null) {
       const inscritos = await Promise.all(campeonatos.map((camp) => Time.countDocuments({ campeonatoId: camp._id })));
       if (inscritos.some((total) => total > limite)) throw new Error('O limite não pode ser menor que a quantidade de times já inscritos.');
@@ -1801,7 +1989,7 @@ async function onSubmitConfiguracoesEvento(interaction) {
       { _id: { $in: campeonatos.map((item) => item._id) } },
       { $set: { limiteInscricoes: limite } }
     );
-    return interaction.reply({ content: 'Limite de jogadores atualizado para os ranks ativos do evento.', flags: 64 });
+    return interaction.reply({ content: 'Limite de times atualizado para os ranks ativos do evento.', flags: 64 });
   } catch (error) {
     return interaction.reply({ content: error.message, flags: 64 });
   }
@@ -1819,12 +2007,22 @@ async function onSelecionarConfiguracaoEvento(interaction) {
         match[1] === 'entrada' ? interaction.values[0] === 'true' : interaction.values[0]];
     const atualizacao = { [campo]: valor };
     if (campo === 'formato') {
+      if (campeonatos.some((camp) => camp.baseadoEmInscricoes === false
+        && Number(camp.limiteInscricoes) < minimoTimesFormato(valor))) {
+        throw new Error(`🔴 O formato selecionado exige um limite de pelo menos ${minimoTimesFormato(valor)} times.`);
+      }
       atualizacao.modalidade = {
         'single-elimination': 'single',
         'double-elimination': 'double',
         'round-robin': 'round-robin',
         'grupos-mata-mata': 'grupos-mata-mata'
       }[valor];
+    } else if (campo === 'baseadoEmInscricoes') {
+      if (valor === false && campeonatos.some((camp) =>
+        !Number.isInteger(camp.limiteInscricoes) || camp.limiteInscricoes < minimoTimesFormato(camp.modalidade || camp.formato))) {
+        throw new Error('🔴 Defina primeiro um limite de times compatível no botão "Definir limite de times".');
+      }
+      if (valor === true) atualizacao.limiteInscricoes = null;
     }
     await Campeonato.updateMany({ _id: { $in: campeonatos.map((item) => item._id) } }, { $set: atualizacao });
     const { evento, campeonatos: campeonatosAtualizados } = await obterEventoEditavelPorEvento(match[2]);
@@ -2183,11 +2381,22 @@ async function onBotaoGerarBracket(interaction) {
     return interaction.reply({ content: 'Campeonato não encontrado.', flags: 64 });
   }
 
-  // Check if bracket already exists
-  const existing = await Partida.findOne({ campeonatoId, fase: 'R1' }).lean();
+  const existing = await Partida.findOne({ campeonatoId }).lean();
   if (existing) {
+    if (existing.bracketMeta?.canalFase) {
+      return interaction.reply({
+        content: '⚠️ A chave já foi gerada. Você pode tentar novamente para concluir ou atualizar a publicação das partidas.',
+        components: [toActionRows([{
+          type: 2,
+          style: 3,
+          label: 'Continuar publicação',
+          custom_id: `btn_confirmar_gerar_bracket_${campeonatoId}`
+        }])],
+        flags: 64
+      });
+    }
     return interaction.reply({ 
-      content: '⚠️ Bracket já existe para este campeonato. Use o painel de gestão para limpar antes de gerar novamente.', 
+      content: '⚠️ Já existem partidas neste campeonato. Use o painel de gestão para limpar antes de gerar outra chave.',
       flags: 64 
     });
   }
@@ -2200,28 +2409,29 @@ async function onBotaoGerarBracket(interaction) {
 
     // Build preview embed with match list
     const lines = preview.partidas.map(p => {
-      const timeA = p.timeAHasBye ? `⏭️ **${p.timeA}** (BYE)` : `**${p.timeA}**`;
-      const timeB = p.timeBHasBye ? `⏭️ **${p.timeB}** (BYE)` : `**${p.timeB}**`;
       const horario = `<t:${Math.floor(p.estimatedStartAt.getTime() / 1000)}:t>`;
-      return `${p.index}. ${p.fase} — ${timeA} vs ${timeB} ${p.isByeMatch ? '(BYE vs BYE - cancelada)' : ''} — ${horario}`;
+      return `${p.index}. ${p.fase} — **${p.timeA}** vs **${p.timeB}** — ${horario}`;
     }).join('\n');
 
     const embed = {
       title: `🎯 Preview do Bracket — ${campeonato.nome}`,
-      description: `**Formato:** ${preview.formato} | **Modo:** ${preview.modo} | **Intervalo:** ${preview.intervalo}min\n**${preview.totalPartidas} partidas** na R1\n\n${lines}`,
+      description: `**Formato:** ${preview.formato} | **Modo:** ${preview.modo} | **Intervalo:** ${preview.intervalo}min\n` +
+        `**${preview.totalPartidas} partidas previstas**${preview.partidasExibidas < preview.totalPartidas ? ` — exibindo ${preview.partidasExibidas} nesta prévia` : ''}\n\n${lines}` +
+        (preview.formato === 'grupos-mata-mata' ? '\n\nA fase mata-mata será criada automaticamente após a classificação dos grupos.'
+          : preview.formato === 'double' ? '\n\nPode haver uma partida extra de reset se o campeão dos losers vencer a grande final.' : ''),
       color: 0xFF6B00,
-      image: { attachment: `bracket-${campeonato.rank}.png` },
+      ...(preview.canvas ? { image: { attachment: `bracket-${campeonato.rank}.png` } } : {}),
       footer: { text: 'Confira os pareamentos e horários antes de confirmar.' }
     };
 
     const buttons = [
-      { type: 2, style: 3, label: '✅ Confirmar e Postar no #partidas', emoji: { name: '✅' }, custom_id: `btn_confirmar_gerar_bracket_${campeonatoId}` },
+      { type: 2, style: 3, label: '✅ Confirmar e Criar Fases', emoji: { name: '✅' }, custom_id: `btn_confirmar_gerar_bracket_${campeonatoId}` },
       { type: 2, style: 4, label: '❌ Cancelar', emoji: { name: '❌' }, custom_id: `btn_cancelar_gerar_bracket_${campeonatoId}` }
     ];
 
     return interaction.editReply({
       embeds: [embed],
-      files: [new AttachmentBuilder(preview.canvas, { name: `bracket-${campeonato.rank}.png` })],
+      files: preview.canvas ? [new AttachmentBuilder(preview.canvas, { name: `bracket-${campeonato.rank}.png` })] : [],
       components: [toActionRows([buttons])]
     });
   } catch (error) {
@@ -2243,36 +2453,30 @@ async function onConfirmarGerarBracket(interaction) {
 
   await interaction.deferUpdate();
   try {
-    const resultado = await gerarBracket(campeonatoId);
-    
-    const campeonato = await Campeonato.findById(campeonatoId).lean();
+    let campeonato = await Campeonato.findById(campeonatoId).lean();
     if (!campeonato) {
       return interaction.editReply({ content: 'Campeonato não encontrado.', embeds: [], components: [] });
     }
-
-    // Post to #partidas channel
-    if (campeonato.canais?.partidas && resultado.canvas) {
-      try {
-        const canalPartidas = await interaction.guild.channels.fetch(campeonato.canais.partidas);
-        if (canalPartidas?.isTextBased?.()) {
-          const base = new Date(campeonato.dataEvento || campeonato.startAt || Date.now());
-          const intervalo = Number(campeonato.intervaloPartidasMin || 20);
-          const horarioStr = `<t:${Math.floor(base.getTime() / 1000)}:F>`;
-          const formatoStr = campeonato.modalidade || 'Single Elimination';
-          
-          await canalPartidas.send({
-            content: `📣 **Bracket gerado!** ${campeonato.nome} - ${formatoStr} - ${resultado.totalPartidas} partidas\n` +
-                     `R1 começa ${horarioStr} | Intervalo ${intervalo}min | Check-in [H-5min, H+5min]`,
-            files: [new AttachmentBuilder(resultado.canvas, { name: `bracket-${campeonato.rank}.png` })]
-          });
-        }
-      } catch (e) {
-        console.warn('[gerarBracket] Falha ao postar no canal #partidas:', e.message);
-      }
+    const formato = obterFormatoCampeonato(campeonato);
+    await criarCanaisFases(interaction.guild, campeonato, formato);
+    campeonato = await Campeonato.findById(campeonatoId).lean();
+    let partidasExistentes = await Partida.find({ campeonatoId }).lean();
+    if (!partidasExistentes.length) {
+      await gerarBracket(campeonatoId);
+      partidasExistentes = await Partida.find({ campeonatoId }).lean();
+    } else if (partidasExistentes.some((partida) => !partida.bracketMeta?.canalFase)) {
+      throw new BracketError('Já existem partidas antigas neste campeonato. Limpe-as antes de criar canais de fase.', 'BRACKET_JA_EXISTE');
     }
 
+    for (const partida of partidasExistentes) {
+      await publicarPartidaDiscord(partida._id, interaction.client);
+    }
+
+    const canaisFases = fasesDoFormato(formato)
+      .map((fase) => `<#${campeonato.canais?.fases?.[fase.key]}>`)
+      .join(', ');
     return interaction.editReply({
-      content: `✅ Bracket gerado e postado em <#${campeonato.canais?.partidas}>! ${resultado.totalPartidas} partidas criadas.`,
+      content: `✅ Chave criada e partidas publicadas em ${canaisFases}. ${partidasExistentes.length} partidas criadas.`,
       embeds: [],
       components: [],
       files: []
@@ -2282,7 +2486,11 @@ async function onConfirmarGerarBracket(interaction) {
       return interaction.editReply({ content: error.message, embeds: [], components: [] });
     }
     console.error('[confirmarGerarBracket] erro:', error);
-    return interaction.editReply({ content: 'Erro ao gerar bracket.', embeds: [], components: [] });
+    return interaction.editReply({
+      content: `Não foi possível criar ou publicar as fases: ${error.message || 'erro desconhecido'}.`,
+      embeds: [],
+      components: []
+    });
   }
 }
 
@@ -3379,8 +3587,8 @@ async function onConfigEntrada(interaction) {
   }
 
   const buttons = [
-    { type: 2, style: 3, label: 'Jogadores ilimitados', emoji: { name: '📝' }, custom_id: 'btn_config_entrada_aberta' },
-    { type: 2, style: 2, label: 'Definir limite de jogadores', emoji: { name: '🔧' }, custom_id: 'btn_config_entrada_manual' },
+    { type: 2, style: 3, label: 'Times ilimitados', emoji: { name: '📝' }, custom_id: 'btn_config_entrada_aberta' },
+    { type: 2, style: 2, label: 'Definir limite de times', emoji: { name: '🔧' }, custom_id: 'btn_config_entrada_manual' },
     { type: 2, style: 4, label: 'Voltar', emoji: { name: '⬅️' }, custom_id: 'btn_config_entrada_voltar' }
   ];
 
@@ -3422,7 +3630,7 @@ async function onConfigFormato(interaction) {
   const userId = interaction.user.id;
   const cfg = configPainel.get(`camp:config:${userId}`);
   if (!cfg || cfg.baseadoEmInscricoes !== false) {
-    return interaction.update({ content: 'Disponível apenas quando "Definir limite de jogadores".', embeds: [], components: [] });
+    return interaction.update({ content: 'Disponível apenas quando "Definir limite de times".', embeds: [], components: [] });
   }
   return interaction.update(buildConfigPanel(userId));
 }
@@ -3441,9 +3649,13 @@ async function onSelectConfigFormato(interaction) {
   if (cfg.etapa !== 'avancado'
     || typeof cfg.baseadoEmInscricoes !== 'boolean'
     || !obterFormatosDisponiveis(cfg).some((item) => item.value === formato)) {
+    const minimo = minimoTimesFormato(formato);
+    const conteudo = cfg.baseadoEmInscricoes === false && Number(cfg.limiteInscricoes) < minimo
+      ? `🔴 Formato incompatível: **${formato}** exige no mínimo ${minimo} times. Aumente o limite ou escolha outro formato.`
+      : 'Esse formato não está disponível para as opções escolhidas.';
     return diagUpdate('onSelectConfigFormato(invalido)', t0, interaction, {
       ...buildConfigPanel(userId),
-      content: 'Esse formato não está disponível para as opções escolhidas.'
+      content: conteudo
     });
   }
   cfg.formato = formato;
@@ -3457,17 +3669,16 @@ async function onConfigLimite(interaction) {
   }
   const cfg = configPainel.get(`camp:config:${interaction.user.id}`);
   if (!cfg || cfg.etapa !== 'avancado' || cfg.baseadoEmInscricoes !== false) {
-    return interaction.reply({ content: 'O limite só está disponível quando "Definir limite de jogadores" está selecionado.', flags: 64 });
+    return interaction.reply({ content: 'O limite só está disponível quando "Definir limite de times" está selecionado.', flags: 64 });
   }
   const modal = new ModalBuilder()
     .setCustomId('modal_config_limite_manual')
-    .setTitle('Limite de participantes');
+    .setTitle('Limite de times');
   const campo = new TextInputBuilder()
     .setCustomId('limite_manual')
-    .setLabel('Número de participantes (vazio = sem limite)')
+    .setLabel('Número de times (mínimo 4)')
     .setStyle(TextInputStyle.Short)
-    .setRequired(false)
-    .setMaxLength(3);
+    .setRequired(true);
   if (cfg.limiteInscricoes) campo.setValue(String(cfg.limiteInscricoes));
   modal.addComponents(new ActionRowBuilder().addComponents(campo));
   return interaction.showModal(modal);
@@ -3483,13 +3694,19 @@ async function onSubmitConfigLimite(interaction) {
     return interaction.reply({ content: 'A configuração expirou ou não permite definir limite.', flags: 64 });
   }
   const texto = interaction.fields.getTextInputValue('limite_manual').trim();
-  const limite = texto ? Number(texto) : null;
-  if (texto && (!Number.isInteger(limite) || limite < 2 || limite > 128)) {
-    return interaction.reply({ content: 'Informe um número inteiro entre 2 e 128, ou deixe vazio para não limitar.', flags: 64 });
+  const limite = Number(texto);
+  if (!Number.isSafeInteger(limite) || limite < 4) {
+    return interaction.reply({ content: 'Informe um número inteiro de times igual ou maior que 4.', flags: 64 });
   }
+  const formatoAnterior = cfg.formato;
   cfg.limiteInscricoes = limite;
+  if (cfg.formato && limite < minimoTimesFormato(cfg.formato)) cfg.formato = null;
   configPainel.set(`camp:config:${userId}`, cfg);
-  return interaction.update(buildConfigPanel(userId));
+  const painel = buildConfigPanel(userId);
+  if (formatoAnterior && !cfg.formato) {
+    painel.content = `🔴 ${formatoAnterior} exige no mínimo ${minimoTimesFormato(formatoAnterior)} times. Escolha um limite compatível ou outro formato.`;
+  }
+  return interaction.update(painel);
 }
 
 async function onConfigCriar(interaction) {

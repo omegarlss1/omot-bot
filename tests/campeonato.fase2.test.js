@@ -117,6 +117,202 @@ test('bracket preview e geração exigem ao menos quatro times', async () => {
   });
 });
 
+test('geradores locais cobrem formatos, BYEs e contagens sem máximo por formato', () => {
+  const {
+    gerarPlanoFormato,
+    validarQuantidadeTimes
+  } = require('../src/features/campeonato/services/formatos');
+
+  for (const quantidade of [4, 5, 8, 17]) {
+    const times = Array.from({ length: quantidade }, (_, i) => ({ _id: `time-${i}` }));
+    assert.equal(gerarPlanoFormato('single', times).length, quantidade - 1);
+    assert.equal(gerarPlanoFormato('double', times).length, 2 * quantidade - 2);
+    assert.equal(gerarPlanoFormato('round-robin', times).length, quantidade * (quantidade - 1) / 2);
+  }
+  const chaveDeCinco = gerarPlanoFormato(
+    'single',
+    Array.from({ length: 5 }, (_, i) => ({ _id: `bye-${i}` }))
+  );
+  assert.equal(chaveDeCinco.filter((partida) => partida.rodada === 1).length, 1);
+  assert.equal(chaveDeCinco.filter((partida) => partida.rodada === 2).length, 2);
+
+  const times = Array.from({ length: 8 }, (_, i) => ({ _id: `group-${i}` }));
+  const grupos = gerarPlanoFormato('grupos-mata-mata', times);
+  assert.equal(grupos.length, 4);
+  assert.ok(grupos.every((partida) => partida.fase.startsWith('GRUPO_')));
+  assert.equal(validarQuantidadeTimes('grupos-mata-mata', 7), false);
+  assert.equal(validarQuantidadeTimes('grupos-mata-mata', 8), true);
+  assert.equal(validarQuantidadeTimes('single', 3), false);
+});
+
+test('avança vencedores e perdedores para os lados corretos na dupla eliminação', async () => {
+  await comEnv({}, async () => {
+    const Partida = require('../src/db/models/partida');
+    const { gerarPlanoFormato } = require('../src/features/campeonato/services/formatos');
+    const { persistirPlano, propagarResultadoPartida } = require('../src/features/campeonato/services/bracket');
+    const originais = {
+      create: Partida.create,
+      findById: Partida.findById
+    };
+    const documentos = new Map();
+    let sequencia = 0;
+    Partida.create = async (dados) => {
+      const documento = {
+        ...dados,
+        _id: `partida-${++sequencia}`,
+        markModified() {},
+        async save() { documentos.set(String(this._id), this); return this; }
+      };
+      documentos.set(String(documento._id), documento);
+      return documento;
+    };
+    Partida.findById = async (id) => documentos.get(String(id)) || null;
+
+    try {
+      const nodes = gerarPlanoFormato('double', Array.from({ length: 8 }, (_, i) => ({ _id: `time-${i}` })));
+      const partidas = await persistirPlano({
+        campeonato: { _id: 'camp', dataEvento: new Date() },
+        guildId: 'guild',
+        nodes,
+        formato: 'double'
+      });
+      const primeiraRodada = partidas.filter((partida) => partida.fase === 'WINNERS_R1');
+      for (const partida of primeiraRodada) {
+        partida.status = 'FINALIZADA';
+        partida.vencedorId = partida.timeA;
+        await propagarResultadoPartida(partida._id);
+      }
+
+      const winnersRoundTwo = partidas.filter((partida) => partida.fase === 'WINNERS_R2');
+      const losersRoundOne = partidas.filter((partida) => partida.fase === 'LOSERS_R1');
+      assert.equal(winnersRoundTwo.length, 2);
+      assert.ok(winnersRoundTwo.every((partida) => partida.timeA && partida.timeB));
+      assert.equal(losersRoundOne.length, 2);
+      assert.ok(losersRoundOne.every((partida) => partida.timeA && partida.timeB));
+      const intervaloLower = losersRoundOne[0].estimatedStartAt - primeiraRodada[0].estimatedStartAt;
+      assert.equal(Math.round(intervaloLower / 60000), 20);
+    } finally {
+      Partida.create = originais.create;
+      Partida.findById = originais.findById;
+    }
+  });
+});
+
+test('grupos criam mata-mata automaticamente uma única vez quando todas as partidas terminam', async () => {
+  await comEnv({}, async () => {
+    const Partida = require('../src/db/models/partida');
+    const Campeonato = require('../src/db/models/campeonato');
+    const { gerarPlanoFormato } = require('../src/features/campeonato/services/formatos');
+    const { persistirPlano, propagarResultadoPartida } = require('../src/features/campeonato/services/bracket');
+    const originais = {
+      create: Partida.create,
+      find: Partida.find,
+      findById: Partida.findById,
+      findOne: Partida.findOne,
+      updateOne: Campeonato.updateOne,
+      findByIdCampeonato: Campeonato.findById
+    };
+    const documentos = new Map();
+    const estadoBracket = { gruposAvancados: false, gruposAvancando: false };
+    let sequencia = 0;
+    Partida.create = async (dados) => {
+      const documento = {
+        ...dados,
+        _id: `grupo-partida-${++sequencia}`,
+        markModified() {},
+        async save() { documentos.set(String(this._id), this); return this; }
+      };
+      documentos.set(String(documento._id), documento);
+      return documento;
+    };
+    Partida.findById = async (id) => documentos.get(String(id)) || null;
+    Partida.findOne = async () => null;
+    Partida.find = (filtro) => ({
+      lean: async () => [...documentos.values()].filter((partida) =>
+        String(partida.campeonatoId) === String(filtro.campeonatoId)
+        && (filtro.fase instanceof RegExp ? filtro.fase.test(partida.fase) : true))
+    });
+    Campeonato.findById = () => ({ lean: async () => ({ _id: 'camp', intervaloPartidasMin: 20 }) });
+    Campeonato.updateOne = async (_filtro, atualizacao) => {
+      const set = atualizacao.$set || {};
+      if (set['bracket.gruposAvancando'] === true) {
+        if (estadoBracket.gruposAvancados || estadoBracket.gruposAvancando) return { modifiedCount: 0 };
+        estadoBracket.gruposAvancando = true;
+      }
+      if (set['bracket.gruposAvancados'] === true) estadoBracket.gruposAvancados = true;
+      if (set['bracket.gruposAvancando'] === false) estadoBracket.gruposAvancando = false;
+      return { modifiedCount: 1 };
+    };
+
+    try {
+      const times = Array.from({ length: 8 }, (_, i) => ({ _id: `time-${i}` }));
+      const grupos = await persistirPlano({
+        campeonato: { _id: 'camp', dataEvento: new Date() },
+        guildId: 'guild',
+        nodes: gerarPlanoFormato('grupos-mata-mata', times),
+        formato: 'grupos-mata-mata'
+      });
+      for (const partida of grupos) {
+        partida.status = 'FINALIZADA';
+        partida.vencedorId = partida.timeA;
+        partida.placarEnviado = { timeA: { placar: '2x0' } };
+      }
+
+      await propagarResultadoPartida(grupos[grupos.length - 1]._id);
+      const mataMata = [...documentos.values()].filter((partida) => partida.fase.startsWith('KNOCKOUT_'));
+      assert.equal(mataMata.length, 7);
+      assert.equal(mataMata.filter((partida) => partida.rodada === 1).length, 4);
+      const primeiraRodadaMataMata = mataMata.filter((partida) => partida.fase === 'KNOCKOUT_R1');
+      assert.ok(primeiraRodadaMataMata.every((partida) =>
+        Number(String(partida.timeA).split('-')[1]) % 4 !== Number(String(partida.timeB).split('-')[1]) % 4
+      ));
+      assert.equal(estadoBracket.gruposAvancados, true);
+
+      await propagarResultadoPartida(grupos[grupos.length - 1]._id);
+      assert.equal([...documentos.values()].filter((partida) => partida.fase.startsWith('KNOCKOUT_')).length, 7);
+    } finally {
+      Partida.create = originais.create;
+      Partida.find = originais.find;
+      Partida.findById = originais.findById;
+      Partida.findOne = originais.findOne;
+      Campeonato.updateOne = originais.updateOne;
+      Campeonato.findById = originais.findByIdCampeonato;
+    }
+  });
+});
+
+test('classificação dos grupos desempata por pontos, saldo e gols', () => {
+  const { calcularClassificacaoGrupos } = require('../src/features/campeonato/services/bracket');
+  const partidas = [
+    { fase: 'GRUPO_A', timeA: 'a', timeB: 'b', status: 'FINALIZADA', vencedorId: 'a', placarEnviado: { timeA: { placar: '3x0' } } },
+    { fase: 'GRUPO_A', timeA: 'a', timeB: 'c', status: 'FINALIZADA', vencedorId: 'a', placarEnviado: { timeA: { placar: '1x0' } } },
+    { fase: 'GRUPO_A', timeA: 'b', timeB: 'c', status: 'FINALIZADA', vencedorId: 'b', placarEnviado: { timeA: { placar: '2x0' } } }
+  ];
+  const tabela = calcularClassificacaoGrupos(partidas);
+  assert.deepEqual(tabela.A.map((time) => time.timeId), ['a', 'b', 'c']);
+  assert.equal(tabela.A[0].pontos, 6);
+});
+
+test('desempate do grupo prioriza o confronto direto antes do saldo de gols', () => {
+  const { calcularClassificacaoGrupos } = require('../src/features/campeonato/services/bracket');
+  const placar = (timeA, timeB, resultado) => ({
+    fase: 'GRUPO_A',
+    timeA,
+    timeB,
+    status: 'FINALIZADA',
+    placarEnviado: { timeA: { placar: resultado } }
+  });
+  const tabela = calcularClassificacaoGrupos([
+    placar('time-1', 'time-2', '2x0'),
+    placar('time-1', 'time-3', '0x5'),
+    placar('time-1', 'time-4', '2x0'),
+    placar('time-2', 'time-3', '1x0'),
+    placar('time-2', 'time-4', '1x0'),
+    placar('time-3', 'time-4', '0x1')
+  ]);
+  assert.deepEqual(tabela.A.map((time) => time.timeId), ['time-1', 'time-2', 'time-4', 'time-3']);
+});
+
 test('canvasBracket.renderSingleBracketPng retorna PNG válido', async (t) => {
   await t.test('4 times geram buffer com header PNG', async () => {
     comEnv({}, async () => {

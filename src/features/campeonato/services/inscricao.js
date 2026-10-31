@@ -5,6 +5,7 @@ const { validarInscricao, InscricaoError } = require('../validators/inscricao');
 const { executarCorteCompleto } = require('../validators/corte');
 const { emitir, EVENTOS } = require('../events');
 const { criarCanaisTime } = require('../permissions');
+const { minimoTimesFormato } = require('./formatos');
 
 async function findCampeonatoPorCanalInscricao(canalId) {
   const campeonato = await Campeonato.findOne({ 'canais.inscricoes': canalId });
@@ -14,6 +15,14 @@ async function findCampeonatoPorCanalInscricao(canalId) {
 
 async function fecharPorPrazo(campeonato) {
   if (campeonato?.status !== 'INSCRICOES_ABERTAS' || !campeonato.dataLimiteInscricoes || new Date() <= campeonato.dataLimiteInscricoes) return campeonato;
+  if (campeonato.baseadoEmInscricoes === false) {
+    const minimo = minimoTimesFormato(campeonato.modalidade || campeonato.formato);
+    if (!Number.isSafeInteger(campeonato.limiteInscricoes) || campeonato.limiteInscricoes < minimo) return campeonato;
+  }
+  const quantidadeTimes = await Time.countDocuments({ campeonatoId: campeonato._id });
+  if (quantidadeTimes < minimoTimesFormato(campeonato.modalidade || campeonato.formato)) {
+    return campeonato;
+  }
   campeonato.status = 'INSCRICOES_FECHADAS';
   await campeonato.save();
   emitir(EVENTOS.INSCRICOES_FECHADAS, { campeonatoId: campeonato._id, motivo: 'PRAZO_ENCERRADO' });
@@ -27,7 +36,13 @@ async function findCampeonatoPorCanal(canalId) {
       { 'canais.partidas': canalId },
       { 'canais.prints': canalId },
       { 'canais.organizador': canalId },
-      { 'canais.avisos': canalId }
+      { 'canais.avisos': canalId },
+      { 'canais.fases.groups': canalId },
+      { 'canais.fases.mata-mata': canalId },
+      { 'canais.fases.winners': canalId },
+      { 'canais.fases.losers': canalId },
+      { 'canais.fases.final': canalId },
+      { 'canais.fases.round-robin': canalId }
     ]
   });
   return fecharPorPrazo(campeonato);
@@ -92,11 +107,23 @@ async function obterCapitaoInfo(member, perfil) {
   };
 }
 
+function validarLimiteConfigurado(campeonato) {
+  if (campeonato.baseadoEmInscricoes !== false) return;
+  const minimo = minimoTimesFormato(campeonato.modalidade || campeonato.formato);
+  if (!Number.isSafeInteger(campeonato.limiteInscricoes) || campeonato.limiteInscricoes < minimo) {
+    throw new InscricaoError(
+      `🔴 Defina um limite de pelo menos ${minimo} times para o formato selecionado antes de abrir inscrições.`,
+      'LIMITE_TIMES_INVALIDO'
+    );
+  }
+}
+
 async function inscreverCapitao({ guild, member, campeonato, nomeTime }) {
   if (!campeonato) throw new InscricaoError('Campeonato não encontrado.', 'INSCRICAO_CAMP_NAO_ENCONTRADO');
   if (campeonato.status !== 'INSCRICOES_ABERTAS') {
     throw new InscricaoError('Inscrições não estão abertas.', 'INSCRICAO_FECHADAS');
   }
+  validarLimiteConfigurado(campeonato);
   if (await jogadorJaInscrito(campeonato._id, member.id)) {
     throw new InscricaoError('Você já está inscrito neste campeonato.', 'INSCRICAO_DUPLICADA');
   }
@@ -158,6 +185,7 @@ async function inscreverTimeCompleto({ guild, campeonato, capitao, nickCapitao, 
   if (campeonato.status !== 'INSCRICOES_ABERTAS') {
     throw new InscricaoError('Inscrições não estão abertas.', 'INSCRICAO_FECHADAS');
   }
+  validarLimiteConfigurado(campeonato);
   const quantidadeEsperada = Number(campeonato.maxJogadoresPorTime);
   if (!Number.isInteger(quantidadeEsperada) || !Array.isArray(jogadores) || jogadores.length !== quantidadeEsperada - 1) {
     throw new InscricaoError(`Este modo exige ${quantidadeEsperada} jogador(es) por time, incluindo o capitão.`, 'TIME_QUANTIDADE_INVALIDA');
@@ -268,6 +296,7 @@ async function inscreverJogadorManual({ guild, campeonato, nomeJogador, nick, te
   if (campeonato.status !== 'INSCRICOES_ABERTAS') {
     throw new InscricaoError('Inscrições não estão abertas.', 'INSCRICAO_FECHADAS');
   }
+  validarLimiteConfigurado(campeonato);
 
   const nome = String(nomeJogador || '').trim();
   const nickSnapshot = String(nick || nome).trim();
@@ -339,11 +368,19 @@ async function inscreverJogadorManual({ guild, campeonato, nomeJogador, nick, te
 }
 
 async function fecharInscricoes(campeonatoId) {
-  const camp = await Campeonato.findByIdAndUpdate(
-    campeonatoId,
-    { $set: { status: 'INSCRICOES_FECHADAS' } },
-    { new: true }
-  );
+  const camp = await Campeonato.findById(campeonatoId);
+  if (!camp) throw new InscricaoError('Campeonato não encontrado.', 'CAMPEONATO_NAO_ENCONTRADO');
+  validarLimiteConfigurado(camp);
+  const quantidadeTimes = await Time.countDocuments({ campeonatoId });
+  const minimo = minimoTimesFormato(camp.modalidade || camp.formato);
+  if (quantidadeTimes < minimo) {
+    throw new InscricaoError(
+      `🔴 Não é possível encerrar as inscrições: o formato escolhido exige no mínimo ${minimo} times e há ${quantidadeTimes} inscritos.`,
+      'FORMATO_QUANTIDADE_INSUFICIENTE'
+    );
+  }
+  camp.status = 'INSCRICOES_FECHADAS';
+  await camp.save();
   if (camp) emitir(EVENTOS.INSCRICOES_FECHADAS, { campeonatoId });
   return camp;
 }

@@ -13,6 +13,7 @@ const EVENTOS = {
   CORTE_REALIZADO: 'corte.realizado',
   FORMATO_ESCOLHIDO: 'formato.escolhido',
   PARTIDA_CRIADA: 'partida.criada',
+  PARTIDA_ATUALIZADA: 'partida.atualizada',
   CHECKIN_REALIZADO: 'checkin.realizado',
   PLACAR_ENVIADO: 'placar.enviado',
   PLACAR_VALIDADO: 'placar.validado',

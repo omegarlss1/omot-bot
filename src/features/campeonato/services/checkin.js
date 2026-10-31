@@ -19,6 +19,9 @@ function dentroDaJanela(partida, agora = new Date()) {
 async function registrarCheckIn(partidaId, timeId, userId) {
   const partida = await Partida.findById(partidaId);
   if (!partida) throw new CheckinError('Partida não encontrada.', 'CHECKIN_PARTIDA_NAO_ENCONTRADA');
+  if (!partida.timeA || !partida.timeB) {
+    throw new CheckinError('Esta partida ainda aguarda a definição dos dois times.', 'CHECKIN_TIMES_INDEFINIDOS');
+  }
   if (partida.status !== 'AGUARDANDO_CHECKIN') {
     throw new CheckinError('Partida não está aguardando check-in.', 'CHECKIN_STATUS_INCORRETO');
   }
@@ -57,6 +60,9 @@ async function registrarCheckIn(partidaId, timeId, userId) {
 async function registrarCheckInOrganizador(partidaId, lado, organizadorId) {
   const partida = await Partida.findById(partidaId);
   if (!partida) throw new CheckinError('Partida não encontrada.', 'CHECKIN_PARTIDA_NAO_ENCONTRADA');
+  if (!partida.timeA || !partida.timeB) {
+    throw new CheckinError('Esta partida ainda aguarda a definição dos dois times.', 'CHECKIN_TIMES_INDEFINIDOS');
+  }
   if (partida.status !== 'AGUARDANDO_CHECKIN') throw new CheckinError('Partida não está aguardando check-in.', 'CHECKIN_STATUS_INCORRETO');
   if (!['A', 'B'].includes(lado)) throw new CheckinError('Lado inválido.', 'CHECKIN_LADO_INVALIDO');
   const campo = lado === 'A' ? 'checkIns.timeA' : 'checkIns.timeB';
@@ -71,6 +77,9 @@ async function registrarCheckInOrganizador(partidaId, lado, organizadorId) {
 async function verificarAdversarioFaltou(partidaId, timeReclamanteId, userId) {
   const partida = await Partida.findById(partidaId);
   if (!partida) throw new CheckinError('Partida não encontrada.', 'CHECKIN_PARTIDA_NAO_ENCONTRADA');
+  if (!partida.timeA || !partida.timeB) {
+    throw new CheckinError('Esta partida ainda aguarda a definição dos dois times.', 'CHECKIN_TIMES_INDEFINIDOS');
+  }
   const time = await Time.findById(timeReclamanteId);
   if (!time) throw new CheckinError('Time não encontrado.', 'CHECKIN_TIME_NAO_ENCONTRADO');
   if (time.capitaoId !== userId) {
@@ -87,6 +96,9 @@ async function verificarAdversarioFaltou(partidaId, timeReclamanteId, userId) {
 async function registrarWO({ partidaId, timeVencedorId, motivo, declaranteId, juiz = false }) {
   const partida = await Partida.findById(partidaId);
   if (!partida) throw new CheckinError('Partida não encontrada.', 'CHECKIN_PARTIDA_NAO_ENCONTRADA');
+  if (!partida.timeA || !partida.timeB) {
+    throw new CheckinError('Esta partida ainda aguarda a definição dos dois times.', 'CHECKIN_TIMES_INDEFINIDOS');
+  }
   if (partida.status === 'FINALIZADA' || partida.status === 'WO') {
     throw new CheckinError('Partida já finalizada.', 'CHECKIN_JA_FINALIZADA');
   }
