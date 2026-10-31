@@ -97,12 +97,12 @@ function embedCentralCampeonatos() {
   return {
     embeds: [{
       title: '🏆 Central de Campeonatos',
-      description: 'Gerencie seus campeonatos aqui. Clique em Novo Campeonato para começar.',
-      color: 0xFF6B00,
-      footer: { text: 'Ômega Bot - painel fixo' }
+      description: 'Crie e gerencie campeonatos em 2 minutos.',
+      color: 0xFFD700,
+      footer: { text: 'Ômega Bot • Painel fixo' }
     }],
     components: [[
-      { type: 2, style: 3, label: '🏆 Novo Campeonato', emoji: { name: '🏆' }, custom_id: 'btn_novo_campeonato' }
+      { type: 2, style: 3, label: 'Criar Novo Campeonato', emoji: { name: '➕' }, custom_id: 'btn_novo_campeonato' }
     ]]
   };
 }
@@ -300,15 +300,14 @@ function embedPainelAdmin({ campeonato }) {
   const botoes = [
     [
       { type: 2, style: 1, label: '📊 Classificação', custom_id: 'btn_camp_ver_classificacao', emoji: { name: '📊' } },
-      { type: 2, style: 1, label: '📣 Broadcast', custom_id: 'btn_camp_broadcast', emoji: { name: '📣' } }
+      { type: 2, style: 1, label: '👥 Gerenciar Times', custom_id: 'btn_camp_gerenciar_times_' + campeonato._id, emoji: { name: '👥' } }
     ],
     [
-      { type: 2, style: 1, label: '🎮 Gerar partidas', custom_id: 'btn_camp_gerar_bracket', emoji: { name: '🎮' } },
+      { type: 2, style: 1, label: '⚔️ Gerar Partidas', custom_id: 'btn_camp_gerar_bracket', emoji: { name: '⚔️' } },
       { type: 2, style: 1, label: '🔒 Encerrar inscrições', custom_id: 'btn_camp_fechar_inscricoes_' + campeonato._id, emoji: { name: '🔒' } }
     ],
     [
-      { type: 2, style: 1, label: '👥 Gerenciar Times', custom_id: 'btn_camp_gerenciar_times_' + campeonato._id, emoji: { name: '👥' } },
-      { type: 2, style: 2, label: '⚙️ Editar configurações', custom_id: 'btn_camp_editar_config_' + campeonato._id, emoji: { name: '⚙️' } }
+      { type: 2, style: 2, label: '📣 Broadcast', custom_id: 'btn_camp_broadcast', emoji: { name: '📣' } }
     ]
   ];
   
@@ -328,6 +327,7 @@ function embedPainelAdmin({ campeonato }) {
   
   if (campeonato.status !== 'CANCELADO') {
     botoes.push([
+      { type: 2, style: 2, label: '⚙️ Editar', custom_id: 'btn_camp_editar_config_' + campeonato._id, emoji: { name: '⚙️' } },
       { type: 2, style: 3, label: '🏁 Finalizar', custom_id: 'btn_camp_finalizar_' + campeonato._id, emoji: { name: '🏁' } },
       { type: 2, style: 4, label: '⛔ Cancelar', custom_id: 'btn_camp_cancelar_' + campeonato._id, emoji: { name: '⛔' } }
     ]);
@@ -338,9 +338,9 @@ function embedPainelAdmin({ campeonato }) {
   }
   return {
     embeds: [{
-      title: '🛠️ Painel Admin — ' + campeonato.rank.toUpperCase(),
-      description: 'Ações restritas a organizadores do campeonato `' + campeonato._id + '`.',
-      color: 0xFF6B00,
+      title: '🛠️ Painel do Organizador — ' + campeonato.rank.toUpperCase(),
+      description: '🟢 **INSCRIÇÕES ABERTAS** • acompanhe e conduza o campeonato.',
+      color: 0xFF8C00,
       fields: [
         { name: '📌 Status', value: campeonato.status, inline: true }
       ]
@@ -411,26 +411,25 @@ function embedPainelInscricao(campeonato, totalInscritos) {
     || Number(campeonato.maxJogadoresPorTime) <= 1;
   return {
     embeds: [{
-      title: '🎮 Inscrições Abertas — ' + rankLabel,
-      description: 'Campeonato: **' + campeonato.nome + '**\nModo: **' + campeonato.modo + '** | Tipo: **' + tipoDupla + '**\n\n' +
+      title: '🟢 Inscrições Abertas — ' + rankLabel,
+      description: '**' + campeonato.nome + '**\n' +
         (modoDuelo
           ? 'Clique em **Inscrever-se** para confirmar sua inscrição usando sua conta Discord. Você precisa ter o **cargo @' + rankLabel + '** e o rank correspondente na sua ficha.'
           : 'Clique em **Inscrever time** e informe os nicks e as contas Discord dos jogadores. Cada integrante precisa ter o **cargo @' + rankLabel + '** e o rank correspondente na ficha.'),
       color: 0x00C2FF,
       fields: [
-        { name: '📊 Inscritos', value: String(totalInscritos || 0) + ' time(s)', inline: true },
-        { name: '🎯 Modo', value: campeonato.modo, inline: true },
-        { name: '👥 Tipo', value: tipoDupla, inline: true }
+        { name: '📊 Vagas', value: String(totalInscritos || 0) + '/' + (campeonato.limiteInscricoes || '∞') + ' times', inline: true },
+        { name: '🎮 Detalhes', value: campeonato.modo + ' • ' + tipoDupla, inline: true }
       ]
     }],
     components: modoDuelo
       ? [[
           { type: 2, style: 3, label: '✅ Inscrever-se', custom_id: 'btn_camp_inscrever_se', emoji: { name: '✅' } },
-          { type: 2, style: 1, label: '📝 Inscrição manual', custom_id: 'btn_camp_inscricao_manual', emoji: { name: '📝' } }
+          { type: 2, style: 2, label: 'Pedir inscrição manual', custom_id: 'btn_camp_inscricao_manual', emoji: { name: '🛠️' } }
         ]]
       : [[
           { type: 2, style: 3, label: '👥 Inscrever time', custom_id: 'btn_camp_inscrever_time', emoji: { name: '👥' } },
-          { type: 2, style: 1, label: '📝 Inscrição manual', custom_id: 'btn_camp_inscricao_manual', emoji: { name: '📝' } }
+          { type: 2, style: 2, label: 'Pedir inscrição manual', custom_id: 'btn_camp_inscricao_manual', emoji: { name: '🛠️' } }
         ]]
   };
 }

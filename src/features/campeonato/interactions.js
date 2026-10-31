@@ -221,7 +221,7 @@ async function criarCanaisFases(guild, campeonato, formato) {
     }) : null;
     if (!canal) {
       canal = await guild.channels.create({
-        name: `${campeonato.rank}-${fase.nome}`.slice(0, 100),
+        name: `${fase.key === 'losers' ? '💀' : fase.key === 'final' ? '🏆' : '⚔️'}・${fase.nome}`.slice(0, 100),
         type: ChannelType.GuildText,
         ...(campeonato.categoriaId ? { parent: campeonato.categoriaId } : {}),
         permissionOverwrites: permissoes,
@@ -297,8 +297,9 @@ async function publicarPartidaDiscord(partidaId, client = clientPainelOrganizado
       ...botao,
       disabled: !partida.timeA || !partida.timeB || ['FINALIZADA', 'CANCELADA', 'WO'].includes(partida.status)
     }));
+  const card = embedPainelPartida({ partida, timeA, timeB });
   const payload = {
-    content: construirMensagemPartida(partida, timeA, timeB),
+    embeds: card.embeds,
     components: toActionRows([controles]),
     allowedMentions: { parse: [] }
   };
@@ -640,15 +641,15 @@ function buildConfigPanel(userId, configOverride) {
   const avancado = cfg.etapa === 'avancado';
   const nomeRanks = (cfg.ranksSelecionados || [])
     .map((rank) => config.ranks.find((item) => item.key === rank)?.label || rank)
-    .join(', ') || 'Ainda não selecionados';
+    .join(', ');
   const embed = {
     title: avancado ? '⚙️ Opções do Campeonato — Etapa 2/2' : '⚙️ Opções do Campeonato — Etapa 1/2',
-    description: `**${cfg.nome}** — ${new Date(cfg.dataInicio).toLocaleDateString('pt-BR')} às ${cfg.horarioInicio}\n` +
+    description: (avancado ? '●━━● **Etapa 2 de 2**' : '●━━○ **Etapa 1 de 2**') + `\n\n**${cfg.nome}** — ${new Date(cfg.dataInicio).toLocaleDateString('pt-BR')} às ${cfg.horarioInicio}\n` +
       `Limite de inscrições: ${new Date(cfg.dataLimiteInscricoes).toLocaleDateString('pt-BR')}\n\n` +
-      `**Modo:** ${cfg.modo ? getModoLabel(cfg.modo) : 'Não selecionado'}\n` +
-      `**Ranks:** ${nomeRanks}\n` +
-      `**Simultaneidade:** ${cfg.simultaneo === false ? 'Escalonadas' : 'Simultâneas'}\n` +
-      `**Entrada:** ${cfg.baseadoEmInscricoes === true ? 'Times ilimitados' : cfg.baseadoEmInscricoes === false ? 'Limitar número de times' : 'Não selecionada'}` +
+      `⚔️ **Modo:** ${cfg.modo ? '✅ ' + getModoLabel(cfg.modo) : 'Escolha um modo'}\n` +
+      `🏆 **Ranks:** ${nomeRanks ? '✅ ' + nomeRanks + ' (' + cfg.ranksSelecionados.length + ')' : 'Selecione os ranks'}\n` +
+      `⏱️ **Simultaneidade:** ✅ ${cfg.simultaneo === false ? 'Escalonadas' : 'Simultâneas'}\n` +
+      `👥 **Entrada:** ${cfg.baseadoEmInscricoes === true ? '✅ Times ilimitados' : cfg.baseadoEmInscricoes === false ? '✅ Limitar número de times' : 'Escolha o modo de entrada'}` +
       (avancado ? `\n**Tipo de equipe:** ${modoPermiteTipoDupla(cfg.modo) ? (cfg.tipoDupla || 'Não selecionado') : 'Não se aplica'}` +
         `\n**Formato:** ${cfg.formato || 'Não selecionado'}` +
         (cfg.baseadoEmInscricoes === false
@@ -3434,6 +3435,11 @@ async function onConfigContinuar(interaction) {
   cfg.etapa = 'avancado';
   if (cfg.baseadoEmInscricoes) {
     cfg.limiteInscricoes = null;
+    // Fluxo rápido: inscrições ilimitadas usa o formato padrão e não exige a etapa 2.
+    cfg.formato = cfg.formato || 'single';
+    if (modoPermiteTipoDupla(cfg.modo)) cfg.tipoDupla = cfg.tipoDupla || 'FIXA';
+    configPainel.set(`camp:config:${userId}`, cfg);
+    return onConfigCriar(interaction);
   }
   configPainel.set(`camp:config:${userId}`, cfg);
   return atualizarPainelConfig(interaction, userId, 'onConfigContinuar');

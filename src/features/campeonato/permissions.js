@@ -84,7 +84,7 @@ async function criarCanaisRank(guild, categoria, rank, evento, botUserId) {
   ];
 
   canais.avisos = await guild.channels.create({
-    name: `📣-${rank}-avisos${sufixo ? '-' + sufixo : ''}`,
+    name: '📢・avisos',
     type: ChannelType.GuildText,
     parent: categoria.id,
     permissionOverwrites: [
@@ -98,7 +98,7 @@ async function criarCanaisRank(guild, categoria, rank, evento, botUserId) {
   });
 
   canais.inscricoes = await guild.channels.create({
-    name: `${rankConfig.emoji}‐${rank}‐inscricoes${sufixo ? '‐' + sufixo : ''}`.replace(/‐/g, '-'),
+    name: '📝・inscricoes',
     type: ChannelType.GuildText,
     parent: categoria.id,
     permissionOverwrites: baseOverwrites,
@@ -107,7 +107,7 @@ async function criarCanaisRank(guild, categoria, rank, evento, botUserId) {
   });
 
   canais.partidas = await guild.channels.create({
-    name: `${rankConfig.emoji}‐${rank}‐partidas${sufixo ? '‐' + sufixo : ''}`.replace(/‐/g, '-'),
+    name: '⚔️・partidas',
     type: ChannelType.GuildText,
     parent: categoria.id,
     permissionOverwrites: baseOverwrites,
@@ -116,7 +116,7 @@ async function criarCanaisRank(guild, categoria, rank, evento, botUserId) {
   });
 
   canais.prints = await guild.channels.create({
-    name: `${rankConfig.emoji}‐${rank}‐prints${sufixo ? '‐' + sufixo : ''}`.replace(/‐/g, '-'),
+    name: '📸・prints',
     type: ChannelType.GuildText,
     parent: categoria.id,
     permissionOverwrites: baseOverwrites,
@@ -125,7 +125,7 @@ async function criarCanaisRank(guild, categoria, rank, evento, botUserId) {
   });
 
   canais.organizador = await guild.channels.create({
-    name: `🛠️-${rank}-organizador${sufixo ? '-' + sufixo : ''}`,
+    name: '🔧・painel-org',
     type: ChannelType.GuildText,
     parent: categoria.id,
     permissionOverwrites: [
@@ -151,7 +151,7 @@ async function recriarCanaisInscricoesPartidas(guild, categoriaId, rank, evento,
     permRank(rank)
   ];
   const inscricoes = await guild.channels.create({
-    name: `${rankConfig.emoji}‐${rank}‐inscricoes${sufixo ? '‐' + sufixo : ''}`.replace(/‐/g, '-'),
+    name: '📝・inscricoes',
     type: ChannelType.GuildText,
     parent: categoriaId,
     permissionOverwrites: overwrites,
@@ -159,7 +159,7 @@ async function recriarCanaisInscricoesPartidas(guild, categoriaId, rank, evento,
     reason: `Reativação de inscrições do rank ${rank} no evento ${evento.nome}`
   });
   const partidas = await guild.channels.create({
-    name: `${rankConfig.emoji}‐${rank}‐partidas${sufixo ? '‐' + sufixo : ''}`.replace(/‐/g, '-'),
+    name: '⚔️・partidas',
     type: ChannelType.GuildText,
     parent: categoriaId,
     permissionOverwrites: overwrites,

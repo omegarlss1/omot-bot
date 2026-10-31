@@ -7,6 +7,7 @@ const path = require('node:path');
 
 function startHttpServer(getBotStatus, getClient) {
   const app = express();
+  app.use('/prototipo', express.static(path.join(__dirname, '..', '..', 'public')));
 
   app.get('/', (req, res) => {
     res.send('Ômot ativo! 🚀');
