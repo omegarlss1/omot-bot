@@ -706,50 +706,53 @@ async function onAbrirPainelCriacao(interaction) {
 
 function buildConfigModal() {
   const modal = new ModalBuilder()
-    .setCustomId('modal_config_campeonato_dados')
-    .setTitle('Configurações do Campeonato — Dados');
+    .setCustomId('modal_dados_campeonato')
+    .setTitle('Novo Campeonato — Dados');
   modal.addComponents(
     new ActionRowBuilder().addComponents(
       new TextInputBuilder()
-        .setCustomId('camp_nome')
+        .setCustomId('nome_campeonato')
         .setLabel('Nome do Campeonato')
         .setStyle(TextInputStyle.Short)
-        .setPlaceholder('Copa Ômega #42')
+        .setPlaceholder('Ex: Ômega #42')
         .setMinLength(3)
-        .setMaxLength(60)
+        .setMaxLength(50)
         .setRequired(true)
     ),
     new ActionRowBuilder().addComponents(
       new TextInputBuilder()
-        .setCustomId('camp_data_inicio')
-        .setLabel('Data de início (DD/MM/AAAA)')
+        .setCustomId('data_inicio')
+        .setLabel('Data de Início')
         .setStyle(TextInputStyle.Short)
         .setPlaceholder('01/12/2026')
+        .setMaxLength(10)
         .setRequired(true)
     ),
     new ActionRowBuilder().addComponents(
       new TextInputBuilder()
-        .setCustomId('camp_data_limite')
-        .setLabel('Data limite inscrições (DD/MM/AAAA)')
+        .setCustomId('data_limite')
+        .setLabel('Limite de Inscrições')
         .setStyle(TextInputStyle.Short)
         .setPlaceholder('30/11/2026')
+        .setMaxLength(10)
         .setRequired(true)
     ),
     new ActionRowBuilder().addComponents(
       new TextInputBuilder()
-        .setCustomId('camp_horario_inicio')
-        .setLabel('Horário base (HH:MM)')
+        .setCustomId('horario_base')
+        .setLabel('Horário Base')
         .setStyle(TextInputStyle.Short)
         .setPlaceholder('19:00')
+        .setMaxLength(5)
         .setRequired(true)
     ),
     new ActionRowBuilder().addComponents(
       new TextInputBuilder()
-        .setCustomId('camp_descricao')
-        .setLabel('Descrição / Carta do organizador (opcional)')
+        .setCustomId('descricao')
+        .setLabel('Carta do Organizador')
         .setStyle(TextInputStyle.Paragraph)
-        .setPlaceholder('Uma breve mensagem para os participantes…')
-        .setMaxLength(4000)
+        .setPlaceholder('Regras extras, premiação, mensagem para os jogadores (opcional)')
+        .setMaxLength(500)
         .setRequired(false)
     )
   );
@@ -760,12 +763,12 @@ async function onSubmitConfigDados(interaction) {
   if (!temPermissaoOrganizador(interaction.member)) {
     return interaction.reply({ content: 'Sem permissao.', flags: 64 });
   }
-  const nome = interaction.fields.getTextInputValue('camp_nome');
-  const dataInicioStr = interaction.fields.getTextInputValue('camp_data_inicio') || '';
+  const nome = interaction.fields.getTextInputValue('nome_campeonato');
+  const dataInicioStr = interaction.fields.getTextInputValue('data_inicio') || '';
   const dataInicio = parseDataBR(dataInicioStr);
-  const dataLimite = parseDataBR(interaction.fields.getTextInputValue('camp_data_limite') || '');
-  const horarioInicio = interaction.fields.getTextInputValue('camp_horario_inicio')?.trim() || '19:00';
-  const descricao = interaction.fields.getTextInputValue('camp_descricao')?.trim() || '';
+  const dataLimite = parseDataBR(interaction.fields.getTextInputValue('data_limite') || '');
+  const horarioInicio = interaction.fields.getTextInputValue('horario_base')?.trim() || '19:00';
+  const descricao = interaction.fields.getTextInputValue('descricao')?.trim() || '';
 
   if (!dataInicio) {
     return interaction.reply({ content: 'Data de início inválida. Use uma data real no formato DD/MM/AAAA.', flags: 64 });
@@ -4143,7 +4146,7 @@ function register(registry) {
   registry.button('criar_campeonato', onAbrirPainelCriacao);
   registry.button('btn_novo_campeonato', onAbrirPainelCriacao);
   // FLUXO 2 - Config panel
-  registry.modal('modal_config_campeonato_dados', onSubmitConfigDados);
+  registry.modal('modal_dados_campeonato', onSubmitConfigDados);
   registry.button('btn_config_dados', onConfigDados);
   registry.button('btn_config_simultaneo', onConfigSimultaneo);
   registry.button('btn_config_modo', onConfigModo);
@@ -4248,6 +4251,7 @@ module.exports = {
   register,
   temPermissaoOrganizador,
   buildConfigPanel,
+  buildConfigModal,
   isConfigComplete,
   obterFormatosDisponiveis,
   parseDataBR,

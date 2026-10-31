@@ -34,6 +34,43 @@ test('eventos: novos eventos da Fase 3 registrados', () => {
   });
 });
 
+test('modal de dados do campeonato usa labels curtos e placeholders explicativos', () => {
+  comEnv({}, () => {
+    const { buildConfigModal } = require('../src/features/campeonato/interactions');
+    const modal = buildConfigModal().toJSON();
+    const campos = modal.components.map((row) => row.components[0]);
+
+    assert.equal(modal.custom_id, 'modal_dados_campeonato');
+    assert.equal(modal.title, 'Novo Campeonato — Dados');
+    assert.deepEqual(campos.map(({ custom_id }) => custom_id), [
+      'nome_campeonato',
+      'data_inicio',
+      'data_limite',
+      'horario_base',
+      'descricao'
+    ]);
+    assert.deepEqual(campos.map(({ label }) => label), [
+      'Nome do Campeonato',
+      'Data de Início',
+      'Limite de Inscrições',
+      'Horário Base',
+      'Carta do Organizador'
+    ]);
+    assert.ok(campos.every(({ label }) => label.length <= 22));
+    assert.deepEqual(campos.map(({ placeholder }) => placeholder), [
+      'Ex: Ômega #42',
+      '01/12/2026',
+      '30/11/2026',
+      '19:00',
+      'Regras extras, premiação, mensagem para os jogadores (opcional)'
+    ]);
+    assert.deepEqual(campos.map(({ style }) => style), [1, 1, 1, 1, 2]);
+    assert.deepEqual(campos.map(({ required }) => required), [true, true, true, true, false]);
+    assert.deepEqual(campos.map(({ max_length }) => max_length), [50, 10, 10, 5, 500]);
+    assert.equal(campos[0].min_length, 3);
+  });
+});
+
 test('painel consolidado lista times, check-ins e placares com ações administrativas', () => {
   comEnv({}, () => {
     const { buildPainelOrganizadorCampeonato } = require('../src/features/campeonato/interactions');
