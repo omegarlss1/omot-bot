@@ -39,8 +39,10 @@ const campeonatoSchema = new mongoose.Schema({
     organizador: { type: String, default: null },
     avisos: { type: String, default: null },
     geral: { type: String, default: null },
-    fases: { type: mongoose.Schema.Types.Mixed, default: () => ({}) }
+    fases: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
+    fasesMensagens: { type: mongoose.Schema.Types.Mixed, default: () => ({}) }
   },
+  painelInscricaoMessageId: { type: String, default: null },
   bracket: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
   painelOrganizador: {
     fixaMessageId: { type: String, default: null },

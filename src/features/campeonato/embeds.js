@@ -99,6 +99,7 @@ function embedCentralCampeonatos() {
       title: '🏆 Central de Campeonatos',
       description: 'Crie e gerencie campeonatos em 2 minutos.',
       color: 0xFFD700,
+      thumbnail: { url: 'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f3c6.png' },
       footer: { text: 'Ômega Bot • Painel fixo' }
     }],
     components: [[
@@ -175,10 +176,9 @@ function embedEventoCriado({ evento, categoria, campeonatos }) {
         name: c.rank.toUpperCase() + ' - ' + c.modo,
         value: [
           '📝 Inscrições: <#' + (c.canais?.inscricoes || '—') + '>',
-          '🎮 Partidas: <#' + (c.canais?.partidas || '—') + '>',
-          '📸 Prints: <#' + (c.canais?.prints || '—') + '>',
           '🛠️ Organizador: <#' + (c.canais?.organizador || '—') + '>',
           '📣 Avisos: <#' + (c.canais?.avisos || '—') + '>',
+          '⚔️ Canais de fase são criados ao gerar as partidas.',
           c.painelInscricaoErro ? '⚠️ O painel de inscrição não pôde ser publicado. Verifique as permissões do bot neste canal.' : '✅ Botão de inscrição publicado'
         ].join('\n'),
         inline: true
@@ -190,38 +190,55 @@ function embedEventoCriado({ evento, categoria, campeonatos }) {
 function embedPainelPartida({ partida, timeA, timeB }) {
   const checkA = partida.checkIns?.timeA?.fez ? '✅' : '⏳';
   const checkB = partida.checkIns?.timeB?.fez ? '✅' : '⏳';
-  const statusEmoji = {
-    AGUARDANDO_CHECKIN: '⏰', AGUARDANDO_PLACAR: '🎮', AGUARDANDO_VALIDACAO: '⏳',
-    EM_DISPUTA_ORGANIZADOR: '⚖️', FINALIZADA: '🏆', CANCELADA: '❌', WO: '🚫'
-  }[partida.status] || '❓';
-  const estimatedStartAt = partida.estimatedStartAt
-    ? new Date(partida.estimatedStartAt).toLocaleString('pt-BR')
-    : 'Não definido';
-  const fields = [
-    { name: '🟦 Time A', value: (timeA?.nome || 'A definir') + ' ' + checkA, inline: true },
-    { name: '🟥 Time B', value: (timeB?.nome || 'A definir') + ' ' + checkB, inline: true },
-    { name: '🕐 Horário estimado', value: estimatedStartAt, inline: true },
-    { name: '✅ Janela check-in', value: new Date(partida.janelaCheckIn.inicio).toLocaleString('pt-BR') + ' → ' + new Date(partida.janelaCheckIn.fim).toLocaleString('pt-BR'), inline: true }
-  ];
-  if (partida.duelos && partida.duelos.length > 0) {
-    const linhas = partida.duelos.map((d, idx) => {
-      const status = d.vencedorLado ? ('Vencedor: ' + d.vencedorLado) : 'Pendente';
-      return 'Dupla ' + (idx + 1) + ': ' + (d.placarA || '—') + ' x ' + (d.placarB || '—') + ' — ' + status;
-    }).join('\n');
-    fields.push({ name: '⚔️ Duplas', value: linhas, inline: false });
-  }
+  const timeTexto = (time) => (time?.jogadores || [])
+    .map((jogador) => jogador.userId && !String(jogador.userId).startsWith('MANUAL_') ? `<@${jogador.userId}>` : null)
+    .filter(Boolean)
+    .join(' ');
+  const placar = partida.placarEnviado?.timeA?.placar || partida.placarEnviado?.timeB?.placar || '0 x 0';
+  const encerrada = ['FINALIZADA', 'CANCELADA', 'WO'].includes(partida.status);
+  const vencedor = String(partida.vencedorId) === String(partida.timeB) ? timeB : timeA;
+  const status = {
+    AGUARDANDO_CHECKIN: '⏳ Aguardando check-in',
+    AGUARDANDO_PLACAR: '🔴 AO VIVO',
+    AGUARDANDO_VALIDACAO: '🧾 Aguardando validação',
+    EM_DISPUTA_ORGANIZADOR: '⚖️ Em análise',
+    FINALIZADA: `✅ Finalizada — Vencedor: ${vencedor?.nome || 'definido'} (${placar})`,
+    CANCELADA: '❌ Cancelada',
+    WO: `✅ Finalizada por W.O. — ${vencedor?.nome || 'Vencedor'}`
+  }[partida.status] || '⏳ Aguardando';
+  const numero = Number(String(partida.bracketMeta?.matchKey || '').match(/\d+$/)?.[0]) || partida.rodada || 1;
+  const horario = partida.estimatedStartAt
+    ? `<t:${Math.floor(new Date(partida.estimatedStartAt).getTime() / 1000)}:t>`
+    : 'Horário a definir';
+  const controles = encerrada
+    ? [
+      { type: 2, style: 2, label: 'Ver Prints', custom_id: 'btn_camp_ver_prints_' + partida._id, emoji: { name: '📊' } },
+      { type: 2, style: 2, label: 'Abrir Thread', custom_id: 'btn_camp_abrir_thread_' + partida._id, emoji: { name: '💬' } }
+    ]
+    : [
+      { type: 2, style: 3, label: 'Check-in', custom_id: 'btn_camp_checkin_' + partida._id, emoji: { name: '✅' } },
+      { type: 2, style: 4, label: 'Reportar W.O.', custom_id: 'btn_camp_adversario_faltou_' + partida._id, emoji: { name: '⚠️' } },
+      { type: 2, style: 1, label: 'Enviar placar', custom_id: 'btn_camp_enviar_placar_' + partida._id, emoji: { name: '🏆' } },
+      { type: 2, style: 2, label: 'Enviar Print', custom_id: 'btn_camp_enviar_print_' + partida._id, emoji: { name: '📸' } },
+      { type: 2, style: 2, label: 'Abrir Thread', custom_id: 'btn_camp_abrir_thread_' + partida._id, emoji: { name: '💬' } }
+    ];
   return {
     embeds: [{
-      title: statusEmoji + ' Partida — Rodada ' + (partida.rodada || 1),
-      description: 'Fase: **' + (partida.fase || 'R1') + '** | Status: **' + partida.status + '**',
-      color: 0x00C2FF,
-      fields
+      title: `🕒 Partida #${numero} — ${horario}`,
+      description: `**${timeA?.nome || 'A definir'}** ${checkA}  **${placar}**  **VS**  ${checkB} **${timeB?.nome || 'A definir'}**\n` +
+        `${timeTexto(timeA)}${timeTexto(timeA) && timeTexto(timeB) ? ' · ' : ''}${timeTexto(timeB)}`,
+      color: partida.status === 'AGUARDANDO_PLACAR' ? 0xE74C3C : encerrada ? 0x23A559 : 0x5865F2,
+      footer: { text: `${status} · Fase ${partida.fase || 'R1'}` },
+      ...(partida.duelos?.length ? {
+        fields: [{
+          name: '⚔️ Duplas',
+          value: partida.duelos.map((duelo, index) =>
+            `Dupla ${index + 1}: ${duelo.placarA ?? '—'} x ${duelo.placarB ?? '—'}`
+          ).join('\n').slice(0, 1000)
+        }]
+      } : {})
     }],
-    components: [[
-      { type: 2, style: 3, label: '✅ Check-in', custom_id: 'btn_camp_checkin_' + partida._id, emoji: { name: '✅' } },
-      { type: 2, style: 4, label: '🚫 Adversário não compareceu', custom_id: 'btn_camp_adversario_faltou_' + partida._id, emoji: { name: '🚫' } },
-      { type: 2, style: 1, label: '🏆 Enviar Placar', custom_id: 'btn_camp_enviar_placar_' + partida._id, emoji: { name: '🏆' } }
-    ]]
+    components: [controles]
   };
 }
 
@@ -296,14 +313,32 @@ function embedCampeaoDefinido({ vencedor, podio }) {
   };
 }
 
-function embedPainelAdmin({ campeonato }) {
+function embedPainelAdmin({ campeonato, totalTimes = 0 }) {
+  const status = {
+    INSCRICOES_ABERTAS: '🟢 INSCRIÇÕES ABERTAS',
+    INSCRICOES_FECHADAS: '🔒 INSCRIÇÕES ENCERRADAS',
+    AGUARDANDO_INICIO: '🕒 AGUARDANDO INÍCIO',
+    EM_ANDAMENTO: '🔴 EM ANDAMENTO',
+    FINALIZADO: '🏁 FINALIZADO',
+    CANCELADO: '⛔ CANCELADO'
+  }[campeonato.status] || '⚪ STATUS INDEFINIDO';
+  const total = campeonato.limiteInscricoes
+    ? `${totalTimes}/${campeonato.limiteInscricoes} times`
+    : `${totalTimes} ${totalTimes === 1 ? 'time' : 'times'}`;
   const botoes = [
     [
       { type: 2, style: 1, label: '📊 Classificação', custom_id: 'btn_camp_ver_classificacao', emoji: { name: '📊' } },
       { type: 2, style: 1, label: '👥 Gerenciar Times', custom_id: 'btn_camp_gerenciar_times_' + campeonato._id, emoji: { name: '👥' } }
     ],
     [
-      { type: 2, style: 1, label: '⚔️ Gerar Partidas', custom_id: 'btn_camp_gerar_bracket', emoji: { name: '⚔️' } },
+      {
+        type: 2,
+        style: 1,
+        label: '⚔️ Gerar Partidas',
+        custom_id: 'btn_camp_gerar_bracket_' + campeonato._id,
+        emoji: { name: '⚔️' },
+        disabled: campeonato.status === 'INSCRICOES_ABERTAS'
+      },
       { type: 2, style: 1, label: '🔒 Encerrar inscrições', custom_id: 'btn_camp_fechar_inscricoes_' + campeonato._id, emoji: { name: '🔒' } }
     ],
     [
@@ -311,20 +346,12 @@ function embedPainelAdmin({ campeonato }) {
     ]
   ];
   
-  // Botão para definir formato quando baseado em inscrições e ainda não tem formato
   if (campeonato.baseadoEmInscricoes && !campeonato.modalidade && campeonato.status === 'INSCRICOES_ABERTAS') {
     botoes.push([
       { type: 2, style: 3, label: '📋 Definir Formato', custom_id: 'btn_camp_definir_formato_' + campeonato._id, emoji: { name: '📋' } }
     ]);
   }
-  
-  // Botão gerar bracket quando já tem formato definido
-  if (campeonato.baseadoEmInscricoes && campeonato.modalidade && campeonato.status === 'INSCRICOES_FECHADAS') {
-    botoes.push([
-      { type: 2, style: 3, label: '🎯 Gerar Bracket', custom_id: 'btn_camp_gerar_bracket_' + campeonato._id, emoji: { name: '🎯' } }
-    ]);
-  }
-  
+
   if (campeonato.status !== 'CANCELADO') {
     botoes.push([
       { type: 2, style: 2, label: '⚙️ Editar', custom_id: 'btn_camp_editar_config_' + campeonato._id, emoji: { name: '⚙️' } },
@@ -339,11 +366,8 @@ function embedPainelAdmin({ campeonato }) {
   return {
     embeds: [{
       title: '🛠️ Painel do Organizador — ' + campeonato.rank.toUpperCase(),
-      description: '🟢 **INSCRIÇÕES ABERTAS** • acompanhe e conduza o campeonato.',
+      description: `**${status} • ${total}**`,
       color: 0xFF8C00,
-      fields: [
-        { name: '📌 Status', value: campeonato.status, inline: true }
-      ]
     }],
     components: botoes
   };
@@ -405,31 +429,43 @@ module.exports = {
 };
 
 function embedPainelInscricao(campeonato, totalInscritos) {
-  const rankLabel = String(campeonato.rank || '').toUpperCase();
-  const tipoDupla = campeonato.tipoDupla || 'NÃO SE APLICA';
+  const rankLabel = config.ranks.find((rank) => rank.key === campeonato.rank)?.label || campeonato.rank || 'Campeonato';
+  const numero = String(campeonato.nome || '').match(/#\s*(\d+)/)?.[1];
   const modoDuelo = String(campeonato.modo || '').toLowerCase() === '1v1'
     || Number(campeonato.maxJogadoresPorTime) <= 1;
+  const limite = Number(campeonato.limiteInscricoes) || 0;
+  const progresso = limite ? Math.min(1, (Number(totalInscritos) || 0) / limite) : 0;
+  const barra = limite
+    ? `${'🟩'.repeat(Math.round(progresso * 8))}${'⬛'.repeat(8 - Math.round(progresso * 8))}`
+    : '♾️ Inscrições sem limite de vagas';
+  const statusAberto = campeonato.status === 'INSCRICOES_ABERTAS';
   return {
     embeds: [{
-      title: '🟢 Inscrições Abertas — ' + rankLabel,
-      description: '**' + campeonato.nome + '**\n' +
-        (modoDuelo
-          ? 'Clique em **Inscrever-se** para confirmar sua inscrição usando sua conta Discord. Você precisa ter o **cargo @' + rankLabel + '** e o rank correspondente na sua ficha.'
-          : 'Clique em **Inscrever time** e informe os nicks e as contas Discord dos jogadores. Cada integrante precisa ter o **cargo @' + rankLabel + '** e o rank correspondente na ficha.'),
-      color: 0x00C2FF,
+      title: `${statusAberto ? '🟢 Inscrições abertas' : '🔒 Inscrições encerradas'} — ${rankLabel}${numero ? ` #${numero}` : ''}`,
+      description: (modoDuelo
+        ? 'Inscreva-se com sua conta Discord.'
+        : 'Inscreva seu time e informe os jogadores.') +
+        `\nCargo necessário: **${rankLabel}**.`,
+      color: statusAberto ? 0x23A559 : 0x808080,
       fields: [
-        { name: '📊 Vagas', value: String(totalInscritos || 0) + '/' + (campeonato.limiteInscricoes || '∞') + ' times', inline: true },
-        { name: '🎮 Detalhes', value: campeonato.modo + ' • ' + tipoDupla, inline: true }
+        { name: '🎮 Formato', value: String(campeonato.modo || '—'), inline: true },
+        {
+          name: '👥 Times',
+          value: limite
+            ? `${Number(totalInscritos) || 0}/${limite}\n${barra}`
+            : `${Number(totalInscritos) || 0} inscritos\n${barra}`,
+          inline: true
+        }
       ]
     }],
     components: modoDuelo
       ? [[
-          { type: 2, style: 3, label: '✅ Inscrever-se', custom_id: 'btn_camp_inscrever_se', emoji: { name: '✅' } },
-          { type: 2, style: 2, label: 'Pedir inscrição manual', custom_id: 'btn_camp_inscricao_manual', emoji: { name: '🛠️' } }
+          { type: 2, style: 3, label: 'Inscrever meu time', custom_id: 'btn_camp_inscrever_se', emoji: { name: '✅' }, disabled: !statusAberto },
+          { type: 2, style: 2, label: 'Pedir inscrição manual', custom_id: 'btn_camp_inscricao_manual', emoji: { name: '🛠️' }, disabled: !statusAberto }
         ]]
       : [[
-          { type: 2, style: 3, label: '👥 Inscrever time', custom_id: 'btn_camp_inscrever_time', emoji: { name: '👥' } },
-          { type: 2, style: 2, label: 'Pedir inscrição manual', custom_id: 'btn_camp_inscricao_manual', emoji: { name: '🛠️' } }
+          { type: 2, style: 3, label: 'Inscrever meu time', custom_id: 'btn_camp_inscrever_time', emoji: { name: '✅' }, disabled: !statusAberto },
+          { type: 2, style: 2, label: 'Pedir inscrição manual', custom_id: 'btn_camp_inscricao_manual', emoji: { name: '🛠️' }, disabled: !statusAberto }
         ]]
   };
 }

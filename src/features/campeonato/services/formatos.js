@@ -25,6 +25,29 @@ function validarQuantidadeTimes(formato, quantidade) {
   return Number.isInteger(quantidade) && quantidade >= minimo;
 }
 
+function faseEliminatoriaCanal(rodada, totalRodadas) {
+  const rodadasRestantes = totalRodadas - rodada;
+  if (rodadasRestantes === 0) return 'final';
+  if (rodadasRestantes === 1) return 'semis';
+  if (rodadasRestantes === 2) return 'quartas';
+  return 'classificatorias';
+}
+
+function fasesEliminatoria(totalTimes) {
+  const totalRodadas = Math.ceil(Math.log2(Math.max(2, totalTimes)));
+  const fases = new Set();
+  for (let rodada = 1; rodada <= totalRodadas; rodada++) {
+    fases.add(faseEliminatoriaCanal(rodada, totalRodadas));
+  }
+  const nomes = {
+    classificatorias: 'classificatorias',
+    quartas: 'quartas',
+    semis: 'semis',
+    final: 'final'
+  };
+  return [...fases].map((key) => ({ key, nome: nomes[key] }));
+}
+
 function criarPartida(nodes, { fase, grupo = null, rodada, sourceA, sourceB, canalFase }) {
   const key = `match-${nodes.length + 1}`;
   const node = {
@@ -40,7 +63,7 @@ function criarPartida(nodes, { fase, grupo = null, rodada, sourceA, sourceB, can
   return { tipo: 'vencedor', matchKey: key };
 }
 
-function criarEliminatoriaSimples(times, { nodes = [], fasePrefix = '', canalFase = 'mata-mata' } = {}) {
+function criarEliminatoriaSimples(times, { nodes = [], fasePrefix = '', canalFase = null } = {}) {
   if (times.length < 2) return nodes;
   let tamanho = 1;
   while (tamanho < times.length) tamanho *= 2;
@@ -73,7 +96,7 @@ function criarEliminatoriaSimples(times, { nodes = [], fasePrefix = '', canalFas
       rodada,
       sourceA: origemA,
       sourceB: origemB,
-      canalFase
+      canalFase: canalFase || faseEliminatoriaCanal(rodada, rodadasTotais)
     });
   }
   construir(folhas, rodadasTotais);
@@ -226,6 +249,8 @@ module.exports = {
   normalizarFormato,
   minimoTimesFormato,
   validarQuantidadeTimes,
+  faseEliminatoriaCanal,
+  fasesEliminatoria,
   criarEliminatoriaSimples,
   criarEliminatoriaDupla,
   criarRoundRobin,

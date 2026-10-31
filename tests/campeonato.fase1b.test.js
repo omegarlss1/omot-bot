@@ -240,7 +240,7 @@ test('handlers do módulo campeonato registrados', async (t) => {
       const interactions = require('../src/features/campeonato/interactions');
       const r = new InteractionRegistry();
       interactions.register(r);
-      assert.equal(r.buttons.length, 65);
+      assert.equal(r.buttons.length, 67);
       assert.equal(r.selects.length, 20);
       assert.equal(r.modals.length, 13);
     });
@@ -259,7 +259,7 @@ test('painel de inscrição', async (t) => {
       }, 0);
       const payload = toActionRows(painel.components).map((row) => row.toJSON());
       assert.equal(payload[0].components[0].custom_id, 'btn_camp_inscrever_time');
-      assert.equal(payload[0].components[0].label, '👥 Inscrever time');
+      assert.equal(payload[0].components[0].label, 'Inscrever meu time');
       assert.equal(payload[0].components[1].custom_id, 'btn_camp_inscricao_manual');
       assert.equal(payload[0].components.some((component) => component.custom_id === 'btn_camp_selecionar_capitao'), false);
     });

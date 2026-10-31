@@ -42,7 +42,10 @@ async function findCampeonatoPorCanal(canalId) {
       { 'canais.fases.winners': canalId },
       { 'canais.fases.losers': canalId },
       { 'canais.fases.final': canalId },
-      { 'canais.fases.round-robin': canalId }
+      { 'canais.fases.round-robin': canalId },
+      { 'canais.fases.classificatorias': canalId },
+      { 'canais.fases.quartas': canalId },
+      { 'canais.fases.semis': canalId }
     ]
   });
   return fecharPorPrazo(campeonato);

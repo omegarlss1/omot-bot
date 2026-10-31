@@ -98,8 +98,6 @@ async function criarEvento(guild, parametros) {
     const canais = await criarCanaisRank(guild, categoria, rank, { nome: evento.nome, sufixoNumero: sufixo }, botUserId);
     camp.canais = {
       inscricoes: canais.inscricoes.id,
-      partidas: canais.partidas.id,
-      prints: canais.prints.id,
       organizador: canais.organizador.id,
       avisos: canais.avisos.id,
       geral: canalGeral.id

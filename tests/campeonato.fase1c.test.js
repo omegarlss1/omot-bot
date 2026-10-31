@@ -264,13 +264,13 @@ test('inscricao.validarInscricao', async (t) => {
 });
 
 test('handlers da Fase 1C registrados', async (t) => {
-  await t.test('65 botões, 20 selects e 13 modais registrados', () => {
+  await t.test('67 botões, 20 selects e 13 modais registrados', () => {
     comEnv({}, () => {
       const { InteractionRegistry } = require('../src/interactions/registry');
       const interactions = require('../src/features/campeonato/interactions');
       const r = new InteractionRegistry();
       interactions.register(r);
-      assert.equal(r.buttons.length, 65);
+      assert.equal(r.buttons.length, 67);
       assert.equal(r.selects.length, 20);
       assert.equal(r.modals.length, 13);
     });

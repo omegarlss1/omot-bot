@@ -120,6 +120,7 @@ test('bracket preview e geração exigem ao menos quatro times', async () => {
 test('geradores locais cobrem formatos, BYEs e contagens sem máximo por formato', () => {
   const {
     gerarPlanoFormato,
+    fasesEliminatoria,
     validarQuantidadeTimes
   } = require('../src/features/campeonato/services/formatos');
 
@@ -143,6 +144,9 @@ test('geradores locais cobrem formatos, BYEs e contagens sem máximo por formato
   assert.equal(validarQuantidadeTimes('grupos-mata-mata', 7), false);
   assert.equal(validarQuantidadeTimes('grupos-mata-mata', 8), true);
   assert.equal(validarQuantidadeTimes('single', 3), false);
+  assert.deepEqual(fasesEliminatoria(4).map((fase) => fase.key), ['semis', 'final']);
+  assert.deepEqual(fasesEliminatoria(8).map((fase) => fase.key), ['quartas', 'semis', 'final']);
+  assert.deepEqual(fasesEliminatoria(32).map((fase) => fase.key), ['classificatorias', 'quartas', 'semis', 'final']);
 });
 
 test('avança vencedores e perdedores para os lados corretos na dupla eliminação', async () => {
@@ -503,7 +507,7 @@ test('handlers da Fase 2 registrados', async (t) => {
       const interactions = require('../src/features/campeonato/interactions');
       const r = new InteractionRegistry();
       interactions.register(r);
-      assert.equal(r.buttons.length, 65);
+      assert.equal(r.buttons.length, 67);
       assert.equal(r.selects.length, 20);
       assert.equal(r.modals.length, 13);
       assert.ok(r.buttons.some(({ pattern }) => pattern === 'btn_config_simultaneo'));
@@ -513,6 +517,9 @@ test('handlers da Fase 2 registrados', async (t) => {
       assert.ok(r.selects.some(({ pattern }) => pattern === 'select_config_simultaneo'));
       assert.ok(r.selects.some(({ pattern }) => pattern === 'select_config_entrada'));
       assert.ok(r.buttons.some(({ pattern }) => pattern === 'btn_config_continuar'));
+      assert.ok(r.buttons.some(({ pattern }) =>
+        pattern instanceof RegExp && pattern.test(`btn_camp_ver_bracket_${'a'.repeat(24)}`)
+      ));
     });
   });
 });

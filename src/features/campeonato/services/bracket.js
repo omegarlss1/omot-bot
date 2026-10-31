@@ -579,8 +579,7 @@ async function propagarResultadoPartida(partidaId) {
           ]
             .map((time) => ({ _id: time.timeId }));
           const plano = criarEliminatoriaSimples(classificados, {
-            fasePrefix: 'KNOCKOUT_',
-            canalFase: 'mata-mata'
+            fasePrefix: 'KNOCKOUT_'
           });
           const campeonato = await Campeonato.findById(partida.campeonatoId).lean();
           if (!campeonato) throw new BracketError('Campeonato não encontrado ao criar a fase mata-mata.', 'BRACKET_CAMP_NAO_ENCONTRADO');

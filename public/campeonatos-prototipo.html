@@ -1,18 +1,230 @@
 <!doctype html>
 <html lang="pt-BR">
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Ômega Bot — Protótipo de Campeonatos</title>
-<style>
-*{box-sizing:border-box}body{margin:0;background:#313338;color:#f2f3f5;font:15px system-ui,sans-serif}.app{display:grid;grid-template-columns:220px 1fr;min-height:100vh}.nav{background:#2b2d31;padding:24px 14px}.brand{font-size:18px;font-weight:800;margin:0 8px 22px}.nav button{border:0;background:transparent;color:#b5bac1;text-align:left;width:100%;padding:11px;border-radius:6px;font-size:14px}.nav button:hover,.nav button.active{background:#404249;color:white}.main{max-width:900px;width:100%;margin:0 auto;padding:42px 28px}.discord{background:#2b2d31;border-radius:9px;border-left:4px solid #5865f2;padding:18px 20px;box-shadow:0 6px 18px #0003}.gold{border-color:#ffd700}.orange{border-color:#ff8c00}.title{font-weight:800;font-size:19px}.muted{color:#b5bac1;line-height:1.5}.button{padding:10px 14px;border:0;border-radius:5px;background:#5865f2;color:#fff;font-weight:700;margin:8px 6px 0 0}.success{background:#23a559}.danger{background:#da373c}.secondary{background:#4e5058}.cards{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:16px 0}.card{background:#383a40;border:1px solid #4e5058;padding:13px;border-radius:7px}.card.ok{border-color:#23a559}.select{display:block;width:100%;margin-top:9px;padding:11px;border:0;border-radius:5px;background:#1e1f22;color:#ddd}.cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}.channel{color:#b5bac1;padding:7px}.channel b{color:#f2f3f5}.vs{margin-top:14px}.pill{background:#23a559;color:#fff;padding:4px 8px;border-radius:20px;font-size:12px;font-weight:800}@media(max-width:620px){.app{grid-template-columns:1fr}.nav{display:flex;overflow:auto;padding:8px}.nav button{min-width:max-content}.brand{display:none}.main{padding:20px 14px}.cards,.cols{grid-template-columns:1fr}}
-</style>
-<body><div class="app"><nav class="nav"><div class="brand">🏆 Ômega Bot</div><button class="active" data-v="painel">/painel</button><button data-v="wizard">Wizard</button><button data-v="canais">Canais</button><button data-v="inscricoes">Inscrições</button><button data-v="admin">Painel Admin</button><button data-v="partidas">Partidas</button></nav><main class="main" id="view"></main></div>
-<script>
-const views={
-painel:`<section class="discord gold"><div class="title">🏆 Central de Campeonatos</div><p class="muted">Crie e gerencie campeonatos em 2 minutos.</p><button class="button success" onclick="go('wizard')">＋ Criar Novo Campeonato</button><p class="muted">Ômega Bot • Painel fixo</p></section>`,
-wizard:`<section class="discord"><div class="title">⚙️ Opções do Campeonato — Etapa 1/2</div><p>●━━○ <b>Etapa 1 de 2</b></p><div class="cards"><div class="card ok">⚔️ <b>Modo</b><br><small>✅ Duelos (1v1)</small></div><div class="card ok">🏆 <b>Ranks</b><br><small>✅ Ômega, Champion (2)</small></div><div class="card">⏱️ <b>Simultaneidade</b><br><small>Simultâneas</small></div><div class="card">👥 <b>Entrada</b><br><small>Definir limite</small></div></div><select class="select" multiple><option selected>Ômega</option><option selected>Champion</option><option>Diamond</option></select><button class="button">Continuar</button><button class="button danger">Cancelar</button></section>`,
-canais:`<section class="discord"><div class="title">🏆 TESTE1 — Ômega #2</div><p class="channel">📢・<b>avisos</b></p><p class="channel">📝・<b>inscricoes</b></p><p class="channel">🔧・<b>painel-org</b></p><p class="channel">⚔️・<b>quartas</b></p><p class="channel">⚔️・<b>semis</b></p><p class="channel">🏆・<b>final</b></p></section>`,
-inscricoes:`<section class="discord"><div class="title">🟢 Inscrições Abertas — Ômega #2</div><div class="cols"><p><b>TESTE1</b><br>1v1 • Fixa<br><span class="muted">Inscreva seu time para participar.</span></p><p><b>0/8 times</b><br>░░░░░░░░<br><span class="muted">8 vagas disponíveis</span></p></div><button class="button success">✅ Inscrever meu time</button><button class="button secondary">🛠️ Pedir inscrição manual</button></section>`,
-admin:`<section class="discord orange"><div class="title">🛠️ Painel do Organizador</div><p><span class="pill">🟢 INSCRIÇÕES ABERTAS • 0 times</span></p><button class="button">📊 Classificação</button><button class="button">👥 Gerenciar Times</button><br><button class="button secondary">⚔️ Gerar Partidas</button><button class="button secondary">🔒 Encerrar Inscrições</button><br><button class="button secondary">📣 Broadcast</button><br><button class="button secondary">⚙️ Editar</button><button class="button success">🏁 Finalizar</button><button class="button danger">⛔ Cancelar</button></section>`,
-partidas:`<section class="discord"><div class="title">⚔️・Quartas</div><article class="discord vs"><div class="title">🕒 Partida #1 — 20:00 — MD3</div><p><b>Ômega Esport</b> &nbsp; VS &nbsp; <b>Phoenix</b><br><span class="muted">@jogador1 @jogador2 • ⏳ Aguardando • Sala: /sala 3</span></p><button class="button">📸 Enviar Print</button><button class="button danger">⚠️ Reportar WO</button><button class="button secondary">💬 Abrir Thread</button></article></section>`};
-function go(n){document.getElementById('view').innerHTML=views[n];document.querySelectorAll('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.v===n))}document.querySelectorAll('.nav button').forEach(x=>x.onclick=()=>go(x.dataset.v));go('painel');
-</script></body></html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Ômega Bot — Protótipo de Campeonatos</title>
+  <style>
+    :root{color-scheme:dark;--bg:#313338;--panel:#2b2d31;--raised:#383a40;--line:#45474e;--text:#f2f3f5;--muted:#b5bac1;--blue:#5865f2;--green:#23a559;--orange:#ff8c00;--red:#da373c}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+    button,input,select{font:inherit}button{cursor:pointer;border:0;color:white;font-weight:650}
+    .shell{min-height:100vh;display:grid;grid-template-columns:72px 240px minmax(0,1fr)}
+    .guilds{background:#1e1f22;padding:12px 10px;display:flex;flex-direction:column;align-items:center;gap:12px}
+    .guild-icon{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;background:#313338;font-size:21px;transition:.16s}
+    .guild-icon.active,.guild-icon:hover{background:var(--blue);border-radius:16px}
+    .server{background:var(--panel);padding:17px 12px;display:flex;flex-direction:column;gap:7px}
+    .server-title{font-weight:800;font-size:15px;padding:2px 8px 18px;border-bottom:1px solid #3b3d43;margin-bottom:8px}
+    .nav-label{font-size:11px;font-weight:800;color:#949ba4;text-transform:uppercase;letter-spacing:.06em;padding:12px 8px 4px}
+    .nav-item{border-radius:5px;padding:9px 10px;color:var(--muted);text-align:left;background:transparent}
+    .nav-item:hover,.nav-item.active{color:var(--text);background:#404249}
+    .server-foot{margin-top:auto;color:#8e9299;font-size:11px;padding:10px 8px}
+    main{min-width:0;display:flex;flex-direction:column}
+    .topbar{height:56px;display:flex;align-items:center;gap:10px;padding:0 22px;border-bottom:1px solid #25262a;font-weight:750;box-shadow:0 1px 3px #0002}
+    .topbar small{font-weight:500;color:var(--muted)}
+    .stage{width:min(980px,100%);margin:0 auto;padding:32px 26px 56px}
+    .hint{color:var(--muted);margin:0 0 16px}
+    .message{background:var(--panel);border-left:4px solid var(--blue);border-radius:8px;padding:20px;box-shadow:0 8px 24px #0002}
+    .message.gold{border-color:#ffd700}.message.orange{border-color:var(--orange)}.message.green{border-color:var(--green)}
+    h1,h2,h3,p{margin-top:0}.title{font-size:19px;font-weight:800;margin:0 0 7px}.sub{color:var(--muted);margin:0 0 17px}
+    .footer{color:#8e9299;font-size:12px;margin:17px 0 0}
+    .btn{border-radius:5px;padding:10px 14px;background:var(--blue);margin:5px 6px 0 0;transition:.15s}
+    .btn:hover{filter:brightness(1.12)}.btn.success{background:var(--green)}.btn.secondary{background:#4e5058}.btn.danger{background:var(--red)}.btn.gold{background:#8c5a00}
+    .btn:disabled{opacity:.42;cursor:not-allowed;filter:none}
+    .progress{font-size:13px;font-weight:700;color:#d4d7dc;margin:10px 0 16px}.progress .done{color:var(--green)}
+    .card-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:14px 0}
+    .choice-card{background:var(--raised);border:1px solid var(--line);border-radius:7px;padding:12px}
+    .choice-card.ok{border-color:var(--green)}.choice-head{font-weight:750;margin-bottom:7px}.choice-value{color:#d2d5da;min-height:20px}
+    label{display:block;color:#dbdee2;font-size:12px;font-weight:700;margin:9px 0 5px}
+    select,input{width:100%;border:1px solid #1e1f22;border-radius:5px;background:#1e1f22;color:var(--text);padding:10px}
+    select:focus,input:focus{outline:2px solid #7983ff}
+    .rank-picker{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:8px}
+    .rank-option{display:flex;align-items:center;gap:7px;background:#2b2d31;border-radius:5px;padding:7px 8px;color:#ddd;font-size:13px}
+    .rank-option input{width:auto;accent-color:var(--green)}
+    .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+    .chip{border:1px solid #347a50;background:#183c29;color:#d6ffe2;border-radius:20px;padding:4px 9px;font-size:12px}
+    .cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .summary{background:var(--raised);border:1px solid var(--line);border-radius:7px;padding:15px}
+    .field{margin:8px 0}.muted{color:var(--muted)}.rule{border:0;border-top:1px solid var(--line);margin:18px 0}
+    .channel-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+    .channel{background:var(--raised);border-radius:6px;padding:12px}.channel b{display:block;margin-bottom:3px}.channel small{color:var(--muted)}
+    .status{display:inline-flex;align-items:center;gap:6px;border-radius:99px;background:#173d29;color:#a6f1bd;padding:5px 10px;font-weight:800;font-size:12px}
+    .status.live{background:#4a2022;color:#ffb6b8}.status.closed{background:#41434a;color:#ddd}
+    .two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    .progressbar{height:9px;overflow:hidden;border-radius:8px;background:#202125;margin:8px 0}
+    .progressbar span{display:block;height:100%;background:var(--green);transition:width .25s}
+    .team-slot{display:inline-grid;place-items:center;background:#42444b;border-radius:50%;height:28px;width:28px;margin:3px;color:#bdc1c8}
+    .admin-row{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0}
+    .match{background:#2b2d31;border:1px solid var(--line);border-left:4px solid var(--blue);border-radius:8px;padding:15px;margin-top:12px}
+    .match.live{border-left-color:var(--red)}.match.done{border-left-color:var(--green)}
+    .match-title{font-weight:800;font-size:16px}.versus{font-size:18px;font-weight:850;margin:10px 0}
+    .match-foot{color:var(--muted);font-size:12px}
+    .tag{font-size:11px;background:#41434a;border-radius:99px;padding:4px 8px;color:#ddd}
+    .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#111214;padding:11px 16px;border-radius:7px;box-shadow:0 5px 25px #0008;z-index:5}
+    .modal-backdrop{position:fixed;inset:0;background:#0009;display:grid;place-items:start center;padding:18px;overflow-y:auto;z-index:4}
+    .modal{width:min(540px,100%);max-height:calc(100vh - 36px);overflow-y:auto;margin:auto;background:#313338;border-radius:9px;padding:22px;box-shadow:0 10px 45px #0009}
+    .modal-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px}
+    .hidden{display:none!important}
+    @media(max-width:760px){.shell{grid-template-columns:56px minmax(0,1fr);grid-template-rows:56px minmax(0,1fr)}.guilds{grid-column:1;grid-row:1 / span 2;padding:10px 5px}.guild-icon{width:40px;height:40px}.server{grid-column:2;grid-row:1;display:flex;flex-direction:row;align-items:center;gap:4px;padding:5px;overflow-x:auto;border-bottom:1px solid #25262a}.server-title,.nav-label,.server-foot{display:none}.nav-item{flex:0 0 auto;width:auto;white-space:nowrap;padding:8px}.stage{padding:20px 14px 40px}.topbar{padding:0 14px}.card-grid,.cols,.two-col,.channel-list{grid-template-columns:1fr}}
+    @media(max-width:460px){.modal-grid{grid-template-columns:1fr}.guilds{gap:9px}}
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="guilds" aria-label="Servidores">
+      <div class="guild-icon active">🏆</div><div class="guild-icon">Ω</div><div class="guild-icon">🎮</div>
+    </aside>
+    <nav class="server" aria-label="Navegação do protótipo">
+      <div class="server-title">🏆 Ômega Bot <span class="tag">PROTÓTIPO</span></div>
+      <div class="nav-label">Campeonatos</div>
+      <button class="nav-item active" data-view="painel">🏆 &nbsp; /painel</button>
+      <button class="nav-item" data-view="wizard">🧭 &nbsp; Wizard</button>
+      <button class="nav-item" data-view="canais">📁 &nbsp; Canais</button>
+      <button class="nav-item" data-view="inscricoes">📝 &nbsp; Inscrições</button>
+      <button class="nav-item" data-view="admin">🛠️ &nbsp; Painel Admin</button>
+      <button class="nav-item" data-view="partidas">⚔️ &nbsp; Partidas</button>
+      <div class="server-foot">Ômega Bot • interface demonstrativa</div>
+    </nav>
+    <main>
+      <header class="topbar"><span id="channelIcon">🏆</span><span id="channelTitle">Central de Campeonatos</span><small>· visualização de demonstração</small></header>
+      <div class="stage" id="view"></div>
+    </main>
+  </div>
+  <div id="overlay"></div>
+  <script>
+    const state = {
+      view: 'painel',
+      step: 1,
+      name: 'Copa Ômega #42',
+      start: '01/12/2026',
+      deadline: '30/11/2026',
+      time: '19:00',
+      description: '',
+      mode: '',
+      ranks: ['omega_champion', 'champion'],
+      simultaneous: 'true',
+      entry: '',
+      limit: 8,
+      format: 'single',
+      teams: 3,
+      status: 'INSCRIÇÕES ABERTAS',
+      live: false,
+      thread: false,
+      created: false
+    };
+    const ranks = [
+      ['omega_champion','👑','Ômega Champion'],['grand_champion','🏆','Grand Champion'],
+      ['champion','🏅','Champion'],['diamante','💎','Diamante'],['platina','💠','Platina'],
+      ['ouro','🥇','Ouro'],['prata','🥈','Prata'],['bronze','🥉','Bronze']
+    ];
+    const modes = [['1v1','Duelos (1v1)'],['2v2','Duplas (2v2)'],['3v3','Triplas (3v3)'],['4v4','Quartetos (4v4)'],['6v6','Sextetos (6v6)'],['8v8','Octetos (8v8)']];
+    const formats = [['single','Eliminatória simples'],['double','Eliminatória dupla'],['round-robin','Round robin'],['grupos-mata-mata','Grupos + mata-mata']];
+    const names = {painel:'Central de Campeonatos',wizard:'Criar campeonato',canais:'Canais do campeonato',inscricoes:'Inscrições',admin:'Painel do Organizador',partidas:'Fases e partidas'};
+    const rankNames = () => state.ranks.map(key => ranks.find(item=>item[0]===key)?.[2]).filter(Boolean);
+    const selected = (value,current) => value===current?'selected':'';
+    const escapeHtml = text => String(text).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+    const progress = (value,total) => total ? Math.min(100,Math.round(value/total*100)) : 0;
+    function channelList(){
+      const fixed=[['📢','avisos','Comunicados oficiais'],['📝','inscricoes','Inscrição e vagas'],['🔧','painel-org','Ações da organização']];
+      let phases=[];
+      if(state.format==='double') phases=[['⚔️','winners','Chave Winners'],['💀','losers','Chave Losers'],['🏆','final','Grande final']];
+      else if(state.format==='round-robin') phases=[['⚔️','round-robin','Rodadas do todos contra todos']];
+      else if(state.format==='grupos-mata-mata') phases=[['⚔️','grupos','Fase de grupos'],['⚔️','quartas','Quartas de final'],['⚔️','semis','Semifinais'],['🏆','final','Final']];
+      else{
+        const totalTimes=state.entry==='limited'?Math.max(4,state.limit):16;
+        const totalRounds=Math.ceil(Math.log2(totalTimes));
+        const keys=new Set();
+        for(let round=1;round<=totalRounds;round++){
+          const left=totalRounds-round;
+          keys.add(left===0?'final':left===1?'semis':left===2?'quartas':'classificatorias');
+        }
+        const labels={classificatorias:['⚔️','classificatorias','Fases iniciais agrupadas'],quartas:['⚔️','quartas','Quartas de final'],semis:['⚔️','semis','Semifinais'],final:['🏆','final','Grande final']};
+        phases=[...keys].map(key=>labels[key]);
+      }
+      return [...fixed,...phases];
+    }
+    function selectOptions(items,current){return items.map(([value,label])=>`<option value="${value}" ${selected(value,current)}>${label}</option>`).join('')}
+    function wizard(){
+      const ranksText=rankNames();
+      if(state.step===1){
+        return `<section class="message orange">
+          <h1 class="title">🏆 Configurar campeonato</h1><p class="progress"><span class="done">●</span> ━━━━━━━ ○ &nbsp; Etapa 1 de 2</p>
+          <p class="sub"><b>${escapeHtml(state.name)}</b> · ${state.start} às ${state.time} · inscrições até ${state.deadline}<br>Escolha uma opção em cada menu. Você pode combinar ranks.</p>
+          <div class="card-grid">
+            <div class="choice-card ${state.mode?'ok':''}"><div class="choice-head">${state.mode?'✅':'⚔️'} Modo de jogo</div><div class="choice-value">${state.mode?modes.find(m=>m[0]===state.mode)[1]:'Escolha um modo abaixo'}</div><label for="mode">Modo</label><select id="mode"><option value="">Escolher modo...</option>${selectOptions(modes,state.mode)}</select></div>
+            <div class="choice-card ${ranksText.length?'ok':''}"><div class="choice-head">${ranksText.length?'✅':'🏅'} Ranks</div><div class="choice-value">${ranksText.length?`${ranksText.join(' · ')} (${ranksText.length})`:'Selecione um ou mais ranks'}</div><div class="rank-picker">${ranks.map(([key,emoji,label])=>`<label class="rank-option"><input type="checkbox" data-rank="${key}" ${state.ranks.includes(key)?'checked':''}>${emoji} ${label}</label>`).join('')}</div><div class="chips">${ranks.filter(([key])=>state.ranks.includes(key)).map(([key,emoji,label])=>`<button class="chip" data-remove-rank="${key}" title="Remover ${label}">${emoji} ${label} ×</button>`).join('')}</div></div>
+            <div class="choice-card ${state.simultaneous!==''?'ok':''}"><div class="choice-head">${state.simultaneous!==''?'✅':'⏱️'} Simultaneidade</div><div class="choice-value">${state.simultaneous==='false'?'Escalonadas':'Simultâneas (padrão)'}</div><label for="sim">Agenda</label><select id="sim"><option value="true" ${selected('true',state.simultaneous)}>⏱️ Simultâneas</option><option value="false" ${selected('false',state.simultaneous)}>📅 Escalonadas</option></select></div>
+            <div class="choice-card ${state.entry!==''?'ok':''}"><div class="choice-head">${state.entry!==''?'✅':'👥'} Entrada</div><div class="choice-value">${state.entry==='unlimited'?'Times ilimitados':state.entry==='limited'?'Definir limite de times':'Escolha como os times se inscrevem'}</div><label for="entry">Inscrições</label><select id="entry"><option value="">Escolher entrada...</option><option value="unlimited" ${selected('unlimited',state.entry)}>♾️ Times ilimitados</option><option value="limited" ${selected('limited',state.entry)}>👥 Definir limite</option></select></div>
+          </div>
+          <button class="btn success" data-action="continue" ${!state.mode||!state.ranks.length||!state.entry?'disabled':''}>Continuar</button><button class="btn danger" data-action="cancel">Cancelar</button>
+        </section>`;
+      }
+      return `<section class="message orange">
+        <h1 class="title">⚙️ Configurar campeonato</h1><p class="progress"><span class="done">● ━━━━━━━ ●</span> &nbsp; Etapa 2 de 2</p>
+        <p class="sub">Defina o limite e o formato antes de criar.</p>
+        <div class="cols"><div class="summary"><b>📋 Resumo</b><div class="field"><b>${escapeHtml(state.name)}</b></div><div class="field muted">📅 ${state.start} às ${state.time}<br>Inscrições até ${state.deadline}</div><div class="field">⚔️ ${modes.find(m=>m[0]===state.mode)?.[1]||'—'}</div><div class="field">🏅 ${ranksText.join(', ')} (${ranksText.length})</div><div class="field">⏱️ ${state.simultaneous==='false'?'Escalonadas':'Simultâneas'}</div></div>
+          <div class="summary"><b>⚙️ Limite e formato</b><label for="limit">👥 Limite de times</label><input id="limit" type="number" min="4" value="${state.limit}"><label for="format">🏆 Formato</label><select id="format">${selectOptions(formats,state.format)}</select><p class="muted" id="formatHelp">Formato selecionado: ${formats.find(f=>f[0]===state.format)?.[1]}</p></div>
+        </div><div class="admin-row"><button class="btn secondary" data-action="back">Voltar</button><button class="btn success" data-action="create" ${Number(state.limit)<(state.format==='grupos-mata-mata'?8:4)?'disabled':''}>Criar campeonato</button></div><button class="btn danger" data-action="cancel">Cancelar criação</button>
+      </section>`;
+    }
+    function render(){
+      document.getElementById('channelTitle').textContent=names[state.view];
+      document.getElementById('channelIcon').textContent={painel:'🏆',wizard:'🧭',canais:'📁',inscricoes:'📝',admin:'🛠️',partidas:'⚔️'}[state.view];
+      document.querySelectorAll('.nav-item').forEach(button=>button.classList.toggle('active',button.dataset.view===state.view));
+      const view=document.getElementById('view');
+      if(state.view==='painel') view.innerHTML=`<section class="message gold"><h1 class="title">🏆 Central de Campeonatos</h1><p class="sub">Crie e gerencie campeonatos em 2 minutos.</p><button class="btn success" data-action="open-wizard">＋ Criar Novo Campeonato</button><p class="footer">Ômega Bot • Painel fixo</p></section>`;
+      if(state.view==='wizard') view.innerHTML=wizard();
+      if(state.view==='canais') view.innerHTML=`<section class="message"><h1 class="title">🏆 ${escapeHtml(state.name)} — ${rankNames()[0]||'Ômega'}</h1><p class="sub">Canais curtos; cada fase tem sua própria área de partidas.</p><div class="channel-list">${channelList().map(([icon,name,desc])=>`<div class="channel"><b>${icon}・${name}</b><small>${desc}</small></div>`).join('')}</div><p class="footer">O campeonato usa ${channelList().length} canais, com rounds iniciais agrupados quando necessário.</p></section>`;
+      if(state.view==='inscricoes') view.innerHTML=`<section class="message green"><h1 class="title">${state.status==='INSCRIÇÕES ABERTAS'?'🟢 Inscrições abertas':'🔒 Inscrições encerradas'} — ${rankNames()[0]||'Ômega'} #42</h1><div class="two-col"><div><p><b>${escapeHtml(state.name)}</b><br><span class="muted">${state.mode||'1v1'} · ${state.mode&&state.mode!=='1v1'?'Equipes':'Individual'}</span></p><p class="muted">Inscreva-se usando sua conta Discord e o cargo do rank.</p></div><div><b>👥 ${state.teams}/${state.entry==='limited'?state.limit:'∞'} times</b><div class="progressbar"><span style="width:${state.entry==='limited'?progress(state.teams,state.limit):Math.min(100,state.teams*12)}%"></span></div><div>${Array.from({length:Math.min(8,state.entry==='limited'?state.limit:8)},(_,i)=>`<span class="team-slot">${i<state.teams?'✓':'·'}</span>`).join('')}</div><small class="muted">${state.entry==='limited'?`${Math.max(0,state.limit-state.teams)} vagas disponíveis`:'Inscrições sem limite de vagas'}</small></div></div><button class="btn success" data-action="signup" ${state.status!=='INSCRIÇÕES ABERTAS'?'disabled':''}>✅ Inscrever meu time</button><button class="btn secondary" data-action="manual" ${state.status!=='INSCRIÇÕES ABERTAS'?'disabled':''}>🛠️ Pedir inscrição manual</button></section>`;
+      if(state.view==='admin') view.innerHTML=`<section class="message orange"><h1 class="title">🛠️ Painel do Organizador</h1><p><span class="status ${state.status==='EM ANDAMENTO'?'live':state.status==='FINALIZADO'?'closed':''}">${state.status==='INSCRIÇÕES ABERTAS'?'🟢':state.status==='INSCRIÇÕES ENCERRADAS'?'🔒':state.status==='EM ANDAMENTO'?'🔴':'🏁'} ${state.status} • ${state.teams} ${state.teams===1?'time':'times'}</span></p><div class="admin-row"><button class="btn" data-action="standings">📊 Classificação</button><button class="btn" data-action="teams">👥 Gerenciar Times</button></div><div class="admin-row"><button class="btn secondary" data-action="generate">⚔️ Gerar Partidas</button><button class="btn gold" data-action="close">🔒 Encerrar Inscrições</button></div><div class="admin-row"><button class="btn secondary" data-action="broadcast">📣 Broadcast</button></div><hr class="rule"><div class="admin-row"><button class="btn secondary" data-action="edit">⚙️ Editar</button><button class="btn success" data-action="finish">🏁 Finalizar</button><button class="btn danger" data-action="cancel">⛔ Cancelar</button></div></section>`;
+      if(state.view==='partidas') view.innerHTML=`<section class="message"><h1 class="title">⚔️・Quartas de final</h1><p class="sub">Um embed por partida; conversa e prints ficam em thread privada.</p><button class="btn secondary" data-action="bracket">📊 Ver bracket</button><article class="match ${state.live?'live':''} ${state.status==='FINALIZADO'?'done':''}"><div class="match-title">🕒 Partida #1 — 20:00</div><div class="versus">Ômega Esport <span class="muted">VS</span> Phoenix</div><p class="muted">@jogador1 · @jogador2</p><div class="match-foot">${state.status==='FINALIZADO'?'✅ Finalizada — Vencedor: Ômega Esport (2-1)':state.live?'🔴 AO VIVO':'⏳ Aguardando check-in'} · Fase: Quartas</div><div class="admin-row">${state.status==='FINALIZADO'?'<button class="btn secondary" data-action="prints">📊 Ver Prints</button>':'<button class="btn success" data-action="checkin">✅ Check-in</button><button class="btn danger" data-action="wo">⚠️ Reportar W.O.</button><button class="btn" data-action="live">🎮 Iniciar partida</button><button class="btn secondary" data-action="prints">📸 Enviar Print</button>'}<button class="btn secondary" data-action="thread">💬 Abrir Thread</button></div></article></section>`;
+      bindView();
+    }
+    function toast(text){const node=document.createElement('div');node.className='toast';node.textContent=text;document.body.appendChild(node);setTimeout(()=>node.remove(),2400)}
+    function openDataModal(){document.getElementById('overlay').innerHTML=`<div class="modal-backdrop" data-action="close-modal"><section class="modal"><h2 class="title">Configuração do Campeonato — Dados</h2><p class="sub">Preencha as informações principais.</p><label>Nome do campeonato</label><input id="m-name" value="${escapeHtml(state.name)}" placeholder="Copa Ômega #42"><div class="modal-grid"><div><label>Data de início (DD/MM/AAAA)</label><input id="m-start" value="${state.start}" placeholder="01/12/2026"></div><div><label>Data limite (DD/MM/AAAA)</label><input id="m-deadline" value="${state.deadline}" placeholder="30/11/2026"></div></div><label>Horário base (HH:MM)</label><input id="m-time" value="${state.time}" placeholder="19:00"><label>Descrição opcional</label><input id="m-description" value="${escapeHtml(state.description)}" placeholder="Uma breve mensagem para os participantes"><div class="admin-row"><button class="btn success" data-action="save-data">Continuar</button><button class="btn secondary" data-action="close-modal">Fechar</button></div><p class="footer">O modal real do Discord empilha campos; a grade compacta é apenas visualização do protótipo.</p></section></div>`;bindView()}
+    function bindView(){
+      document.querySelectorAll('[data-action]').forEach(button=>button.addEventListener('click',event=>{event.stopPropagation();action(button.dataset.action)}));
+      const mode=document.getElementById('mode');if(mode)mode.onchange=()=>{state.mode=mode.value;render()};
+      const sim=document.getElementById('sim');if(sim)sim.onchange=()=>{state.simultaneous=sim.value;render()};
+      const entry=document.getElementById('entry');if(entry)entry.onchange=()=>{state.entry=entry.value;render()};
+      const format=document.getElementById('format');if(format)format.onchange=()=>{state.format=format.value;render()};
+      const limit=document.getElementById('limit');if(limit)limit.oninput=()=>{state.limit=Number(limit.value);const create=document.querySelector('[data-action="create"]');if(create)create.disabled=state.limit<(state.format==='grupos-mata-mata'?8:4)};
+      document.querySelectorAll('[data-rank]').forEach(input=>input.onchange=()=>{if(input.checked&&!state.ranks.includes(input.dataset.rank))state.ranks.push(input.dataset.rank);else state.ranks=state.ranks.filter(rank=>rank!==input.dataset.rank);render()});
+      document.querySelectorAll('[data-remove-rank]').forEach(button=>button.onclick=()=>{state.ranks=state.ranks.filter(rank=>rank!==button.dataset.removeRank);render()});
+    }
+    function action(name){
+      if(name==='open-wizard'){state.view='wizard';state.step=1;openDataModal();return}
+      if(name==='close-modal'){document.getElementById('overlay').innerHTML='';return}
+      if(name==='save-data'){
+        const get=id=>document.getElementById(id)?.value||'';
+        state.name=get('m-name');state.start=get('m-start');state.deadline=get('m-deadline');state.time=get('m-time');state.description=get('m-description');
+        if(!state.name||!/^\d{2}\/\d{2}\/\d{4}$/.test(state.start)||!/^\d{2}\/\d{2}\/\d{4}$/.test(state.deadline)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(state.time)){toast('Confira nome, datas e horário.');return}
+        document.getElementById('overlay').innerHTML='';render();return
+      }
+      if(name==='continue'){
+        if(!state.mode||!state.ranks.length||!state.entry){toast('Escolha modo, ao menos um rank e entrada.');return}
+        if(state.entry==='unlimited'){state.created=true;state.view='admin';toast('Campeonato criado · etapa de limite ignorada.');render();return}
+        state.step=2;render();return
+      }
+      if(name==='back'){state.step=1;render();return}
+      if(name==='create'){if(state.limit<(state.format==='grupos-mata-mata'?8:4)){toast('Esse formato precisa de mais times.');return}state.created=true;state.view='admin';state.status='INSCRIÇÕES ABERTAS';render();toast('Campeonato criado com canais de fase.');return}
+      if(name==='cancel'&&state.view==='wizard'){state.view='painel';state.step=1;document.getElementById('overlay').innerHTML='';toast('Criação cancelada.');render();return}
+      if(name==='cancel'){state.status='CANCELADO';toast('Campeonato cancelado.');render();return}
+      if(name==='signup'){state.teams++;toast('Time inscrito · contador atualizado.');render();return}
+      if(name==='manual'){toast('Pedido de inscrição manual enviado à organização.');return}
+      if(name==='close'){state.status='INSCRIÇÕES ENCERRADAS';toast('Inscrições encerradas.');render();return}
+      if(name==='generate'){state.status='EM ANDAMENTO';state.view='partidas';toast('Fases e partidas publicadas.');render();return}
+      if(name==='finish'){state.status='FINALIZADO';toast('Campeonato finalizado.');render();return}
+      if(name==='cancel'){state.status='CANCELADO';toast('Campeonato cancelado.');render();return}
+      if(name==='thread'){state.thread=true;toast('Thread privada criada para os dois times.');return}
+      if(name==='prints'){toast(state.thread?'Prints disponíveis na thread da partida.':'Abra a thread privada para enviar/ver prints.');return}
+      if(name==='live'){state.live=true;state.status='EM ANDAMENTO';render();toast('Partida ao vivo.');return}
+      if(name==='checkin'){toast('Check-in confirmado.');return}
+      if(name==='wo'){toast('Solicitação de W.O. enviada à organização.');return}
+      if(name==='bracket'){toast('Bracket textual: Quartas → Semifinais → Final.');return}
+      if(name==='standings'||name==='teams'||name==='broadcast'||name==='edit'){toast(({standings:'Classificação aberta.',teams:'Gerenciamento de times aberto.',broadcast:'Broadcast pronto.',edit:'Edição de campeonato aberta.'})[name]);return}
+    }
+    document.querySelectorAll('.nav-item').forEach(button=>button.onclick=()=>{state.view=button.dataset.view;render()});
+    render();
+  </script>
+</body>
+</html>

@@ -70,8 +70,71 @@ test('painel consolidado lista times, check-ins e placares com ações administr
     assert.match(painel.embeds[1].description, /<@player-4>/);
     const customIds = painel.components.flatMap((row) => row.toJSON().components.map((component) => component.custom_id));
     assert.ok(customIds.includes('btn_camp_broadcast'));
-    assert.ok(customIds.includes('btn_camp_gerar_bracket'));
+    assert.ok(customIds.includes('btn_camp_gerar_bracket_campeonato-id'));
     assert.ok(customIds.includes('btn_camp_editar_config_campeonato-id'));
+    assert.match(painel.embeds[2].description, /INSCRIÇÕES ABERTAS • 2\/8 times/);
+    assert.ok(painel.components.length <= 5);
+    assert.deepEqual(painel.components[0].toJSON().components.map((componente) => componente.label), [
+      '📊 Classificação',
+      '👥 Gerenciar Times'
+    ]);
+  });
+});
+
+test('painel de inscrição resume vagas e oferece apenas as duas ações principais', () => {
+  comEnv({}, () => {
+    const { embedPainelInscricao } = require('../src/features/campeonato/embeds');
+    const painel = embedPainelInscricao({
+      nome: 'Ômega #42 - OMEGA CHAMPION',
+      rank: 'omega_champion',
+      modo: '2v2',
+      maxJogadoresPorTime: 2,
+      limiteInscricoes: 8,
+      status: 'INSCRICOES_ABERTAS'
+    }, 3);
+    assert.match(painel.embeds[0].title, /Ômega Champion #42/);
+    assert.match(painel.embeds[0].fields[1].value, /3\/8/);
+    assert.equal(painel.components[0].length, 2);
+    assert.deepEqual(painel.components[0].map((botao) => botao.label), [
+      'Inscrever meu time',
+      'Pedir inscrição manual'
+    ]);
+  });
+});
+
+test('cards de partida ficam em uma Action Row e preservam ações antes e depois do fim', () => {
+  comEnv({}, () => {
+    const { embedPainelPartida, toActionRows } = require('../src/features/campeonato/embeds');
+    const partida = {
+      _id: '0123456789abcdef01234567',
+      fase: 'QUARTAS',
+      rodada: 1,
+      status: 'AGUARDANDO_CHECKIN',
+      estimatedStartAt: new Date('2026-12-01T22:00:00Z'),
+      timeA: 'time-a',
+      timeB: 'time-b',
+      checkIns: { timeA: { fez: false }, timeB: { fez: true } },
+      placarEnviado: {},
+      bracketMeta: { matchKey: 'match-1' }
+    };
+    const times = {
+      a: { nome: 'Ômega Esport', jogadores: [{ userId: '12345678901234567' }] },
+      b: { nome: 'Phoenix', jogadores: [{ userId: '12345678901234568' }] }
+    };
+    const card = embedPainelPartida({ partida, timeA: times.a, timeB: times.b });
+    const row = toActionRows(card.components);
+    assert.equal(row.length, 1);
+    assert.equal(row[0].toJSON().components.length, 5);
+    assert.match(card.embeds[0].description, /<@12345678901234567>/);
+    assert.ok(row[0].toJSON().components.some((componente) => componente.custom_id.startsWith('btn_camp_enviar_print_')));
+
+    const finalizado = embedPainelPartida({
+      partida: { ...partida, status: 'FINALIZADA', vencedorId: 'time-a' },
+      timeA: times.a,
+      timeB: times.b
+    });
+    assert.equal(toActionRows(finalizado.components)[0].toJSON().components.length, 2);
+    assert.match(finalizado.embeds[0].footer.text, /Vencedor: Ômega Esport/);
   });
 });
 

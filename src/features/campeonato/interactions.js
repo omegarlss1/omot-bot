@@ -1,13 +1,13 @@
-const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder, UserSelectMenuBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder, ChannelType } = require('discord.js');
+const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder, UserSelectMenuBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
 const config = require('../../config');
-const { embedCriarEvento, embedSelecionarRanks, embedEventoCriado, embedPainelInscricao, embedInscricaoConfirmada, embedResumoCorte, embedMenuFormato, embedPainelPartida, embedPlacarEnviado, embedDisputaOrganizador, embedBracket, embedClassificacao, embedCampeaoDefinido, embedPainelAdmin, embedCancelamentoConfirmado, embedReaberturaConfirmada, embedTimeDesclassificado, embedPlacarAjustado, toActionRows, montarComponentes } = require('./embeds');
+const { embedCriarEvento, embedSelecionarRanks, embedEventoCriado, embedPainelInscricao, embedInscricaoConfirmada, embedResumoCorte, embedMenuFormato, embedPainelPartida, embedPlacarEnviado, embedDisputaOrganizador, embedClassificacao, embedCampeaoDefinido, embedPainelAdmin, embedCancelamentoConfirmado, embedReaberturaConfirmada, embedTimeDesclassificado, embedPlacarAjustado, toActionRows, montarComponentes } = require('./embeds');
 const { criarEvento, EventoError } = require('./service');
 const { gerarDescricaoEvento } = require('./services/duracao');
 const { inscreverCapitao, inscreverTimeCompleto, inscreverJogadorManual, fecharInscricoes, executarCorte, definirFormato, findCampeonatoPorCanalInscricao, findCampeonatoPorCanal, listarInscricoes, InscricaoError } = require('./services/inscricao');
 const { validarInscricao, InscricaoError: ValidacaoInscricaoError } = require('./validators/inscricao');
 const { CorteError } = require('./validators/corte');
 const { gerarBracket, BracketError, propagarResultadoPartida, obterFormatoCampeonato } = require('./services/bracket');
-const { minimoTimesFormato } = require('./services/formatos');
+const { minimoTimesFormato, fasesEliminatoria } = require('./services/formatos');
 const { registrarCheckIn, registrarCheckInOrganizador, verificarAdversarioFaltou, registrarWO, CheckinError } = require('./services/checkin');
 const { enviarPlacar, validarPlacar, parsePlacar, PlacarError } = require('./services/placar');
 const { placarEhValido } = require('./validators/placar');
@@ -105,7 +105,7 @@ function buildPainelOrganizadorCampeonato({ campeonato, times = [], partidas = [
       }],
       components: []
     }
-    : embedPainelAdmin({ campeonato });
+    : embedPainelAdmin({ campeonato, totalTimes: times.length });
   return {
     embeds: [
       {
@@ -178,14 +178,25 @@ async function anunciarInscricaoPublicamente(campeonatoId, timeId, client = clie
     throw new Error(`Canal de inscrições inválido para o campeonato ${campeonatoId}.`);
   }
   const nomeTime = time.nome || time.jogadores?.[0]?.nickSnapshot || 'Novo participante';
-  return canal.send({
+  const anuncio = await canal.send({
     content: `✅ **${nomeTime}** se inscreveu em **${campeonato.nome}**! Já são **${totalInscritos} ${totalInscritos === 1 ? 'inscrição' : 'inscrições'}**.`
   });
+  if (campeonato.painelInscricaoMessageId) {
+    const mensagem = await canal.messages.fetch(campeonato.painelInscricaoMessageId).catch((error) => {
+      if (error?.code === 10008) return null;
+      throw error;
+    });
+    if (mensagem) {
+      const painel = embedPainelInscricao(campeonato, totalInscritos);
+      await mensagem.edit({ embeds: painel.embeds, components: toActionRows(painel.components) });
+    }
+  }
+  return anuncio;
 }
 
-function fasesDoFormato(formato) {
+function fasesDoFormato(formato, totalTimes = 8, partidasExistentes = []) {
   const fases = {
-    single: [{ key: 'mata-mata', nome: 'mata-mata' }],
+    single: fasesEliminatoria(totalTimes),
     double: [
       { key: 'winners', nome: 'winners' },
       { key: 'losers', nome: 'losers' },
@@ -194,16 +205,30 @@ function fasesDoFormato(formato) {
     'round-robin': [{ key: 'round-robin', nome: 'round-robin' }],
     'grupos-mata-mata': [
       { key: 'groups', nome: 'grupos' },
-      { key: 'mata-mata', nome: 'mata-mata' }
+      ...fasesEliminatoria(8)
     ]
   };
-  const resultado = fases[formato];
-  if (!resultado) throw new Error(`Formato sem canais de fase configurados: ${formato}.`);
+  if (!fases[formato]) throw new Error(`Formato sem canais de fase configurados: ${formato}.`);
+  const resultado = [...fases[formato]];
+  const nomesLegados = {
+    'mata-mata': 'mata-mata',
+    groups: 'grupos',
+    winners: 'winners',
+    losers: 'losers',
+    final: 'final',
+    'round-robin': 'round-robin'
+  };
+  for (const partida of partidasExistentes) {
+    const key = partida.bracketMeta?.canalFase;
+    if (key && !resultado.some((fase) => fase.key === key)) {
+      resultado.push({ key, nome: nomesLegados[key] || key });
+    }
+  }
   return resultado;
 }
 
-async function criarCanaisFases(guild, campeonato, formato) {
-  const fases = fasesDoFormato(formato);
+async function criarCanaisFases(guild, campeonato, formato, totalTimes, partidasExistentes = []) {
+  const fases = fasesDoFormato(formato, totalTimes, partidasExistentes);
   const botId = guild.client?.user?.id || guild.members.me?.id;
   if (!botId) throw new Error('Não foi possível identificar o bot ao criar os canais das fases.');
   const permissoes = [
@@ -237,6 +262,31 @@ async function criarCanaisFases(guild, campeonato, formato) {
       throw new Error(`O canal da fase ${fase.nome} não é um canal de texto.`);
     }
     criados[fase.key] = canal;
+    const idMensagem = campeonato.canais?.fasesMensagens?.[fase.key];
+    let mensagem = idMensagem ? await canal.messages.fetch(idMensagem).catch((error) => {
+      if (error?.code === 10008) return null;
+      throw error;
+    }) : null;
+    if (!mensagem) {
+      mensagem = await canal.send({
+        embeds: [{
+          title: `⚔️ ${{ quartas: 'Quartas de final', semis: 'Semifinais', final: 'Final', groups: 'Fase de grupos', winners: 'Winners', losers: 'Losers', 'round-robin': 'Round robin', classificatorias: 'Classificatórias' }[fase.key] || fase.nome}`,
+          description: 'As partidas desta fase serão publicadas aqui. Use **Ver bracket** para consultar a árvore atualizada.',
+          color: 0x5865F2
+        }],
+        components: toActionRows([[
+          new ButtonBuilder()
+            .setCustomId(`btn_camp_ver_bracket_${campeonato._id}`)
+            .setLabel('Ver bracket')
+            .setEmoji('📊')
+            .setStyle(ButtonStyle.Secondary)
+        ]])
+      });
+      await Campeonato.updateOne(
+        { _id: campeonato._id },
+        { $set: { [`canais.fasesMensagens.${fase.key}`]: mensagem.id } }
+      );
+    }
   }
   return criados;
 }
@@ -292,16 +342,21 @@ async function publicarPartidaDiscord(partidaId, client = clientPainelOrganizado
   const porId = new Map(times.map((time) => [String(time._id), time]));
   const timeA = porId.get(String(partida.timeA));
   const timeB = porId.get(String(partida.timeB));
-  const controles = embedPainelPartida({ partida, timeA, timeB }).components[0]
-    .map((botao) => ({
-      ...botao,
-      disabled: !partida.timeA || !partida.timeB || ['FINALIZADA', 'CANCELADA', 'WO'].includes(partida.status)
-    }));
   const card = embedPainelPartida({ partida, timeA, timeB });
+  const encerrada = ['FINALIZADA', 'CANCELADA', 'WO'].includes(partida.status);
+  const controles = card.components[0].map((botao) => ({
+    ...botao,
+    disabled: (!partida.timeA || !partida.timeB || encerrada)
+      && !['btn_camp_enviar_print_', 'btn_camp_ver_prints_', 'btn_camp_abrir_thread_']
+        .some((prefixo) => botao.custom_id.startsWith(prefixo))
+  }));
+  const userIds = [...new Set([timeA, timeB]
+    .flatMap((time) => (time?.jogadores || []).map((jogador) => jogador.userId))
+    .filter((userId) => /^\d{17,20}$/.test(String(userId || ''))))];
   const payload = {
     embeds: card.embeds,
     components: toActionRows([controles]),
-    allowedMentions: { parse: [] }
+    allowedMentions: { parse: [], users: userIds }
   };
 
   if (partida.mensagemDiscordId && partida.canalDiscordId === canalId) {
@@ -311,6 +366,7 @@ async function publicarPartidaDiscord(partidaId, client = clientPainelOrganizado
     });
     if (mensagem) {
       await mensagem.edit(payload);
+      await atualizarBloqueioFase(partida, campeonato, canal, client);
       return mensagem;
     }
   }
@@ -318,7 +374,109 @@ async function publicarPartidaDiscord(partidaId, client = clientPainelOrganizado
   partida.canalDiscordId = canal.id;
   partida.mensagemDiscordId = mensagem.id;
   await partida.save();
+  await atualizarBloqueioFase(partida, campeonato, canal, client);
   return mensagem;
+}
+
+async function atualizarBloqueioFase(partida, campeonato, canal, client) {
+  const faseKey = partida.bracketMeta?.canalFase;
+  const cargoRank = config.campeonato.cargosRanks[campeonato.rank];
+  if (!faseKey || !cargoRank || !canal.permissionOverwrites?.edit) return;
+  const partidasFase = await Partida.find({
+    campeonatoId: campeonato._id,
+    'bracketMeta.canalFase': faseKey
+  }).select('status threadDiscordId').lean();
+  if (!partidasFase.length) return;
+  const concluida = partidasFase.every((item) => ['FINALIZADA', 'CANCELADA', 'WO'].includes(item.status));
+  await canal.permissionOverwrites.edit(
+    cargoRank,
+    { [PermissionFlagsBits.SendMessages]: !concluida },
+    { reason: concluida ? `Fase ${faseKey} concluída` : `Fase ${faseKey} em andamento` }
+  );
+  if (concluida) {
+    for (const partidaFase of partidasFase) {
+      if (!partidaFase.threadDiscordId) continue;
+      const thread = await client.channels.fetch(partidaFase.threadDiscordId).catch((error) => {
+        if (error?.code === 10003) return null;
+        throw error;
+      });
+      if (thread?.isThread?.() && !thread.archived) {
+        await thread.setArchived(true, `Fase ${faseKey} concluída`);
+      }
+    }
+  }
+}
+
+async function onBotaoAbrirThreadPartida(interaction) {
+  const partidaId = interaction.customId.match(/^btn_camp_(?:abrir_thread|enviar_print|ver_prints)_([a-f0-9]{24})$/)?.[1];
+  if (!partidaId) return interaction.reply({ content: 'Partida inválida.', flags: 64 });
+  await interaction.deferReply({ flags: 64 });
+  try {
+    const partida = await Partida.findById(partidaId);
+    if (!partida) return interaction.editReply({ content: 'Partida não encontrada.' });
+    const [times, campeonato] = await Promise.all([
+      Time.find({ _id: { $in: [partida.timeA, partida.timeB].filter(Boolean) } }).lean(),
+      Campeonato.findById(partida.campeonatoId).lean()
+    ]);
+    if (!campeonato) return interaction.editReply({ content: 'Campeonato não encontrado.' });
+    const jogadores = times.flatMap((time) => time.jogadores || []);
+    const idsJogadores = [...new Set(jogadores
+      .map((jogador) => jogador.userId)
+      .filter((userId) => /^\d{17,20}$/.test(String(userId || ''))))];
+    if (!idsJogadores.includes(interaction.user.id) && !temPermissaoOrganizador(interaction.member)) {
+      return interaction.editReply({ content: 'Apenas os jogadores desta partida ou a organização podem abrir a thread.' });
+    }
+
+    let thread = partida.threadDiscordId
+      ? await interaction.client.channels.fetch(partida.threadDiscordId).catch((error) => {
+        if (error?.code === 10003) return null;
+        throw error;
+      })
+      : null;
+    if (!thread) {
+      const canal = await interaction.client.channels.fetch(partida.canalDiscordId || interaction.channelId);
+      if (!canal?.isTextBased?.() || !canal.threads?.create) {
+        return interaction.editReply({ content: 'O canal da partida não permite criar uma thread privada.' });
+      }
+      const timeA = times.find((time) => String(time._id) === String(partida.timeA));
+      const timeB = times.find((time) => String(time._id) === String(partida.timeB));
+      thread = await canal.threads.create({
+        name: `partida-${String(partida.bracketMeta?.matchKey || partidaId).replace(/[^a-zA-Z0-9-]/g, '').slice(-24)}`,
+        autoArchiveDuration: 1440,
+        type: ChannelType.PrivateThread,
+        invitable: false,
+        reason: `Thread privada para a partida ${partidaId}`
+      });
+      partida.threadDiscordId = thread.id;
+      await partida.save();
+      await thread.send({
+        embeds: [{
+          title: '💬 Conversa da partida',
+          description: `**${timeA?.nome || 'Time A'}** vs **${timeB?.nome || 'Time B'}**\nUse este espaço para conversar e enviar os prints da partida.`,
+          color: 0x5865F2
+        }],
+        allowedMentions: { parse: [] }
+      });
+    }
+
+    if (thread.archived) await thread.setArchived(false, 'Thread reaberta para participantes');
+    for (const userId of new Set([...idsJogadores, interaction.user.id])) {
+      await thread.members.add(userId);
+    }
+    const isPrint = interaction.customId.startsWith('btn_camp_enviar_print_');
+    const isView = interaction.customId.startsWith('btn_camp_ver_prints_');
+    const instrucao = isPrint
+      ? 'Thread privada aberta. Envie o print como imagem nesta conversa.'
+      : isView
+        ? 'Prints e conversa da partida ficam na thread privada.'
+        : 'Thread privada da partida aberta.';
+    return interaction.editReply({
+      content: `${instrucao}\nhttps://discord.com/channels/${interaction.guildId}/${thread.id}`
+    });
+  } catch (error) {
+    console.error(`[campeonato.thread] erro ao abrir thread da partida ${partidaId}:`, error);
+    return interaction.editReply({ content: 'Não foi possível abrir a thread privada. Verifique as permissões do bot e tente novamente.' });
+  }
 }
 
 function solicitarAtualizacaoPainelOrganizador(campeonatoId) {
@@ -402,10 +560,18 @@ async function publicarPainelInscricao(canal, campeonato) {
   if (!canal?.isTextBased?.()) throw new Error('Canal de inscrições inválido ou não é um canal de texto.');
   const painel = embedPainelInscricao(campeonato, 0);
   const mensagem = await canal.send({
-    content: '⬇️ Use os botões abaixo para inscrever o time ou solicitar uma inscrição manual.',
     embeds: painel.embeds,
     components: toActionRows(painel.components)
   });
+  campeonato.painelInscricaoMessageId = mensagem.id;
+  if (typeof campeonato.save === 'function') {
+    await campeonato.save();
+  } else {
+    await Campeonato.updateOne(
+      { _id: campeonato._id },
+      { $set: { painelInscricaoMessageId: mensagem.id } }
+    );
+  }
   const idsEsperados = Number(campeonato.maxJogadoresPorTime) <= 1
     ? ['btn_camp_inscrever_se']
     : ['btn_camp_inscrever_time'];
@@ -546,8 +712,9 @@ function buildConfigModal() {
     new ActionRowBuilder().addComponents(
       new TextInputBuilder()
         .setCustomId('camp_nome')
-        .setLabel('Nome do Campeonato (ex: Omega #42)')
+        .setLabel('Nome do Campeonato')
         .setStyle(TextInputStyle.Short)
+        .setPlaceholder('Copa Ômega #42')
         .setMinLength(3)
         .setMaxLength(60)
         .setRequired(true)
@@ -581,6 +748,7 @@ function buildConfigModal() {
         .setCustomId('camp_descricao')
         .setLabel('Descrição / Carta do organizador (opcional)')
         .setStyle(TextInputStyle.Paragraph)
+        .setPlaceholder('Uma breve mensagem para os participantes…')
         .setMaxLength(4000)
         .setRequired(false)
     )
@@ -640,23 +808,65 @@ function buildConfigPanel(userId, configOverride) {
   }
   const avancado = cfg.etapa === 'avancado';
   const nomeRanks = (cfg.ranksSelecionados || [])
-    .map((rank) => config.ranks.find((item) => item.key === rank)?.label || rank)
-    .join(', ');
+    .map((rank) => {
+      const item = config.ranks.find((option) => option.key === rank);
+      return item ? `${item.emoji} ${item.label}` : rank;
+    });
+  const dataInicio = new Date(cfg.dataInicio).toLocaleDateString('pt-BR');
+  const dataLimite = new Date(cfg.dataLimiteInscricoes).toLocaleDateString('pt-BR');
+  const campos = avancado
+    ? [
+      {
+        name: '📋 Resumo do campeonato',
+        value: `**${cfg.nome}**\n📅 ${dataInicio} às ${cfg.horarioInicio} · inscrições até ${dataLimite}\n⚔️ ${getModoLabel(cfg.modo)} · 🏅 ${nomeRanks.join(', ')} (${nomeRanks.length})`,
+        inline: true
+      },
+      {
+        name: '⚙️ Formato e limite',
+        value: [
+          cfg.baseadoEmInscricoes === false
+            ? `👥 ${cfg.limiteInscricoes ? `${cfg.limiteInscricoes} times` : 'Defina o limite'}`
+            : '👥 Inscrições ilimitadas',
+          `🏆 ${cfg.formato ? (obterFormatosDisponiveis(cfg).find((formato) => formato.value === cfg.formato)?.label || cfg.formato) : 'Escolha o formato'}`,
+          modoPermiteTipoDupla(cfg.modo) ? `🤝 ${cfg.tipoDupla || 'Escolha o tipo de equipe'}` : null
+        ].filter(Boolean).join('\n'),
+        inline: true
+      }
+    ]
+    : [
+      {
+        name: `${cfg.modo ? '✅' : '⚔️'} Modo de jogo`,
+        value: cfg.modo ? getModoLabel(cfg.modo) : 'Escolha um modo abaixo',
+        inline: true
+      },
+      {
+        name: `${nomeRanks.length ? '✅' : '🏅'} Ranks`,
+        value: nomeRanks.length ? `${nomeRanks.join('  ·  ')} (${nomeRanks.length})` : 'Selecione um ou mais ranks',
+        inline: true
+      },
+      {
+        name: `${cfg.simultaneo === false || cfg.simultaneo === true ? '✅' : '⏱️'} Simultaneidade`,
+        value: cfg.simultaneo === false ? 'Escalonadas' : cfg.simultaneo === true ? 'Simultâneas' : 'Escolha uma opção abaixo',
+        inline: true
+      },
+      {
+        name: `${typeof cfg.baseadoEmInscricoes === 'boolean' ? '✅' : '👥'} Entrada`,
+        value: cfg.baseadoEmInscricoes === true
+          ? 'Times ilimitados'
+          : cfg.baseadoEmInscricoes === false
+            ? 'Definir limite de times'
+            : 'Escolha como os times se inscrevem',
+        inline: true
+      }
+    ];
   const embed = {
-    title: avancado ? '⚙️ Opções do Campeonato — Etapa 2/2' : '⚙️ Opções do Campeonato — Etapa 1/2',
-    description: (avancado ? '●━━● **Etapa 2 de 2**' : '●━━○ **Etapa 1 de 2**') + `\n\n**${cfg.nome}** — ${new Date(cfg.dataInicio).toLocaleDateString('pt-BR')} às ${cfg.horarioInicio}\n` +
-      `Limite de inscrições: ${new Date(cfg.dataLimiteInscricoes).toLocaleDateString('pt-BR')}\n\n` +
-      `⚔️ **Modo:** ${cfg.modo ? '✅ ' + getModoLabel(cfg.modo) : 'Escolha um modo'}\n` +
-      `🏆 **Ranks:** ${nomeRanks ? '✅ ' + nomeRanks + ' (' + cfg.ranksSelecionados.length + ')' : 'Selecione os ranks'}\n` +
-      `⏱️ **Simultaneidade:** ✅ ${cfg.simultaneo === false ? 'Escalonadas' : 'Simultâneas'}\n` +
-      `👥 **Entrada:** ${cfg.baseadoEmInscricoes === true ? '✅ Times ilimitados' : cfg.baseadoEmInscricoes === false ? '✅ Limitar número de times' : 'Escolha o modo de entrada'}` +
-      (avancado ? `\n**Tipo de equipe:** ${modoPermiteTipoDupla(cfg.modo) ? (cfg.tipoDupla || 'Não selecionado') : 'Não se aplica'}` +
-        `\n**Formato:** ${cfg.formato || 'Não selecionado'}` +
-        (cfg.baseadoEmInscricoes === false
-          ? `\n**Limite de times:** ${cfg.limiteInscricoes || 'Não definido'}`
-          : '') : '') +
-      (cfg.descricao ? `\n\n${cfg.descricao}` : ''),
-    color: 0xFF6B00
+    title: avancado ? '⚙️ Configurar campeonato — Etapa 2/2' : '🏆 Configurar campeonato — Etapa 1/2',
+    description: `${avancado ? '●━━━━━━━━●' : '●━━━━━━━━○'}  **Etapa ${avancado ? '2' : '1'} de 2**\n` +
+      `**${cfg.nome}** · ${dataInicio} às ${cfg.horarioInicio} · inscrições até ${dataLimite}\n` +
+      (avancado ? 'Revise o resumo e escolha formato e limite.' : 'Escolha uma opção em cada menu. Os ranks podem ser combinados.') +
+      (cfg.descricao ? `\n\n_${cfg.descricao}_` : ''),
+    color: 0xFF8C00,
+    fields: campos
   };
 
   const botoes = [];
@@ -674,13 +884,13 @@ function buildConfigPanel(userId, configOverride) {
     ];
     const selectModo = new StringSelectMenuBuilder()
       .setCustomId('select_config_modo')
-      .setPlaceholder('1. Escolha o modo de jogo')
-      .addOptions(modos.map(([value, label]) => ({ label, value, default: cfg.modo === value })));
+      .setPlaceholder('⚔️ Modo de jogo')
+      .addOptions(modos.map(([value, label]) => ({ label: `⚔️ ${label}`, value, default: cfg.modo === value })));
     const selectRanks = new StringSelectMenuBuilder()
       .setCustomId('select_config_ranks')
-      .setPlaceholder('2. Selecione um ou mais ranks')
+      .setPlaceholder(`🏅 Ranks (${nomeRanks.length || 'selecione'})`)
       .setMinValues(1)
-      .setMaxValues(config.ranks.length)
+      .setMaxValues(Math.min(10, config.ranks.length))
       .addOptions(config.ranks.map((rank) => ({
         label: rank.label,
         value: rank.key,
@@ -689,14 +899,14 @@ function buildConfigPanel(userId, configOverride) {
       })));
     const selectSimultaneo = new StringSelectMenuBuilder()
       .setCustomId('select_config_simultaneo')
-      .setPlaceholder('3. Escolha a simultaneidade')
+      .setPlaceholder('⏱️ Simultaneidade')
       .addOptions([
         { label: 'Simultâneas', value: 'true', default: cfg.simultaneo !== false },
         { label: 'Escalonadas', value: 'false', default: cfg.simultaneo === false }
       ]);
     const selectEntrada = new StringSelectMenuBuilder()
       .setCustomId('select_config_entrada')
-      .setPlaceholder('4. Escolha o modo de entrada')
+      .setPlaceholder('👥 Entrada')
       .addOptions([
         { label: 'Times ilimitados', value: 'true', default: cfg.baseadoEmInscricoes === true },
         { label: 'Definir limite de times', value: 'false', default: cfg.baseadoEmInscricoes === false }
@@ -758,13 +968,15 @@ function buildConfigPanel(userId, configOverride) {
         .setCustomId('btn_config_criar')
         .setLabel('Criar campeonato')
         .setStyle(ButtonStyle.Success)
-        .setDisabled(!isConfigComplete(cfg)),
-      new ButtonBuilder()
-        .setCustomId('btn_config_cancelar')
-        .setLabel('Cancelar')
-        .setStyle(ButtonStyle.Danger)
+        .setDisabled(!isConfigComplete(cfg))
     );
     if (botoes.length) componentes.push(new ActionRowBuilder().addComponents(botoes));
+    componentes.push(new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('btn_config_cancelar')
+        .setLabel('Cancelar criação')
+        .setStyle(ButtonStyle.Danger)
+    ));
   }
 
   if (!avancado) componentes.push(new ActionRowBuilder().addComponents(botoes));
@@ -1974,7 +2186,10 @@ async function onSubmitConfiguracoesEvento(interaction) {
     const { campeonatos } = await obterEventoEditavelPorEvento(match[1]);
     const textoLimite = textoCampo(interaction, 'edit_limite_times');
     const limite = textoLimite ? Number(textoLimite) : null;
-    if (textoLimite && (!Number.isSafeInteger(limite) || limite < 4)) throw new Error('O limite deve ser um número inteiro de times igual ou maior que 4.');
+    const minimoLimite = Math.max(4, ...campeonatos.map((camp) => minimoTimesFormato(camp.modalidade || camp.formato)));
+    if (textoLimite && (!Number.isSafeInteger(limite) || limite < minimoLimite)) {
+      throw new Error(`O limite deve ser um número inteiro de times igual ou maior que ${minimoLimite}.`);
+    }
     if (campeonatos.some((camp) => camp.baseadoEmInscricoes === false && limite === null)) {
       throw new Error('🔴 Um limite de times é obrigatório enquanto as inscrições forem limitadas.');
     }
@@ -2066,7 +2281,8 @@ async function aplicarSelecaoRanksEvento(interaction, eventoId, ranks, aviso) {
         botUserId
       );
       campeonato.canais.inscricoes = canais.inscricoes.id;
-      campeonato.canais.partidas = canais.partidas.id;
+      campeonato.canais.partidas = null;
+      campeonato.canais.prints = null;
       campeonato.arquivado = false;
       await campeonato.save();
       await publicarPainelInscricao(canais.inscricoes, campeonato);
@@ -2122,9 +2338,12 @@ async function aplicarSelecaoRanksEvento(interaction, eventoId, ranks, aviso) {
     await canalAvisos.send({
       content: `⚠️ **Atualização de ranks do evento ${evento.nome}**\n${String(aviso).trim()}`
     });
-    for (const chave of ['inscricoes', 'partidas']) {
-      const canalId = campeonato.canais?.[chave];
-      if (!canalId) continue;
+    const canaisDoCampeonato = [
+      ...['inscricoes', 'partidas', 'prints', 'organizador', 'avisos']
+        .map((chave) => campeonato.canais?.[chave]),
+      ...Object.values(campeonato.canais?.fases || {})
+    ].filter((canalId, indice, todos) => canalId && todos.indexOf(canalId) === indice);
+    for (const canalId of canaisDoCampeonato) {
       try {
         const canal = await interaction.guild.channels.fetch(canalId);
         if (canal) await canal.delete(`Rank ${rank} removido da seleção do evento ${evento.nome}`);
@@ -2134,6 +2353,12 @@ async function aplicarSelecaoRanksEvento(interaction, eventoId, ranks, aviso) {
     }
     campeonato.canais.inscricoes = null;
     campeonato.canais.partidas = null;
+    campeonato.canais.prints = null;
+    campeonato.canais.organizador = null;
+    campeonato.canais.avisos = null;
+    campeonato.canais.fases = {};
+    campeonato.canais.fasesMensagens = {};
+    campeonato.markModified('canais');
     campeonato.arquivado = true;
     await campeonato.save();
     solicitarAtualizacaoPainelOrganizador(campeonato._id);
@@ -2459,9 +2684,10 @@ async function onConfirmarGerarBracket(interaction) {
       return interaction.editReply({ content: 'Campeonato não encontrado.', embeds: [], components: [] });
     }
     const formato = obterFormatoCampeonato(campeonato);
-    await criarCanaisFases(interaction.guild, campeonato, formato);
-    campeonato = await Campeonato.findById(campeonatoId).lean();
     let partidasExistentes = await Partida.find({ campeonatoId }).lean();
+    const totalTimes = await Time.countDocuments({ campeonatoId });
+    await criarCanaisFases(interaction.guild, campeonato, formato, totalTimes, partidasExistentes);
+    campeonato = await Campeonato.findById(campeonatoId).lean();
     if (!partidasExistentes.length) {
       await gerarBracket(campeonatoId);
       partidasExistentes = await Partida.find({ campeonatoId }).lean();
@@ -2473,7 +2699,7 @@ async function onConfirmarGerarBracket(interaction) {
       await publicarPartidaDiscord(partida._id, interaction.client);
     }
 
-    const canaisFases = fasesDoFormato(formato)
+    const canaisFases = fasesDoFormato(formato, totalTimes, partidasExistentes)
       .map((fase) => `<#${campeonato.canais?.fases?.[fase.key]}>`)
       .join(', ');
     return interaction.editReply({
@@ -2724,17 +2950,59 @@ async function onBotaoVerClassificacao(interaction) {
 }
 
 async function onBotaoVerBracket(interaction) {
-  const campeonato = await findCampeonatoPorCanal(interaction.channelId);
+  const match = interaction.customId.match(/^btn_camp_ver_bracket_([a-f0-9]{24})$/);
+  const campeonato = match
+    ? await Campeonato.findById(match[1]).lean()
+    : await findCampeonatoPorCanal(interaction.channelId);
   if (!campeonato) {
-    return interaction.reply({ content: 'Campeonato nao encontrado.', flags: 64 });
+    return interaction.reply({ content: 'Campeonato não encontrado.', flags: 64 });
   }
   await interaction.deferReply({ flags: 64 });
-  const partidas = await Partida.find({ campeonatoId: campeonato._id, rodada: 1 }).lean();
+  const partidas = await Partida.find({ campeonatoId: campeonato._id })
+    .sort({ rodada: 1, criadoEm: 1 })
+    .lean();
   const timesIds = partidas.flatMap((p) => [p.timeA, p.timeB]).filter(Boolean);
   const times = await Time.find({ _id: { $in: timesIds } }).lean();
-  const timesMap = new Map(times.map((t) => [String(t._id), t]));
-  const ordenados = partidas.map((p) => timesMap.get(String(p.timeA))).filter(Boolean);
-  return interaction.editReply(embedBracket(ordenados));
+  const timesMap = new Map(times.map((time) => [String(time._id), time]));
+  const titulosFase = {
+    groups: 'Fase de grupos',
+    classificatorias: 'Classificatórias',
+    winners: 'Winners',
+    losers: 'Losers',
+    'round-robin': 'Round robin',
+    quartas: 'Quartas de final',
+    semis: 'Semifinais',
+    final: 'Final',
+    'mata-mata': 'Mata-mata'
+  };
+  const ordemFases = ['groups', 'classificatorias', 'winners', 'losers', 'round-robin', 'quartas', 'semis', 'final', 'mata-mata'];
+  const grupos = new Map();
+  for (const partida of partidas) {
+    const fase = partida.bracketMeta?.canalFase || 'mata-mata';
+    if (!grupos.has(fase)) grupos.set(fase, []);
+    grupos.get(fase).push(partida);
+  }
+  const secoes = [...grupos.entries()]
+    .sort(([faseA], [faseB]) => ordemFases.indexOf(faseA) - ordemFases.indexOf(faseB))
+    .map(([fase, itens]) => {
+      const partidasTexto = itens.map((partida) => {
+        const timeA = timesMap.get(String(partida.timeA))?.nome || 'A definir';
+        const timeB = timesMap.get(String(partida.timeB))?.nome || 'A definir';
+        const status = partida.status === 'FINALIZADA' || partida.status === 'WO'
+          ? `✅ ${partida.vencedorId ? `Vencedor: ${timesMap.get(String(partida.vencedorId))?.nome || 'definido'}` : 'Finalizada'}`
+          : partida.status === 'AGUARDANDO_PLACAR' ? '🔴 Ao vivo' : '⏳ Aguardando';
+        return `• R${partida.rodada} · **${timeA}** vs **${timeB}** · ${status}`;
+      });
+      return `**${titulosFase[fase] || fase}**\n${partidasTexto.join('\n')}`;
+    });
+  const description = secoes.join('\n\n').slice(0, 4000) || 'As partidas ainda não foram geradas.';
+  return interaction.editReply({
+    embeds: [{
+      title: `📊 Bracket · ${campeonato.nome}`,
+      description,
+      color: 0x5865F2
+    }]
+  });
 }
 
 async function onBotaoFinalizar(interaction) {
@@ -3701,8 +3969,9 @@ async function onSubmitConfigLimite(interaction) {
   }
   const texto = interaction.fields.getTextInputValue('limite_manual').trim();
   const limite = Number(texto);
-  if (!Number.isSafeInteger(limite) || limite < 4) {
-    return interaction.reply({ content: 'Informe um número inteiro de times igual ou maior que 4.', flags: 64 });
+  const minimo = cfg.formato ? minimoTimesFormato(cfg.formato) : 4;
+  if (!Number.isSafeInteger(limite) || limite < minimo) {
+    return interaction.reply({ content: `Informe um número inteiro de times igual ou maior que ${minimo}.`, flags: 64 });
   }
   const formatoAnterior = cfg.formato;
   cfg.limiteInscricoes = limite;
@@ -3941,6 +4210,7 @@ function register(registry) {
   registry.button(/^btn_cancelar_gerar_bracket_[a-f0-9]{24}$/, onCancelarGerarBracket);
   registry.button(/^btn_camp_checkin_[a-f0-9]{24}$/, onBotaoCheckIn);
   registry.button(/^btn_camp_adversario_faltou_[a-f0-9]{24}$/, onBotaoAdversarioFaltou);
+  registry.button(/^btn_camp_(?:abrir_thread|enviar_print|ver_prints)_[a-f0-9]{24}$/, onBotaoAbrirThreadPartida);
   registry.button(/^btn_confirmar_wo_[a-f0-9]{24}$/, onConfirmarWO);
   registry.button(/^btn_negar_wo_[a-f0-9]{24}$/, onNegarWO);
   registry.button(/^btn_camp_enviar_placar_[a-f0-9]{24}$/, onBotaoEnviarPlacar);
@@ -3950,6 +4220,7 @@ function register(registry) {
   registry.button(/^btn_camp_contestar_placar_[a-f0-9]{24}$/, onBotaoContestarPlacar);
   registry.button('btn_camp_ver_classificacao', onBotaoVerClassificacao);
   registry.button('btn_camp_ver_bracket', onBotaoVerBracket);
+  registry.button(/^btn_camp_ver_bracket_[a-f0-9]{24}$/, onBotaoVerBracket);
   registry.button('btn_camp_broadcast', onBotaoBroadcast);
   registry.modal('modal_camp_broadcast', onSubmitBroadcast);
   registry.button(/^btn_camp_finalizar_[a-f0-9]{24}$/, onBotaoFinalizar);

@@ -28,7 +28,16 @@ function permOrgao() {
 }
 
 function permBot(botUserId) {
-  return { id: botUserId, allow: [...PERMISSOES_GERAL, PermissionFlagsBits.ManageChannels] };
+  return {
+    id: botUserId,
+    allow: [
+      ...PERMISSOES_GERAL,
+      PermissionFlagsBits.ManageChannels,
+      PermissionFlagsBits.CreatePrivateThreads,
+      PermissionFlagsBits.SendMessagesInThreads,
+      PermissionFlagsBits.ManageThreads
+    ]
+  };
 }
 
 function permRank(rankKey) {
@@ -42,8 +51,12 @@ function bloqueioEveryone() {
 }
 
 async function criarCategoriaEvento(guild, evento, botUserId) {
+  const nomeEvento = String(evento.nome || 'Campeonato').replace(/\s+/g, ' ').trim().slice(0, 52);
+  const sufixo = evento.sufixoNumero && evento.sufixoNumero !== '00'
+    ? ` — Ômega #${evento.sufixoNumero}`
+    : '';
   return guild.channels.create({
-    name: `🏆 ${evento.nome.toUpperCase()}`,
+    name: `🏆 ${nomeEvento}${sufixo}`.slice(0, 100),
     type: ChannelType.GuildCategory,
     permissionOverwrites: [
       { id: guild.roles.everyone.id, deny: PERMISSOES_LEITURA },
@@ -106,24 +119,6 @@ async function criarCanaisRank(guild, categoria, rank, evento, botUserId) {
     reason: `Canal de inscrições ${rank} do evento ${evento.nome}`
   });
 
-  canais.partidas = await guild.channels.create({
-    name: '⚔️・partidas',
-    type: ChannelType.GuildText,
-    parent: categoria.id,
-    permissionOverwrites: baseOverwrites,
-    topic: `Partidas do campeonato ${rankConfig.label} - ${evento.nome}`,
-    reason: `Canal de partidas ${rank} do evento ${evento.nome}`
-  });
-
-  canais.prints = await guild.channels.create({
-    name: '📸・prints',
-    type: ChannelType.GuildText,
-    parent: categoria.id,
-    permissionOverwrites: baseOverwrites,
-    topic: `Prints do campeonato ${rankConfig.label} - ${evento.nome}`,
-    reason: `Canal de prints ${rank} do evento ${evento.nome}`
-  });
-
   canais.organizador = await guild.channels.create({
     name: '🔧・painel-org',
     type: ChannelType.GuildText,
@@ -158,15 +153,7 @@ async function recriarCanaisInscricoesPartidas(guild, categoriaId, rank, evento,
     topic: `Inscrições do campeonato ${rankConfig.label} - ${evento.nome}`,
     reason: `Reativação de inscrições do rank ${rank} no evento ${evento.nome}`
   });
-  const partidas = await guild.channels.create({
-    name: '⚔️・partidas',
-    type: ChannelType.GuildText,
-    parent: categoriaId,
-    permissionOverwrites: overwrites,
-    topic: `Partidas do campeonato ${rankConfig.label} - ${evento.nome}`,
-    reason: `Reativação de partidas do rank ${rank} no evento ${evento.nome}`
-  });
-  return { inscricoes, partidas };
+  return { inscricoes };
 }
 
 async function criarCanaisTime(guild, categoria, time, jogadorIds = [], botUserId, modo = null) {
