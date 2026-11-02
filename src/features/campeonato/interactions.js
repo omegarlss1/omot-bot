@@ -20,7 +20,7 @@ const Evento = require('../../db/models/evento');
 const Partida = require('../../db/models/partida');
 const Time = require('../../db/models/time');
 const CampeonatoFactory = require('./factory/CampeonatoFactory');
-const { criarCanaisRank, recriarCanaisInscricoesPartidas, permOrgao, permBot, permRank, PERMISSOES_LEITURA } = require('./permissions');
+const { criarCanaisRank, recriarCanaisInscricoesPartidas, permOrgao, permBot, permRank, PERMISSOES_LEITURA, ehMembroDoTime } = require('./permissions');
 const { instance: eventosCampeonato, EVENTOS } = require('./events');
 
 const selecaoRanks = new Map();
@@ -654,6 +654,12 @@ function temPermissaoOrganizador(member) {
   if (member.permissions?.has?.('Administrator')) return true;
   const orgRoleId = config.campeonato.cargoOrganizacaoId;
   return member.roles?.cache?.has?.(orgRoleId) || false;
+}
+
+function usuarioPodeAgirNoTime(member, time) {
+  if (!member || !time) return false;
+  if (temPermissaoOrganizador(member)) return true;
+  return ehMembroDoTime(member, time);
 }
 
 function parseDataBR(texto) {
@@ -2653,7 +2659,6 @@ async function onBotaoGerarBracket(interaction) {
 
     return interaction.editReply({
       embeds: [embed],
-      files: preview.canvas ? [new AttachmentBuilder(preview.canvas, { name: `bracket-${campeonato.rank}.png` })] : [],
       components: toActionRows([buttons])
     });
   } catch (error) {
@@ -2732,13 +2737,15 @@ async function onBotaoCheckIn(interaction) {
   }
   await interaction.deferReply({ flags: 64 });
   try {
-    const timeId = interaction.member.id;
     const todos = await Time.find({});
-    const meuTime = todos.find((t) => t.capitaoId === interaction.user.id);
-    if (!meuTime) {
-      return interaction.editReply({ content: 'Voce nao e capitao de nenhum time nesta partida.', embeds: [], components: [] });
+    const membro = interaction.guild?.members?.cache?.get(interaction.user.id);
+    const ehOrganizador = temPermissaoOrganizador(membro);
+    const meuTime = todos.find((t) => (t.jogadores || []).some((j) => String(j.userId) === String(interaction.user.id)));
+    if (!meuTime && !ehOrganizador) {
+      return interaction.editReply({ content: 'Voce nao e membro de nenhum time nesta partida.', embeds: [], components: [] });
     }
-    await registrarCheckIn(partidaId, meuTime._id, interaction.user.id);
+    const timeId = meuTime ? meuTime._id : (ehOrganizador ? partida.timeA : null);
+    await registrarCheckIn(partidaId, timeId, interaction.user.id, ehOrganizador);
     const partidaAtualizada = await Partida.findById(partidaId);
     const timeA = await Time.findById(partidaAtualizada.timeA);
     const timeB = await Time.findById(partidaAtualizada.timeB);
@@ -2756,12 +2763,18 @@ async function onBotaoCheckIn(interaction) {
 async function onBotaoAdversarioFaltou(interaction) {
   const partidaId = interaction.customId.replace('btn_camp_adversario_faltou_', '');
   const partida = await Partida.findById(partidaId);
-  const time = partida && await Time.findOne({ campeonatoId: partida.campeonatoId, capitaoId: interaction.user.id });
-  if (!partida || !time || (String(partida.timeA) !== String(time._id) && String(partida.timeB) !== String(time._id))) {
+  const membro = interaction.guild?.members?.cache?.get(interaction.user.id);
+  if (!partida) {
     return interaction.reply({ content: 'Apenas o capitão de um time desta partida pode solicitar W.O.', flags: 64 });
   }
+  const time = partida && await Time.findOne({ campeonatoId: partida.campeonatoId, $or: [{ capitaoId: interaction.user.id }, { 'jogadores.userId': interaction.user.id }] });
+  if (!partida || !time || (String(partida.timeA) !== String(time._id) && String(partida.timeB) !== String(time._id))) {
+    if (!temPermissaoOrganizador(membro)) {
+      return interaction.reply({ content: 'Apenas o capitão de um time desta partida pode solicitar W.O.', flags: 64 });
+    }
+  }
   const chave = `${interaction.user.id}:${partidaId}`;
-  wosPendentes.set(chave, { partidaId, timeId: time._id });
+  wosPendentes.set(chave, { partidaId, timeId: time ? time._id : null });
   return interaction.reply({
     content: '⚠️ Confirme que o adversário não compareceu. O W.O. será registrado para o seu time.',
     components: [new ActionRowBuilder().addComponents(
@@ -2778,7 +2791,17 @@ async function onConfirmarWO(interaction) {
   const pendente = wosPendentes.get(chave);
   if (!pendente) return interaction.reply({ content: 'Solicitação de W.O. expirada.', flags: 64 });
   try {
-    await registrarWO({ partidaId, timeVencedorId: pendente.timeId, motivo: 'Adversário não compareceu', declaranteId: interaction.user.id, juiz: false });
+    const membro = interaction.guild?.members?.cache?.get(interaction.user.id);
+    const ehOrganizador = temPermissaoOrganizador(membro);
+    let timeVencedorId = pendente.timeId;
+    if (ehOrganizador && !timeVencedorId) {
+      const partida = await Partida.findById(partidaId);
+      timeVencedorId = partida?.timeA || null;
+    }
+    if (!timeVencedorId) {
+      return interaction.update({ content: 'Não foi possível determinar o time vencedor.', components: [] });
+    }
+    await registrarWO({ partidaId, timeVencedorId, motivo: 'Adversário não compareceu', declaranteId: interaction.user.id, juiz: ehOrganizador });
     wosPendentes.delete(chave);
     return interaction.update({ content: '✅ W.O. registrado para o seu time.', components: [] });
   } catch (error) {
@@ -2799,12 +2822,19 @@ async function onBotaoEnviarPlacar(interaction) {
   if (!partida) {
     return interaction.reply({ content: 'Partida nao encontrada.', flags: 64 });
   }
-  const meuTime = await Time.findOne({ capitaoId: interaction.user.id });
-  if (!meuTime) return interaction.reply({ content: 'Voce nao e capitao de nenhum time.', flags: 64 });
-  const ehTimeA = String(partida.timeA) === String(meuTime._id);
-  const ehTimeB = String(partida.timeB) === String(meuTime._id);
-  if (!ehTimeA && !ehTimeB) {
-    return interaction.reply({ content: 'Seu time nao esta nesta partida.', flags: 64 });
+  const membro = interaction.guild?.members?.cache?.get(interaction.user.id);
+  const ehOrganizador = temPermissaoOrganizador(membro);
+  const todos = await Time.find({});
+  const meuTime = todos.find((t) => (t.jogadores || []).some((j) => String(j.userId) === String(interaction.user.id)));
+  if (!meuTime && !ehOrganizador) {
+    return interaction.reply({ content: 'Voce nao e membro de nenhum time.', flags: 64 });
+  }
+  if (!ehOrganizador) {
+    const ehTimeA = String(partida.timeA) === String(meuTime._id);
+    const ehTimeB = String(partida.timeB) === String(meuTime._id);
+    if (!ehTimeA && !ehTimeB) {
+      return interaction.reply({ content: 'Seu time nao esta nesta partida.', flags: 64 });
+    }
   }
   const duelos = partida.duelos || [];
   if (duelos.length > 0) {
@@ -2875,17 +2905,31 @@ async function onSubmitEnviarPlacar(interaction) {
   }
   await interaction.deferReply({ flags: 64 });
   try {
-    const meuTime = await Time.findOne({ capitaoId: interaction.user.id });
-    if (!meuTime) return interaction.editReply({ content: 'Voce nao e capitao de nenhum time.' });
+    const partida = await Partida.findById(partidaId);
+    if (!partida) return interaction.editReply({ content: 'Partida não encontrada.' });
+    const membro = interaction.guild?.members?.cache?.get(interaction.user.id);
+    const ehOrganizador = temPermissaoOrganizador(membro);
+    const todos = await Time.find({});
+    const meuTime = todos.find((t) => (t.jogadores || []).some((j) => String(j.userId) === String(interaction.user.id)));
+    if (!meuTime && !ehOrganizador) {
+      return interaction.editReply({ content: 'Voce nao e membro de nenhum time.' });
+    }
+    const timeId = meuTime ? meuTime._id : (ehOrganizador ? partida.timeA : null);
+    if (!timeId) {
+      return interaction.editReply({ content: 'Não foi possível determinar o time.' });
+    }
     const resultado = await enviarPlacar({
       partidaId,
-      timeId: meuTime._id,
+      timeId,
       userId: interaction.user.id,
       placar,
-      dueloIndex
+      dueloIndex,
+      ehOrganizador
     });
-    const partida = await Partida.findById(partidaId);
-    const placarEmbed = embedPlacarEnviado({ partida, lado: resultado.lado, placar: resultado.placar, dueloIndex: resultado.dueloIndex });
+    const partidaAtualizada = await Partida.findById(partidaId);
+    const timeA = await Time.findById(partidaAtualizada.timeA);
+    const timeB = await Time.findById(partidaAtualizada.timeB);
+    const placarEmbed = embedPlacarEnviado({ partida: partidaAtualizada, lado: resultado.lado, placar: resultado.placar, dueloIndex: resultado.dueloIndex });
     return interaction.editReply({ embeds: placarEmbed.embeds, components: toActionRows(placarEmbed.components) });
   } catch (error) {
     if (error instanceof PlacarError) {
@@ -2900,9 +2944,20 @@ async function onBotaoValidarPlacar(interaction) {
   const partidaId = interaction.customId.replace('btn_camp_validar_placar_', '');
   await interaction.deferReply({ flags: 64 });
   try {
-    const meuTime = await Time.findOne({ capitaoId: interaction.user.id });
-    if (!meuTime) return interaction.editReply({ content: 'Voce nao e capitao.' });
-    const r = await validarPlacar({ partidaId, userId: interaction.user.id, timeId: meuTime._id, aceito: true });
+    const partida = await Partida.findById(partidaId);
+    if (!partida) return interaction.editReply({ content: 'Partida não encontrada.' });
+    const membro = interaction.guild?.members?.cache?.get(interaction.user.id);
+    const ehOrganizador = temPermissaoOrganizador(membro);
+    const todos = await Time.find({});
+    const meuTime = todos.find((t) => (t.jogadores || []).some((j) => String(j.userId) === String(interaction.user.id)));
+    if (!meuTime && !ehOrganizador) {
+      return interaction.editReply({ content: 'Voce nao e capitão.' });
+    }
+    const timeId = meuTime ? meuTime._id : (ehOrganizador ? partida.timeA : null);
+    if (!timeId) {
+      return interaction.editReply({ content: 'Não foi possível determinar o time.' });
+    }
+    const r = await validarPlacar({ partidaId, userId: interaction.user.id, timeId, aceito: true, ehOrganizador });
     return interaction.editReply({ content: 'Validacao registrada. Status: ' + r.status, embeds: [], components: [] });
   } catch (error) {
     if (error instanceof PlacarError) {
@@ -2917,10 +2972,20 @@ async function onBotaoContestarPlacar(interaction) {
   const partidaId = interaction.customId.replace('btn_camp_contestar_placar_', '');
   await interaction.deferReply({ flags: 64 });
   try {
-    const meuTime = await Time.findOne({ capitaoId: interaction.user.id });
-    if (!meuTime) return interaction.editReply({ content: 'Voce nao e capitao.' });
-    const r = await validarPlacar({ partidaId, userId: interaction.user.id, timeId: meuTime._id, aceito: false });
     const partida = await Partida.findById(partidaId);
+    if (!partida) return interaction.editReply({ content: 'Partida não encontrada.' });
+    const membro = interaction.guild?.members?.cache?.get(interaction.user.id);
+    const ehOrganizador = temPermissaoOrganizador(membro);
+    const todos = await Time.find({});
+    const meuTime = todos.find((t) => (t.jogadores || []).some((j) => String(j.userId) === String(interaction.user.id)));
+    if (!meuTime && !ehOrganizador) {
+      return interaction.editReply({ content: 'Voce nao e capitão.' });
+    }
+    const timeId = meuTime ? meuTime._id : (ehOrganizador ? partida.timeA : null);
+    if (!timeId) {
+      return interaction.editReply({ content: 'Não foi possível determinar o time.' });
+    }
+    const r = await validarPlacar({ partidaId, userId: interaction.user.id, timeId, aceito: false, ehOrganizador });
     return interaction.editReply(embedDisputaOrganizador({
       partida,
       placarA: partida.placarEnviado?.timeA?.placar,

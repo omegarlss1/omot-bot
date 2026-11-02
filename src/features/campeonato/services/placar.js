@@ -17,7 +17,7 @@ function parsePlacar(texto) {
   return { golsA: Number(match[1]), golsB: Number(match[2]) };
 }
 
-async function enviarPlacar({ partidaId, timeId, userId, placar, prints = [], duelos = [], dueloIndex = null }) {
+async function enviarPlacar({ partidaId, timeId, userId, placar, prints = [], duelos = [], dueloIndex = null, ehOrganizador = false }) {
   const partida = await Partida.findById(partidaId);
   if (!partida) throw new PlacarError('Partida não encontrada.', 'PLACAR_PARTIDA_NAO_ENCONTRADA');
   if (!partida.timeA || !partida.timeB) {
@@ -28,7 +28,7 @@ async function enviarPlacar({ partidaId, timeId, userId, placar, prints = [], du
   }
   const time = await Time.findById(timeId);
   if (!time) throw new PlacarError('Time não encontrado.', 'PLACAR_TIME_NAO_ENCONTRADO');
-  if (time.capitaoId !== userId) {
+  if (!ehOrganizador && time.capitaoId !== userId) {
     throw new PlacarError('Apenas o capitão pode enviar placar.', 'PLACAR_NAO_CAPITAO');
   }
   const parsed = parsePlacar(placar);
@@ -68,7 +68,7 @@ async function enviarPlacar({ partidaId, timeId, userId, placar, prints = [], du
   return { ok: true, lado: ehTimeA ? 'A' : 'B', placar, dueloIndex };
 }
 
-async function validarPlacar({ partidaId, userId, timeId, aceito }) {
+async function validarPlacar({ partidaId, userId, timeId, aceito, ehOrganizador = false }) {
   const partida = await Partida.findById(partidaId);
   if (!partida) throw new PlacarError('Partida não encontrada.', 'PLACAR_PARTIDA_NAO_ENCONTRADA');
   if (partida.status !== 'AGUARDANDO_VALIDACAO') {
@@ -76,7 +76,7 @@ async function validarPlacar({ partidaId, userId, timeId, aceito }) {
   }
   const time = await Time.findById(timeId);
   if (!time) throw new PlacarError('Time não encontrado.', 'PLACAR_TIME_NAO_ENCONTRADO');
-  if (time.capitaoId !== userId) {
+  if (!ehOrganizador && time.capitaoId !== userId) {
     throw new PlacarError('Apenas o capitão pode validar/contestar.', 'PLACAR_NAO_CAPITAO');
   }
   if (!aceito) {

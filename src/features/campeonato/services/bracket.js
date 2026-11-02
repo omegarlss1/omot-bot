@@ -2,7 +2,6 @@ const Partida = require('../../../db/models/partida');
 const Time = require('../../../db/models/time');
 const Campeonato = require('../../../db/models/campeonato');
 const { emitir, EVENTOS } = require('../events');
-const { renderSingleBracketPng } = require('./canvasBracket');
 const {
   normalizarFormato,
   minimoTimesFormato,
@@ -296,16 +295,7 @@ async function gerarBracket(campeonatoId, { shuffle = true } = {}) {
       { $set: { 'bracket.gruposAvancados': false, 'bracket.gruposAvancando': false } }
     );
   }
-  const canvas = formato === 'single' && times.length <= 16
-    ? await renderSingleBracketPng({
-      times,
-      incluirTerceiroLugar: campeonato.temTerceiroLugar !== false,
-      baseadoEmInscricoes: campeonato.baseadoEmInscricoes !== false,
-      limite: campeonato.limiteInscricoes || null,
-      horarioInicio: campeonato.dataEvento || campeonato.horarioInicio || null,
-      intervaloPartidasMin: campeonato.intervaloPartidasMin || 20
-    })
-    : null;
+  const canvas = null;
   return { totalPartidas: partidas.length, partidas, canvas, formato };
 }
 
@@ -327,16 +317,7 @@ async function previewBracket(campeonatoId) {
     estimatedStartAt: new Date(inicioBase.getTime() + Math.max(0, node.rodadaAgendada - 1) * intervaloMs)
   }));
   const totalPartidas = nodes.length + (formato === 'grupos-mata-mata' ? 7 : 0);
-  const canvas = formato === 'single' && times.length <= 16
-    ? await renderSingleBracketPng({
-      times,
-      incluirTerceiroLugar: campeonato.temTerceiroLugar !== false,
-      baseadoEmInscricoes: campeonato.baseadoEmInscricoes !== false,
-      limite: campeonato.limiteInscricoes || null,
-      horarioInicio: campeonato.dataEvento || campeonato.horarioInicio || null,
-      intervaloPartidasMin: campeonato.intervaloPartidasMin || 20
-    })
-    : null;
+  const canvas = null;
   return {
     totalPartidas,
     partidas: previewPartidas,

@@ -50,6 +50,13 @@ function bloqueioEveryone() {
   return { id: config.ranks._everyoneId || undefined, deny: PERMISSOES_LEITURA };
 }
 
+function ehMembroDoTime(member, time) {
+  if (!member || !time) return false;
+  const userId = String(member.id || member.user?.id || '');
+  if (!userId) return false;
+  return (time.jogadores || []).some((j) => String(j.userId) === userId);
+}
+
 async function criarCategoriaEvento(guild, evento, botUserId) {
   const nomeEvento = String(evento.nome || 'Campeonato').replace(/\s+/g, ' ').trim().slice(0, 52);
   const sufixo = evento.sufixoNumero && evento.sufixoNumero !== '00'
@@ -205,6 +212,7 @@ module.exports = {
   permBot,
   permRank,
   bloqueioEveryone,
+  ehMembroDoTime,
   PERMISSOES_GERAL,
   PERMISSOES_ORG,
   PERMISSOES_LEITURA

@@ -16,7 +16,7 @@ function dentroDaJanela(partida, agora = new Date()) {
   return agora >= inicio && agora <= fim;
 }
 
-async function registrarCheckIn(partidaId, timeId, userId) {
+async function registrarCheckIn(partidaId, timeId, userId, ehOrganizador = false) {
   const partida = await Partida.findById(partidaId);
   if (!partida) throw new CheckinError('Partida não encontrada.', 'CHECKIN_PARTIDA_NAO_ENCONTRADA');
   if (!partida.timeA || !partida.timeB) {
@@ -28,21 +28,24 @@ async function registrarCheckIn(partidaId, timeId, userId) {
   if (!dentroDaJanela(partida)) {
     throw new CheckinError('Fora da janela de check-in.', 'CHECKIN_FORA_JANELA');
   }
-  const time = await Time.findById(timeId);
-  if (!time) throw new CheckinError('Time não encontrado.', 'CHECKIN_TIME_NAO_ENCONTRADO');
-  if (time.capitaoId !== userId) {
-    throw new CheckinError('Apenas o capitão pode fazer check-in.', 'CHECKIN_NAO_CAPITAO');
+  let time = null;
+  if (timeId) {
+    time = await Time.findById(timeId);
+    if (!time) throw new CheckinError('Time não encontrado.', 'CHECKIN_TIME_NAO_ENCONTRADO');
+    const ehTimeA = String(partida.timeA) === String(timeId);
+    const ehTimeB = String(partida.timeB) === String(timeId);
+    if (!ehTimeA && !ehTimeB) {
+      throw new CheckinError('Seu time não está nesta partida.', 'CHECKIN_TIME_INVALIDO');
+    }
+  } else if (!ehOrganizador) {
+    throw new CheckinError('Time não informado.', 'CHECKIN_TIME_INVALIDO');
   }
-  const ehTimeA = String(partida.timeA) === String(timeId);
-  const ehTimeB = String(partida.timeB) === String(timeId);
-  if (!ehTimeA && !ehTimeB) {
-    throw new CheckinError('Seu time não está nesta partida.', 'CHECKIN_TIME_INVALIDO');
-  }
-  const campo = ehTimeA ? 'checkIns.timeA' : 'checkIns.timeB';
-  const atualizacao = {
-    [campo]: { fez: true, timestamp: new Date(), porUserId: userId }
-  };
-  const outroCampo = ehTimeA ? partida.checkIns?.timeB : partida.checkIns?.timeA;
+  const ehTimeA = time ? String(partida.timeA) === String(timeId) : false;
+  const lado = time ? (ehTimeA ? 'A' : 'B') : null;
+  const campo = lado ? (ehTimeA ? 'checkIns.timeA' : 'checkIns.timeB') : null;
+  const atualizacao = {};
+  if (campo) atualizacao[campo] = { fez: true, timestamp: new Date(), porUserId: userId };
+  const outroCampo = lado === 'A' ? partida.checkIns?.timeB : partida.checkIns?.timeA;
   if (outroCampo?.fez) atualizacao.status = 'AGUARDANDO_PLACAR';
   await Partida.updateOne(
     { _id: partidaId },
@@ -51,10 +54,11 @@ async function registrarCheckIn(partidaId, timeId, userId) {
   emitir(EVENTOS.CHECKIN_REALIZADO, {
     partidaId,
     timeId,
-    lado: ehTimeA ? 'A' : 'B',
+    lado,
+    porUserId: userId,
     partidaIniciada: Boolean(outroCampo?.fez)
   });
-  return { ok: true, lado: ehTimeA ? 'A' : 'B', partidaIniciada: Boolean(outroCampo?.fez) };
+  return { ok: true, lado, partidaIniciada: Boolean(outroCampo?.fez) };
 }
 
 async function registrarCheckInOrganizador(partidaId, lado, organizadorId) {
@@ -74,7 +78,7 @@ async function registrarCheckInOrganizador(partidaId, lado, organizadorId) {
   return { ok: true, partidaIniciada: Boolean(outroCampo?.fez) };
 }
 
-async function verificarAdversarioFaltou(partidaId, timeReclamanteId, userId) {
+async function verificarAdversarioFaltou(partidaId, timeReclamanteId, userId, ehOrganizador = false) {
   const partida = await Partida.findById(partidaId);
   if (!partida) throw new CheckinError('Partida não encontrada.', 'CHECKIN_PARTIDA_NAO_ENCONTRADA');
   if (!partida.timeA || !partida.timeB) {
@@ -82,7 +86,7 @@ async function verificarAdversarioFaltou(partidaId, timeReclamanteId, userId) {
   }
   const time = await Time.findById(timeReclamanteId);
   if (!time) throw new CheckinError('Time não encontrado.', 'CHECKIN_TIME_NAO_ENCONTRADO');
-  if (time.capitaoId !== userId) {
+  if (!ehOrganizador && time.capitaoId !== userId) {
     throw new CheckinError('Apenas o capitão pode declarar adversário ausente.', 'CHECKIN_NAO_CAPITAO');
   }
   const campo = String(partida.timeA) === String(timeReclamanteId) ? 'timeB' : 'timeA';
