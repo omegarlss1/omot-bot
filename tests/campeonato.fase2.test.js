@@ -507,7 +507,7 @@ test('handlers da Fase 2 registrados', async (t) => {
       const interactions = require('../src/features/campeonato/interactions');
       const r = new InteractionRegistry();
       interactions.register(r);
-      assert.equal(r.buttons.length, 73);
+      assert.equal(r.buttons.length, 76);
       assert.equal(r.selects.length, 27);
       assert.equal(r.modals.length, 15);
       assert.ok(r.buttons.some(({ pattern }) => pattern === 'btn_config_simultaneo'));

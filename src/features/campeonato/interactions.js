@@ -3481,6 +3481,47 @@ async function onBotaoReabrir(interaction) {
   }
 }
 
+async function onExcluirCampeonatoPanel(interaction) {
+  const match = interaction.customId.match(/^btn_camp_excluir_campeonato_([a-f0-9]{24})$/);
+  if (!match) return interaction.reply({ content: 'ID inválido.', flags: 64 });
+  const cid = match[1];
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
+  }
+  return interaction.reply({
+    content: '⚠️ Tem certeza que deseja excluir este campeonato? Esta ação é definitiva e remove canais, partidas e inscrições.',
+    components: [new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`btn_confirmar_excluir_campeonato_${cid}`).setLabel('Excluir definitivamente').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId(`btn_cancelar_excluir_campeonato_${cid}`).setLabel('Cancelar').setStyle(ButtonStyle.Secondary)
+    )],
+    flags: 64
+  });
+}
+
+async function onConfirmarExcluirCampeonatoPanel(interaction) {
+  const match = interaction.customId.match(/^btn_confirmar_excluir_campeonato_([a-f0-9]{24})$/);
+  if (!match) return interaction.reply({ content: 'ID inválido.', flags: 64 });
+  const cid = match[1];
+  if (!temPermissaoOrganizador(interaction.member)) {
+    return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
+  }
+  await interaction.deferUpdate();
+  try {
+    await excluirCampeonato({ campeonatoId: cid, guild: interaction.guild, executadoPor: interaction.user.id });
+    return interaction.editReply({ content: '✅ Campeonato excluído com sucesso.', components: [] });
+  } catch (error) {
+    if (error instanceof AdminError) return interaction.editReply({ content: error.message });
+    console.error('[campeonato.excluir] erro:', error);
+    return interaction.editReply({ content: 'Erro ao excluir campeonato.' });
+  }
+}
+
+async function onCancelarExcluirCampeonatoPanel(interaction) {
+  const match = interaction.customId.match(/^btn_cancelar_excluir_campeonato_([a-f0-9]{24})$/);
+  if (!match) return interaction.reply({ content: 'ID inválido.', flags: 64 });
+  return interaction.update({ content: 'Exclusão cancelada.', components: [] });
+}
+
 async function onSubmitDesclassificar(interaction) {
   const tid = interaction.customId.replace('modal_camp_desclassificar_', '');
   if (!temPermissaoOrganizador(interaction.member)) {
@@ -4627,6 +4668,9 @@ function register(registry) {
   registry.modal(/^modal_cancelar_campeonato_[a-f0-9]{24}$/, onSubmitCancelarCampeonato);
   registry.button(/^btn_camp_reabrir_[a-f0-9]{24}$/, onBotaoReabrir);
   registry.button(/^btn_camp_reabrir_[a-f0-9]{24}$/, onBotaoReabrir);
+  registry.button(/^btn_camp_excluir_campeonato_[a-f0-9]{24}$/, onExcluirCampeonatoPanel);
+  registry.button(/^btn_confirmar_excluir_campeonato_[a-f0-9]{24}$/, onConfirmarExcluirCampeonatoPanel);
+  registry.button(/^btn_cancelar_excluir_campeonato_[a-f0-9]{24}$/, onCancelarExcluirCampeonatoPanel);
   registry.modal(/^modal_camp_desclassificar_[a-f0-9]{24}$/, onSubmitDesclassificar);
   registry.select(/^modal_config_(modo|tipo_dupla|baseado)$/, onConfigSelect);
   registry.select('modal_config_modalidade', onConfigSelect);

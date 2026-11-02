@@ -359,7 +359,8 @@ function embedPainelAdmin({ campeonato, totalTimes = 0 }) {
     botoes.push([
       { type: 2, style: 2, label: '⚙️ Editar', custom_id: 'btn_camp_editar_config_' + campeonato._id, emoji: { name: '⚙️' } },
       { type: 2, style: 3, label: '🏁 Finalizar', custom_id: 'btn_camp_finalizar_' + campeonato._id, emoji: { name: '🏁' } },
-      { type: 2, style: 4, label: '⛔ Cancelar', custom_id: 'btn_camp_cancelar_' + campeonato._id, emoji: { name: '⛔' } }
+      { type: 2, style: 4, label: '⛔ Cancelar', custom_id: 'btn_camp_cancelar_' + campeonato._id, emoji: { name: '⛔' } },
+      { type: 2, style: 4, label: '🗑️ Excluir', custom_id: 'btn_camp_excluir_campeonato_' + campeonato._id, emoji: { name: '🗑️' } }
     ]);
   } else {
     botoes.push([
