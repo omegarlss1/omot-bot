@@ -106,7 +106,8 @@ function embedCentralCampeonatos() {
       }
     }],
     components: [[
-      { type: 2, style: 3, label: '＋ Criar Novo Campeonato', emoji: { name: '🏆' }, custom_id: 'criar_campeonato' }
+      { type: 2, style: 3, label: '＋ Criar Novo Campeonato', emoji: { name: '🏆' }, custom_id: 'criar_campeonato' },
+      { type: 2, style: 4, label: '🗑️ Excluir Campeonato', emoji: { name: '🗑️' }, custom_id: 'btn_camp_excluir_campeonato_menu' }
     ]]
   };
 }
