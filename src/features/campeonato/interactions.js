@@ -4645,15 +4645,15 @@ function register(registry) {
   registry.button('criar_campeonato', onAbrirPainelCriacao);
   registry.button('btn_camp_excluir_campeonato_menu', async (interaction) => {
     const { temPermissaoOrganizador } = require('../../bot/commands/excluir-campeonato');
-    if (!temPermissaoOrganizador(interaction.member)) {
-      return interaction.reply({ content: '‚ùå Apenas `@OrganizadorCamps` ou administradores podem excluir campeonatos.', flags: 64 });
+    if (!temPermissaoOrganizador || !temPermissaoOrganizador(interaction.member)) {
+      return interaction.reply({ content: '? Apenas `@OrganizadorCamps` ou administradores podem excluir campeonatos.', flags: 64 });
     }
     const Evento = require('../../db/models/evento');
     const Campeonato = require('../../db/models/campeonato');
     const eventos = await Evento.find({ guildId: interaction.guildId, organizadorId: interaction.user.id }).select('_id nome').lean();
     const campeonatos = await Campeonato.find({ eventoId: { $in: eventos.map((evento) => evento._id) } }).sort({ criadoEm: -1 }).lean();
     if (!campeonatos.length) {
-      return interaction.reply({ content: 'Voc√™ n√£o possui campeonatos criados para excluir.', flags: 64 });
+      return interaction.reply({ content: 'VocÍ n„o possui campeonatos criados para excluir.', flags: 64 });
     }
     const eventosMap = new Map(eventos.map((evento) => [String(evento._id), evento]));
     const menu = new StringSelectMenuBuilder()
@@ -4667,10 +4667,11 @@ function register(registry) {
         description: `${eventosMap.get(String(campeonato.eventoId))?.nome || 'Evento'} - ${campeonato.status}`.slice(0, 100)
       })));
     return interaction.reply({
-      content: '‚ö†Ô∏ù Selecione um ou mais campeonatos criados por voc√™. A exclus√£o ser√° definitiva.',
+      content: '?? Selecione um ou mais campeonatos criados por vocÍ. A exclus„o ser· definitiva.',
       components: [new ActionRowBuilder().addComponents(menu)],
       flags: 64
     });
+  });
   });
   registry.button('btn_novo_campeonato', onAbrirPainelCriacao);
   // FLUXO 2 - Config panel
