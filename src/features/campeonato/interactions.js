@@ -83,10 +83,10 @@ function buildPainelOrganizadorCampeonato({ campeonato, times = [], partidas = [
     const timeB = timesPorId.get(String(partida.timeB || partida.timeBId || ''));
     const checkin = (lado, time) => {
       if (partida.checkIns?.[lado]?.fez) return '✅ confirmado';
-      if (!time) return '⏳ aguardando time';
+      if (!time) return '❳ aguardando time';
       const capitao = (time.jogadores || []).find((jogador) => jogador.userId === time.capitaoId)
         || (time.jogadores || []).find((jogador) => jogador.isCapitao);
-      return `⏳ aguardando ${rotuloJogadorPainel(capitao)}`;
+      return `❳ aguardando ${rotuloJogadorPainel(capitao)}`;
     };
     const placarA = partida.placarEnviado?.timeA?.placar;
     const placarB = partida.placarEnviado?.timeB?.placar;
@@ -247,7 +247,7 @@ async function criarCanaisFases(guild, campeonato, formato, totalTimes, partidas
     }) : null;
     if (!canal) {
       canal = await guild.channels.create({
-        name: `${fase.key === 'losers' ? '💀' : fase.key === 'final' ? '🏆' : '⚔️'}・${fase.nome}`.slice(0, 100),
+        name: `${fase.key === 'losers' ? '💀' : fase.key === 'final' ? '🝆' : '⚔︝'}・${fase.nome}`.slice(0, 100),
         type: ChannelType.GuildText,
         ...(campeonato.categoriaId ? { parent: campeonato.categoriaId } : {}),
         permissionOverwrites: permissoes,
@@ -271,7 +271,7 @@ async function criarCanaisFases(guild, campeonato, formato, totalTimes, partidas
     if (!mensagem) {
       mensagem = await canal.send({
         embeds: [{
-          title: `⚔️ ${{ quartas: 'Quartas de final', semis: 'Semifinais', final: 'Final', groups: 'Fase de grupos', winners: 'Winners', losers: 'Losers', 'round-robin': 'Round robin', classificatorias: 'Classificatórias' }[fase.key] || fase.nome}`,
+          title: `⚔︝ ${{ quartas: 'Quartas de final', semis: 'Semifinais', final: 'Final', groups: 'Fase de grupos', winners: 'Winners', losers: 'Losers', 'round-robin': 'Round robin', classificatorias: 'Classificatórias' }[fase.key] || fase.nome}`,
           description: 'As partidas desta fase serão publicadas aqui. Use **Ver bracket** para consultar a árvore atualizada.',
           color: 0x5865F2
         }],
@@ -298,11 +298,11 @@ function nomeTimeParaPartida(time) {
 
 function statusPartidaParaMensagem(partida) {
   const rotulos = {
-    AGUARDANDO_CHECKIN: '⏳ Aguardando check-in',
+    AGUARDANDO_CHECKIN: '❳ Aguardando check-in',
     AGUARDANDO_PLACAR: '🎮 Em andamento',
     AGUARDANDO_VALIDACAO: '🧾 Aguardando validação do placar',
-    EM_DISPUTA_ORGANIZADOR: '⚖️ Em análise da organização',
-    FINALIZADA: '🏆 Finalizada',
+    EM_DISPUTA_ORGANIZADOR: '⚖︝ Em análise da organização',
+    FINALIZADA: '🝆 Finalizada',
     CANCELADA: '❌ Cancelada',
     WO: '🚫 Finalizada por W.O.'
   };
@@ -321,8 +321,8 @@ function construirMensagemPartida(partida, timeA, timeB) {
     ? `<t:${Math.floor(new Date(partida.estimatedStartAt).getTime() / 1000)}:t>`
     : 'horário a definir';
   const [golsA, golsB] = placarPartidaParaMensagem(partida).split(' x ');
-  const checkA = partida.checkIns?.timeA?.fez ? '✅' : '⏳';
-  const checkB = partida.checkIns?.timeB?.fez ? '✅' : '⏳';
+  const checkA = partida.checkIns?.timeA?.fez ? '✅' : '❳';
+  const checkB = partida.checkIns?.timeB?.fez ? '✅' : '❳';
   return `**Partida ${numero}** (${horario}) — **${nomeTimeParaPartida(timeA)} ${golsA}** vs **${golsB} ${nomeTimeParaPartida(timeB)}**\n` +
     `Status: **${statusPartidaParaMensagem(partida)}** | Check-in: ${checkA} ${nomeTimeParaPartida(timeA)} · ${checkB} ${nomeTimeParaPartida(timeB)}`;
 }
@@ -828,16 +828,16 @@ function buildConfigPanel(userId, configOverride) {
     ? [
       {
         name: '📋 Resumo do campeonato',
-        value: `**${cfg.nome}**\n📅 ${dataInicio} às ${cfg.horarioInicio} · inscrições até ${dataLimite}\n⚔️ ${getModoLabel(cfg.modo)} · 🏅 ${nomeRanks.join(', ')} (${nomeRanks.length})`,
+        value: `**${cfg.nome}**\n📅 ${dataInicio} às ${cfg.horarioInicio} · inscrições até ${dataLimite}\n⚔︝ ${getModoLabel(cfg.modo)} · 🝅 ${nomeRanks.join(', ')} (${nomeRanks.length})`,
         inline: true
       },
       {
-        name: '⚙️ Formato e limite',
+        name: '⚙︝ Formato e limite',
         value: [
           cfg.baseadoEmInscricoes === false
             ? `👥 ${cfg.limiteInscricoes ? `${cfg.limiteInscricoes} times` : 'Defina o limite'}`
             : '👥 Inscrições ilimitadas',
-          `🏆 ${cfg.formato ? (obterFormatosDisponiveis(cfg).find((formato) => formato.value === cfg.formato)?.label || cfg.formato) : 'Escolha o formato'}`,
+          `🝆 ${cfg.formato ? (obterFormatosDisponiveis(cfg).find((formato) => formato.value === cfg.formato)?.label || cfg.formato) : 'Escolha o formato'}`,
           modoPermiteTipoDupla(cfg.modo) ? `🤝 ${cfg.tipoDupla || 'Escolha o tipo de equipe'}` : null
         ].filter(Boolean).join('\n'),
         inline: true
@@ -849,9 +849,9 @@ function buildConfigPanel(userId, configOverride) {
     'Selecione as opções abaixo. Ranks pode ter múltipla escolha.' +
     (nomeRanks.length ? `\n\nRanks: ${nomeRanks.join(', ')} (${nomeRanks.length})` : '');
   const embed = {
-    title: avancado ? '⚙️ Configurar campeonato — Etapa 2/2' : '⚙️ Configurar Campeonato — Etapa 1/2',
+    title: avancado ? '⚙︝ Configurar campeonato — Etapa 2/2' : '⚙︝ Configurar Campeonato — Etapa 1/2',
     description: avancado
-      ? `●━━━━━━━━●  **Etapa 2 de 2**\n**${cfg.nome}** · ${dataInicio} às ${cfg.horarioInicio} · inscrições até ${dataLimite}\nRevise o resumo e escolha formato e limite.${cfg.descricao ? `\n\n_${cfg.descricao}_` : ''}`
+      ? `◝┝┝┝┝┝┝┝┝◝  **Etapa 2 de 2**\n**${cfg.nome}** · ${dataInicio} às ${cfg.horarioInicio} · inscrições até ${dataLimite}\nRevise o resumo e escolha formato e limite.${cfg.descricao ? `\n\n_${cfg.descricao}_` : ''}`
       : descricaoEtapaUm,
     color: 0xFF8C00,
     ...(avancado ? { fields: campos } : {})
@@ -861,10 +861,10 @@ function buildConfigPanel(userId, configOverride) {
   const componentes = [];
   if (!avancado) {
     const modos = [
-      { value: 'duelos', modo: '1v1', label: 'Duelos (x1)', emoji: '⚔️', description: '1v1' },
+      { value: 'duelos', modo: '1v1', label: 'Duelos (x1)', emoji: '⚔︝', description: '1v1' },
       { value: 'duplas', modo: '2v2', label: 'Duplas (x2)', emoji: '👥', description: '2v2' },
-      { value: 'squad', modo: '4v4', label: 'Esquadrões (x4)', emoji: '🛡️', description: '4v4' },
-      { value: '3v3', modo: '3v3', label: 'Triplas (x3)', emoji: '⚔️', description: '3v3' },
+      { value: 'squad', modo: '4v4', label: 'Esquadrões (x4)', emoji: '🛡︝', description: '4v4' },
+      { value: '3v3', modo: '3v3', label: 'Triplas (x3)', emoji: '⚔︝', description: '3v3' },
       { value: '6v6', modo: '6v6', label: 'Sextetos (x6)', emoji: '👥', description: '6v6' },
       { value: '8v8', modo: '8v8', label: 'Octetos (x8)', emoji: '👥', description: '8v8' },
       { value: '10v10', modo: '10v10', label: '10 jogadores', emoji: '👥', description: '10v10' },
@@ -872,7 +872,7 @@ function buildConfigPanel(userId, configOverride) {
     ];
     const selectModo = new StringSelectMenuBuilder()
       .setCustomId('modo_jogo')
-      .setPlaceholder('⚔️ Escolha o modo de jogo')
+      .setPlaceholder('⚔︝ Escolha o modo de jogo')
       .setMinValues(1)
       .setMaxValues(1)
       .addOptions(modos.map(({ value, modo, label, emoji, description }) => ({
@@ -886,7 +886,7 @@ function buildConfigPanel(userId, configOverride) {
       .setCustomId('ranks_selecao')
       .setPlaceholder(nomeRanks.length
         ? `${nomeRanks.length} rank${nomeRanks.length === 1 ? '' : 's'} selecionado${nomeRanks.length === 1 ? '' : 's'}`
-        : '🏅 Selecione os ranks que você vai cuidar')
+        : '🝅 Selecione os ranks que você vai cuidar')
       .setMinValues(1)
       .setMaxValues(Math.min(8, config.ranks.length))
       .addOptions(config.ranks.map((rank) => ({
@@ -897,7 +897,7 @@ function buildConfigPanel(userId, configOverride) {
       })));
     const selectSimultaneo = new StringSelectMenuBuilder()
       .setCustomId('simultaneidade')
-      .setPlaceholder('⏱️ Partidas simultâneas ou sequenciais?')
+      .setPlaceholder('❱︝ Partidas simultâneas ou sequenciais?')
       .setMinValues(1)
       .setMaxValues(1)
       .addOptions([
@@ -924,7 +924,7 @@ function buildConfigPanel(userId, configOverride) {
         .setCustomId('continuar_etapa1')
         .setLabel('Continuar →')
         .setStyle(ButtonStyle.Primary)
-        .setEmoji('➡️')
+        .setEmoji('➡︝')
         .setDisabled(!cfg.modo || !cfg.ranksSelecionados?.length || typeof cfg.baseadoEmInscricoes !== 'boolean'),
       new ButtonBuilder()
         .setCustomId('cancelar_camp')
@@ -1231,7 +1231,7 @@ async function onModalSimultaneo(interaction) {
   await interaction.update({
     content: 'Escolha a duração do campeonato:',
     embeds: [{
-      title: '⏱️ Prévia — 3h (padrão)',
+      title: '❱︝ Prévia — 3h (padrão)',
       description: preview3h.descricao,
       color: 0xFF6B00
     }],
@@ -1369,7 +1369,84 @@ async function registrarInscricaoIndividual(interaction, campeonato) {
   }
 }
 
-async function onBotaoInscreverSe(interaction) {
+async function onAbrirModalInscricao2v2Time(interaction) {
+  const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId) || await Campeonato.findById(interaction.customId.split('_').pop());
+  if (!campeonato) return interaction.reply({ content: 'Campeonato não encontrado.', flags: 64 });
+  if (campeonato.status !== 'INSCRICOES_ABERTAS') return interaction.reply({ content: 'Inscrições não estão abertas.', flags: 64 });
+  const modal = new ModalBuilder()
+    .setCustomId(`modal_camp_inscricao_2v2_time_${campeonato._id}`)
+    .setTitle('Inscrever Time - 2v2');
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder().setCustomId('capitao').setLabel('Usuário capitão (nick/ID/menção)').setStyle(TextInputStyle.Short).setRequired(true)
+    ),
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder().setCustomId('jogador2').setLabel('Segundo jogador (nick/ID/menção)').setStyle(TextInputStyle.Short).setRequired(true)
+    )
+  );
+  return interaction.showModal(modal);
+}
+
+async function onAbrirModalInscricao2v2Externo(interaction) {
+  const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId) || await Campeonato.findById(interaction.customId.split('_').pop());
+  if (!campeonato) return interaction.reply({ content: 'Campeonato não encontrado.', flags: 64 });
+  if (campeonato.status !== 'INSCRICOES_ABERTAS') return interaction.reply({ content: 'Inscrições não estão abertas.', flags: 64 });
+  const modal = new ModalBuilder()
+    .setCustomId(`modal_camp_inscricao_2v2_externo_${campeonato._id}`)
+    .setTitle('Inscrever Time Externo - 2v2');
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('nick_capitao').setLabel('Nick do capitão').setStyle(TextInputStyle.Short).setRequired(true)),
+    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('contato_capitao').setLabel('Nº ou nick Discord do capitão').setStyle(TextInputStyle.Short).setRequired(true)),
+    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('nick_jogador2').setLabel('Nick do segundo jogador').setStyle(TextInputStyle.Short).setRequired(true)),
+    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('contato_jogador2').setLabel('Nº ou nick Discord do segundo jogador').setStyle(TextInputStyle.Short).setRequired(true))
+  );
+  return interaction.showModal(modal);
+}
+
+async function onAbrirModalInscricaoIndividual(interaction) {
+  const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId) || await Campeonato.findById(interaction.customId.split('_').pop());
+  if (!campeonato) return interaction.reply({ content: 'Campeonato não encontrado.', flags: 64 });
+  if (campeonato.status !== 'INSCRICOES_ABERTAS') return interaction.reply({ content: 'Inscrições não estão abertas.', flags: 64 });
+  const modal = new ModalBuilder()
+    .setCustomId(`modal_camp_inscricao_individual_${campeonato._id}`)
+    .setTitle('Inscrição Individual');
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('nick').setLabel('Nick').setStyle(TextInputStyle.Short).setRequired(true)),
+    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('contato').setLabel('Nº ou nick Discord').setStyle(TextInputStyle.Short).setRequired(true))
+  );
+  return interaction.showModal(modal);
+}
+
+async function onAbrirModalInscricao3v3TimeDiscord(interaction) {
+  const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId) || await Campeonato.findById(interaction.customId.split('_').pop());
+  if (!campeonato) return interaction.reply({ content: 'Campeonato não encontrado.', flags: 64 });
+  if (campeonato.status !== 'INSCRICOES_ABERTAS') return interaction.reply({ content: 'Inscrições não estão abertas.', flags: 64 });
+  const modal = new ModalBuilder()
+    .setCustomId(`modal_camp_inscricao_3v3_time_dc_${campeonato._id}`)
+    .setTitle('Inscrever Time - 3v3 (Discord)');
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('nome_time').setLabel('Nome do time').setStyle(TextInputStyle.Short).setRequired(true)),
+    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('capitao').setLabel('Capitão (usuário Discord)').setStyle(TextInputStyle.Short).setRequired(true)),
+    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('jogador2').setLabel('Jogador 2 (usuário Discord)').setStyle(TextInputStyle.Short).setRequired(true)),
+    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('jogador3').setLabel('Jogador 3 (usuário Discord)').setStyle(TextInputStyle.Short).setRequired(true))
+  );
+  return interaction.showModal(modal);
+}
+
+async function onAbrirModalInscricao3v3ExternoEtapa1(interaction) {
+  const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId) || await Campeonato.findById(interaction.customId.split('_').pop());
+  if (!campeonato) return interaction.reply({ content: 'Campeonato não encontrado.', flags: 64 });
+  if (campeonato.status !== 'INSCRICOES_ABERTAS') return interaction.reply({ content: 'Inscrições não estão abertas.', flags: 64 });
+  const modal = new ModalBuilder()
+    .setCustomId(`modal_camp_inscricao_3v3_externo_${campeonato._id}_1`)
+    .setTitle('Inscrever Externo - 3v3 (Etapa 1)');
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('nome_time').setLabel('Nome do time').setStyle(TextInputStyle.Short).setRequired(true)),
+    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('nick_capitao').setLabel('Nick do capitão').setStyle(TextInputStyle.Short).setRequired(true)),
+    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('contato_capitao').setLabel('Nº ou nick Discord do capitão').setStyle(TextInputStyle.Short).setRequired(true))
+  );
+  return interaction.showModal(modal);
+}
   const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId);
   if (!campeonato) return interaction.reply({ content: 'Este canal nao e de inscricao de campeonato.', flags: 64 });
   if (Number(campeonato.maxJogadoresPorTime) > 1) {
@@ -1994,7 +2071,7 @@ async function onSelectExcluirCampeonato(interaction) {
   const chave = `${interaction.user.id}:${Date.now()}`;
   selecoesExclusao.set(chave, campeonatosSelecionados);
   return interaction.update({
-    content: `⚠️ ${campeonatosSelecionados.length} campeonato(s) selecionado(s). Esta ação é definitiva e remove canais, partidas e inscrições. Confirma?`,
+    content: `⚠︝ ${campeonatosSelecionados.length} campeonato(s) selecionado(s). Esta ação é definitiva e remove canais, partidas e inscrições. Confirma?`,
     components: [new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`btn_confirmar_exclusao_${chave}`).setLabel('Excluir definitivamente').setStyle(ButtonStyle.Danger),
       new ButtonBuilder().setCustomId(`btn_cancelar_exclusao_${chave}`).setLabel('Cancelar').setStyle(ButtonStyle.Secondary)
@@ -2232,7 +2309,7 @@ async function onGerenciarParticipantes(interaction) {
       return `<@${j.userId}>`;
     }).join(', ') || 'Sem jogadores';
     const capitao = p.jogadores?.[0];
-    const checkinStatus = capitao ? '⏳' : '—'; // TODO: real check-in status
+    const checkinStatus = capitao ? '❳' : '—'; // TODO: real check-in status
     return `${i + 1}. ${checkinStatus} **${p.nome || 'Sem nome'}** (${isSolo ? 'Jogador' : 'Time'}) — ${jogadores}`;
   }).join('\n');
   
@@ -2489,7 +2566,7 @@ async function onSubmitDadosEvento(interaction) {
       }
     }
     const categoria = evento.categoriaId ? await interaction.guild.channels.fetch(evento.categoriaId) : null;
-    if (categoria?.setName) await categoria.setName(`🏆 ${nome.toUpperCase()}`);
+    if (categoria?.setName) await categoria.setName(`🝆 ${nome.toUpperCase()}`);
     return interaction.reply({ content: `Dados do evento **${eventoAtualizado.nome}** atualizados.`, flags: 64 });
   } catch (error) {
     return interaction.reply({ content: error.message, flags: 64 });
@@ -2641,7 +2718,7 @@ async function aplicarSelecaoRanksEvento(interaction, eventoId, ranks, aviso) {
         : null;
       if (!canalAvisos?.isTextBased?.()) throw new Error(`Canal de avisos não encontrado para o rank ${rank}.`);
       await canalAvisos.send({
-        content: `⚠️ **Atualização de ranks do evento ${evento.nome}**\n${String(aviso).trim()}`
+        content: `⚠︝ **Atualização de ranks do evento ${evento.nome}**\n${String(aviso).trim()}`
       });
     }
   }
@@ -2654,7 +2731,7 @@ async function aplicarSelecaoRanksEvento(interaction, eventoId, ranks, aviso) {
       : null;
     if (!canalAvisos?.isTextBased?.()) throw new Error(`Canal de avisos não encontrado para o rank ${rank}.`);
     await canalAvisos.send({
-      content: `⚠️ **Atualização de ranks do evento ${evento.nome}**\n${String(aviso).trim()}`
+      content: `⚠︝ **Atualização de ranks do evento ${evento.nome}**\n${String(aviso).trim()}`
     });
     const canaisDoCampeonato = [
       ...['inscricoes', 'partidas', 'prints', 'organizador', 'avisos']
@@ -2791,8 +2868,8 @@ async function onDefinirFormato(interaction) {
   const intervalo = campeonato.intervaloPartidasMin || 20;
   
   const formatos = [
-    { value: 'single', label: 'Eliminatória Simples', emoji: '🏁' },
-    { value: 'double', label: 'Eliminatória Dupla', emoji: '🔁' },
+    { value: 'single', label: 'Eliminatória Simples', emoji: '🝝' },
+    { value: 'double', label: 'Eliminatória Dupla', emoji: '🔝' },
     { value: 'grupos-mata-mata', label: 'Grupos + Mata-mata', emoji: '👥' },
     { value: 'round-robin', label: 'Round Robin (Todos vs Todos)', emoji: '🔄' }
   ];
@@ -2892,7 +2969,7 @@ async function onDefinirFormatoSelect(interaction) {
   // Add warning if format change would require bracket regeneration
   let content = `✅ Formato definido: **${formato.toUpperCase()}** para **${campeonato.nome}**.`;
   if (bracketExiste && podeMudarFormato) {
-    content += '\n⚠️ Formato alterado — gere o bracket novamente para aplicar.';
+    content += '\n⚠︝ Formato alterado — gere o bracket novamente para aplicar.';
   } else if (partidas.length > 0) {
     content += '\n🔒 Partidas já decididas — formato travado até reset.';
   }
@@ -2929,7 +3006,7 @@ async function onBotaoGerarBracket(interaction) {
   if (existing) {
     if (existing.bracketMeta?.canalFase) {
       return interaction.reply({
-        content: '⚠️ A chave já foi gerada. Você pode tentar novamente para concluir ou atualizar a publicação das partidas.',
+        content: '⚠︝ A chave já foi gerada. Você pode tentar novamente para concluir ou atualizar a publicação das partidas.',
         components: toActionRows([{
           type: 2,
           style: 3,
@@ -2940,7 +3017,7 @@ async function onBotaoGerarBracket(interaction) {
       });
     }
     return interaction.reply({ 
-      content: '⚠️ Já existem partidas neste campeonato. Use o painel de gestão para limpar antes de gerar outra chave.',
+      content: '⚠︝ Já existem partidas neste campeonato. Use o painel de gestão para limpar antes de gerar outra chave.',
       flags: 64 
     });
   }
@@ -3092,7 +3169,7 @@ async function onBotaoAdversarioFaltou(interaction) {
   const chave = `${interaction.user.id}:${partidaId}`;
   wosPendentes.set(chave, { partidaId, timeId: time ? time._id : null });
   return interaction.reply({
-    content: '⚠️ Confirme que o adversário não compareceu. O W.O. será registrado para o seu time.',
+    content: '⚠︝ Confirme que o adversário não compareceu. O W.O. será registrado para o seu time.',
     components: [new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`btn_confirmar_wo_${partidaId}`).setLabel('Confirmar W.O.').setStyle(ButtonStyle.Danger),
       new ButtonBuilder().setCustomId(`btn_negar_wo_${partidaId}`).setLabel('Negar').setStyle(ButtonStyle.Secondary)
@@ -3367,7 +3444,7 @@ async function onBotaoVerBracket(interaction) {
         const timeB = timesMap.get(String(partida.timeB))?.nome || 'A definir';
         const status = partida.status === 'FINALIZADA' || partida.status === 'WO'
           ? `✅ ${partida.vencedorId ? `Vencedor: ${timesMap.get(String(partida.vencedorId))?.nome || 'definido'}` : 'Finalizada'}`
-          : partida.status === 'AGUARDANDO_PLACAR' ? '🔴 Ao vivo' : '⏳ Aguardando';
+          : partida.status === 'AGUARDANDO_PLACAR' ? '🔴 Ao vivo' : '❳ Aguardando';
         return `• R${partida.rodada} · **${timeA}** vs **${timeB}** · ${status}`;
       });
       return `**${titulosFase[fase] || fase}**\n${partidasTexto.join('\n')}`;
@@ -3489,7 +3566,7 @@ async function onExcluirCampeonatoPanel(interaction) {
     return interaction.reply({ content: 'Apenas @OrganizadorCamps.', flags: 64 });
   }
   return interaction.reply({
-    content: '⚠️ Tem certeza que deseja excluir este campeonato? Esta ação é definitiva e remove canais, partidas e inscrições.',
+    content: '⚠︝ Tem certeza que deseja excluir este campeonato? Esta ação é definitiva e remove canais, partidas e inscrições.',
     components: [new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`btn_confirmar_excluir_campeonato_${cid}`).setLabel('Excluir definitivamente').setStyle(ButtonStyle.Danger),
       new ButtonBuilder().setCustomId(`btn_cancelar_excluir_campeonato_${cid}`).setLabel('Cancelar').setStyle(ButtonStyle.Secondary)
@@ -3719,8 +3796,8 @@ async function onPainelOrganizadorTab(interaction) {
         !p.checkIns?.timeB?.fez ? { label: `${timesMap.get(String(p.timeB)) || 'TBD'} - confirmar`, value: `${p._id}:B` } : null
       ]).filter(Boolean).slice(0, 25);
       const linhas = partidas.map((p, i) => {
-        const checkA = p.checkIns?.timeA?.fez ? '✅' : '⏳';
-        const checkB = p.checkIns?.timeB?.fez ? '✅' : '⏳';
+        const checkA = p.checkIns?.timeA?.fez ? '✅' : '❳';
+        const checkB = p.checkIns?.timeB?.fez ? '✅' : '❳';
         const status = p.status === 'AGUARDANDO_PLACAR' ? 'EM ANDAMENTO' : p.status;
         return `${i + 1}. **${timesMap.get(String(p.timeA)) || 'TBD'}** ${checkA} vs **${timesMap.get(String(p.timeB)) || 'TBD'}** ${checkB} — ${status}`;
       }).join('\n') || 'Nenhuma partida aguardando check-in.';
@@ -3740,7 +3817,7 @@ async function onPainelOrganizadorTab(interaction) {
       const adminEmbed = embedPainelAdmin(campeonato);
       const components = campeonato.status === 'CANCELADO'
         ? [[
-            { type: 2, style: 1, label: '♻️ Reabrir', custom_id: 'btn_camp_reabrir_' + campeonato._id, emoji: { name: '♻️' } }
+            { type: 2, style: 1, label: '♻︝ Reabrir', custom_id: 'btn_camp_reabrir_' + campeonato._id, emoji: { name: '♻︝' } }
           ]]
         : adminEmbed.components;
       return atualizarPainelOrganizador(interaction, campeonato, 'gestao', {
@@ -3924,7 +4001,7 @@ async function onSelectTimeAcao(interaction) {
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`btn_camp_excluir_time_${campeonatoId}_${timeId}`)
-        .setLabel('🗑️ Excluir Time')
+        .setLabel('🗑︝ Excluir Time')
         .setStyle(ButtonStyle.Danger)
     ),
     new ActionRowBuilder().addComponents(
@@ -4193,7 +4270,7 @@ function buildRanksScreen(userId) {
   const cfg = configPainel.get(`camp:config:${userId}`);
   const selecionados = cfg?.ranksSelecionados || [];
   const linhas = config.ranks
-    .map((r) => `${selecionados.includes(r.key) ? '✅' : '▫️'} ${r.emoji} ${r.label}`)
+    .map((r) => `${selecionados.includes(r.key) ? '✅' : '▫︝'} ${r.emoji} ${r.label}`)
     .join('\n');
   const botoesRanks = config.ranks.map((r) => ({
     type: 2,
@@ -4204,7 +4281,7 @@ function buildRanksScreen(userId) {
   }));
   const linhaConfirmar = [
     { type: 2, style: 3, label: `✅ Confirmar (${selecionados.length})`, custom_id: 'btn_config_rank_confirmar', disabled: selecionados.length === 0 },
-    { type: 2, style: 4, label: 'Voltar', emoji: { name: '⬅️' }, custom_id: 'btn_config_rank_voltar' }
+    { type: 2, style: 4, label: 'Voltar', emoji: { name: '⬅︝' }, custom_id: 'btn_config_rank_voltar' }
   ];
   return {
     content: `Selecione os ranks que o campeonato terá (pode escolher mais de um — cada rank selecionado vira um campeonato separado):\n\n${linhas}`,
@@ -4288,7 +4365,7 @@ async function onConfigEntrada(interaction) {
   const buttons = [
     { type: 2, style: 3, label: 'Times ilimitados', emoji: { name: '📝' }, custom_id: 'btn_config_entrada_aberta' },
     { type: 2, style: 2, label: 'Definir limite de times', emoji: { name: '🔧' }, custom_id: 'btn_config_entrada_manual' },
-    { type: 2, style: 4, label: 'Voltar', emoji: { name: '⬅️' }, custom_id: 'btn_config_entrada_voltar' }
+    { type: 2, style: 4, label: 'Voltar', emoji: { name: '⬅︝' }, custom_id: 'btn_config_entrada_voltar' }
   ];
 
   return diagUpdate('onConfigEntrada', t0, interaction, {
@@ -4454,16 +4531,16 @@ async function onConfigCriar(interaction) {
         falhou: !publicados.inscricoes || !publicados.organizador || !publicados.avisos,
         texto: [
           `**${campeonato.rank.toUpperCase()}**`,
-          `Inscrições: ${campeonato.canais?.inscricoes ? `<#${campeonato.canais.inscricoes}>` : 'canal indisponível'} ${publicados.inscricoes ? '✅' : '⚠️ painel não publicado'}`,
-          `Organizador: ${campeonato.canais?.organizador ? `<#${campeonato.canais.organizador}>` : 'canal indisponível'} ${publicados.organizador ? '✅' : '⚠️ painel não publicado'}`,
-          `Avisos: ${publicados.avisos ? '✅' : '⚠️ aviso não publicado'}`
+          `Inscrições: ${campeonato.canais?.inscricoes ? `<#${campeonato.canais.inscricoes}>` : 'canal indisponível'} ${publicados.inscricoes ? '✅' : '⚠︝ painel não publicado'}`,
+          `Organizador: ${campeonato.canais?.organizador ? `<#${campeonato.canais.organizador}>` : 'canal indisponível'} ${publicados.organizador ? '✅' : '⚠︝ painel não publicado'}`,
+          `Avisos: ${publicados.avisos ? '✅' : '⚠︝ aviso não publicado'}`
         ].join(' | ')
       });
     }
 
     const falhaPublicacao = statusPaineis.some((status) => status.falhou);
     return interaction.editReply({
-      content: `${falhaPublicacao ? '⚠️' : '✅'} Evento **${cfg.nome}** criado${falhaPublicacao ? ', mas houve falha ao publicar algum painel ou aviso' : ' com os painéis publicados'}.\n\n${statusPaineis.map((status) => status.texto).join('\n')}`,
+      content: `${falhaPublicacao ? '⚠︝' : '✅'} Evento **${cfg.nome}** criado${falhaPublicacao ? ', mas houve falha ao publicar algum painel ou aviso' : ' com os painéis publicados'}.\n\n${statusPaineis.map((status) => status.texto).join('\n')}`,
       embeds: [],
       components: []
     });
@@ -4590,7 +4667,7 @@ function register(registry) {
         description: `${eventosMap.get(String(campeonato.eventoId))?.nome || 'Evento'} - ${campeonato.status}`.slice(0, 100)
       })));
     return interaction.reply({
-      content: '⚠️ Selecione um ou mais campeonatos criados por você. A exclusão será definitiva.',
+      content: '⚠︝ Selecione um ou mais campeonatos criados por você. A exclusão será definitiva.',
       components: [new ActionRowBuilder().addComponents(menu)],
       flags: 64
     });
@@ -4637,13 +4714,26 @@ function register(registry) {
   registry.button('btn_camp_inscrever_time', onBotaoInscreverTime);
   registry.button('btn_camp_inscricao_manual', onBotaoInscricaoManual);
   registry.button('btn_camp_inscrever_time_usuario', onBotaoInscreverTimeUsuario);
-  registry.modal(/^modal_camp_inscricao_time_usuario_[a-f0-9]{24}$/, onSubmitInscricaoTimeUsuario);
+  registry.modal(/^modal_camp_inscricao_2v2_time_[a-f0-9]{24}$/, onSubmitInscricao2v2Time);
+  registry.modal(/^modal_camp_inscricao_2v2_externo_[a-f0-9]{24}$/, onSubmitInscricao2v2Externo);
+  registry.modal(/^modal_camp_inscricao_individual_[a-f0-9]{24}$/, onSubmitInscricaoIndividualModal);
+  registry.modal(/^modal_camp_inscricao_3v3_time_dc_[a-f0-9]{24}$/, onSubmitInscricao3v3TimeDiscord);
+  registry.modal(/^modal_camp_inscricao_3v3_externo_[a-f0-9]{24}_1$/, onSubmitInscricao3v3ExternoEtapa1);
+  registry.modal(/^modal_camp_inscricao_3v3_externo_[a-f0-9]{24}_2$/, onSubmitInscricao3v3ExternoEtapa2);
   registry.select(/^select_camp_time_usuario_capitao_[a-f0-9]{24}$/, onSelectCapitaoTimeUsuario);
   registry.select(/^select_camp_time_usuario_jogador2_[a-f0-9]{24}$/, onSelectJogador2TimeUsuario);
   registry.select(/^select_camp_time_usuario_jogador3_[a-f0-9]{24}$/, onSelectJogador3TimeUsuario);
   registry.button('btn_camp_inscricao_whatsapp', onBotaoInscricaoWhatsApp);
   registry.modal('modal_camp_inscricao_whatsapp', onSubmitInscricaoWhatsApp);
   registry.button('btn_camp_inscricao_individual', onBotaoInscreverIndividual);
+  registry.button(/^btn_camp_inscrever_1v1_[a-f0-9]{24}$/, onBotaoInscreverSe);
+  registry.button(/^btn_camp_inscrever_whatsapp_1v1_[a-f0-9]{24}$/, onBotaoInscricaoWhatsApp);
+  registry.button(/^btn_camp_inscrever_time_2v2_[a-f0-9]{24}$/, onAbrirModalInscricao2v2Time);
+  registry.button(/^btn_camp_inscrever_externo_2v2_[a-f0-9]{24}$/, onAbrirModalInscricao2v2Externo);
+  registry.button(/^btn_camp_inscricao_individual_2v2_[a-f0-9]{24}$/, onAbrirModalInscricaoIndividual);
+  registry.button(/^btn_camp_inscrever_time_dc_3v3_[a-f0-9]{24}$/, onAbrirModalInscricao3v3TimeDiscord);
+  registry.button(/^btn_camp_inscrever_externo_3v3_[a-f0-9]{24}$/, onAbrirModalInscricao3v3ExternoEtapa1);
+  registry.button(/^btn_camp_inscricao_individual_3v3_[a-f0-9]{24}$/, onAbrirModalInscricaoIndividual);
   registry.button(/^btn_camp_inscricao_time_continuar_[a-f0-9]{24}_\d+$/, onContinuarInscricaoTime);
   registry.button(/^btn_camp_inscricao_time_cancelar_[a-f0-9]{24}$/, onCancelarInscricaoTime);
   registry.select(/^select_camp_inscricao_time_jogador_[a-f0-9]{24}$/, onSelecionarJogadorInscricaoTime);
@@ -4732,3 +4822,119 @@ module.exports = {
   anunciarInscricaoPublicamente,
   setCampeonatoClient
 };
+async function onSubmitInscricao2v2Time(interaction) {
+  const campeonatoId = interaction.customId.match(/^modal_camp_inscricao_2v2_time_([a-f0-9]{24})$/)?.[1];
+  const campeonato = await Campeonato.findById(campeonatoId);
+  if (!campeonato || campeonato.status !== "INSCRICOES_ABERTAS") return interaction.reply({ content: "Inscri��es n�o est�o abertas.", flags: 64 });
+  await interaction.deferReply({ flags: 64 });
+  try {
+    const { criarTime } = require("./services/inscricao");
+    const capitao = interaction.fields.getTextInputValue("capitao");
+    const jogador2 = interaction.fields.getTextInputValue("jogador2");
+    const time = await criarTime({ guild: interaction.guild, campeonato, nome: (capitao.split(/[\s<@>]/).filter(Boolean)[0]||"Time")+"-"+(jogador2.split(/[\s<@>]/).filter(Boolean)[0]||"Team"), jogadores: [{ nickSnapshot: capitao }, { nickSnapshot: jogador2 }] }, { origem: "DISCORD" });
+    return interaction.editReply(embedInscricaoConfirmada({ time, capitao: time.capitao || { userId: interaction.user.id, nickSnapshot: capitao } }));
+  } catch (error) {
+    if (error instanceof InscricaoError || error instanceof ValidacaoInscricaoError) return interaction.editReply({ content: error.message });
+    console.error("[inscricao 2v2]", error);
+    return interaction.editReply({ content: "Erro ao realizar inscri��o." });
+  }
+}
+async function onSubmitInscricao2v2Externo(interaction) {
+  const campeonatoId = interaction.customId.match(/^modal_camp_inscricao_2v2_externo_([a-f0-9]{24})$/)?.[1];
+  const campeonato = await Campeonato.findById(campeonatoId);
+  if (!campeonato || campeonato.status !== "INSCRICOES_ABERTAS") return interaction.reply({ content: "Inscri��es n�o est�o abertas.", flags: 64 });
+  await interaction.deferReply({ flags: 64 });
+  try {
+    const { criarTime } = require("./services/inscricao");
+    const nick_capitao = interaction.fields.getTextInputValue("nick_capitao");
+    const contato_capitao = interaction.fields.getTextInputValue("contato_capitao");
+    const nick_jogador2 = interaction.fields.getTextInputValue("nick_jogador2");
+    const contato_jogador2 = interaction.fields.getTextInputValue("contato_jogador2");
+    const time = await criarTime({ guild: interaction.guild, campeonato, nome: nick_capitao, jogadores: [{ nickSnapshot: nick_capitao, contato: contato_capitao }, { nickSnapshot: nick_jogador2, contato: contato_jogador2 }] }, { origem: "MANUAL" });
+    return interaction.editReply(embedInscricaoConfirmada({ time, capitao: { nickSnapshot: nick_capitao } }));
+  } catch (error) {
+    if (error instanceof InscricaoError || error instanceof ValidacaoInscricaoError) return interaction.editReply({ content: error.message });
+    console.error("[inscricao 2v2 externo]", error);
+    return interaction.editReply({ content: "Erro ao realizar inscri��o." });
+  }
+}
+async function onSubmitInscricaoIndividualModal(interaction) {
+  const campeonatoId = interaction.customId.match(/^modal_camp_inscricao_individual_([a-f0-9]{24})$/)?.[1];
+  const campeonato = await Campeonato.findById(campeonatoId);
+  if (!campeonato || campeonato.status !== "INSCRICOES_ABERTAS") return interaction.reply({ content: "Inscri��es n�o est�o abertas.", flags: 64 });
+  await interaction.deferReply({ flags: 64 });
+  try {
+    const { inscreverCapitao } = require("./services/inscricao");
+    const { time, dadosCapitao } = await inscreverCapitao({ guild: interaction.guild, member: interaction.member, campeonato });
+    return interaction.editReply(embedInscricaoConfirmada({ time, capitao: dadosCapitao }));
+  } catch (error) {
+    if (error instanceof InscricaoError || error instanceof ValidacaoInscricaoError) return interaction.editReply({ content: error.message });
+    console.error("[inscricao individual]", error);
+    return interaction.editReply({ content: "Erro ao realizar inscri��o." });
+  }
+}
+async function onSubmitInscricao3v3TimeDiscord(interaction) {
+  const campeonatoId = interaction.customId.match(/^modal_camp_inscricao_3v3_time_dc_([a-f0-9]{24})$/)?.[1];
+  const campeonato = await Campeonato.findById(campeonatoId);
+  if (!campeonato || campeonato.status !== "INSCRICOES_ABERTAS") return interaction.reply({ content: "Inscri��es n�o est�o abertas.", flags: 64 });
+  await interaction.deferReply({ flags: 64 });
+  try {
+    const { criarTime } = require("./services/inscricao");
+    const nome_time = interaction.fields.getTextInputValue("nome_time");
+    const capitao = interaction.fields.getTextInputValue("capitao");
+    const jogador2 = interaction.fields.getTextInputValue("jogador2");
+    const jogador3 = interaction.fields.getTextInputValue("jogador3");
+    const time = await criarTime({ guild: interaction.guild, campeonato, nome: nome_time, jogadores: [{ nickSnapshot: capitao }, { nickSnapshot: jogador2 }, { nickSnapshot: jogador3 }] }, { origem: "DISCORD" });
+    return interaction.editReply(embedInscricaoConfirmada({ time, capitao: time.capitao || { userId: interaction.user.id, nickSnapshot: capitao } }));
+  } catch (error) {
+    if (error instanceof InscricaoError || error instanceof ValidacaoInscricaoError) return interaction.editReply({ content: error.message });
+    console.error("[inscricao 3v3 dc]", error);
+    return interaction.editReply({ content: "Erro ao realizar inscri��o." });
+  }
+}
+async function onSubmitInscricao3v3ExternoEtapa1(interaction) {
+  const campeonatoId = interaction.customId.match(/^modal_camp_inscricao_3v3_externo_([a-f0-9]{24})_1$/)?.[1];
+  const campeonato = await Campeonato.findById(campeonatoId);
+  if (!campeonato || campeonato.status !== "INSCRICOES_ABERTAS") return interaction.reply({ content: "Inscri��es n�o est�o abertas.", flags: 64 });
+  const nome_time = interaction.fields.getTextInputValue("nome_time");
+  const nick_capitao = interaction.fields.getTextInputValue("nick_capitao");
+  const contato_capitao = interaction.fields.getTextInputValue("contato_capitao");
+  global.__inscricao3v3Ext = global.__inscricao3v3Ext || new Map();
+  global.__inscricao3v3Ext.set(`${interaction.user.id}:${campeonato._id}`, { nome_time, nick_capitao, contato_capitao });
+  const modal = new ModalBuilder()
+    .setCustomId(`modal_camp_inscricao_3v3_externo_${campeonato._id}_2`)
+    .setTitle("Inscrever Externo - 3v3 (Etapa 2)");
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("nick_jogador2").setLabel("Nick do jogador 2").setStyle(TextInputStyle.Short).setRequired(true)),
+    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("contato_jogador2").setLabel("N� ou nick Discord jogador 2").setStyle(TextInputStyle.Short).setRequired(true)),
+    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("nick_jogador3").setLabel("Nick do jogador 3").setStyle(TextInputStyle.Short).setRequired(true)),
+    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("contato_jogador3").setLabel("N� ou nick Discord jogador 3").setStyle(TextInputStyle.Short).setRequired(true))
+  );
+  return interaction.showModal(modal);
+}
+async function onSubmitInscricao3v3ExternoEtapa2(interaction) {
+  const campeonatoId = interaction.customId.match(/^modal_camp_inscricao_3v3_externo_([a-f0-9]{24})_2$/)?.[1];
+  const campeonato = await Campeonato.findById(campeonatoId);
+  if (!campeonato || campeonato.status !== "INSCRICOES_ABERTAS") return interaction.reply({ content: "Inscri��es n�o est�o abertas.", flags: 64 });
+  await interaction.deferReply({ flags: 64 });
+  try {
+    const { criarTime } = require("./services/inscricao");
+    global.__inscricao3v3Ext = global.__inscricao3v3Ext || new Map();
+    const dados1 = global.__inscricao3v3Ext.get(`${interaction.user.id}:${campeonato._id}`) || {};
+    const nick_jogador2 = interaction.fields.getTextInputValue("nick_jogador2");
+    const contato_jogador2 = interaction.fields.getTextInputValue("contato_jogador2");
+    const nick_jogador3 = interaction.fields.getTextInputValue("nick_jogador3");
+    const contato_jogador3 = interaction.fields.getTextInputValue("contato_jogador3");
+    const time = await criarTime({ guild: interaction.guild, campeonato, nome: dados1.nome_time || dados1.nick_capitao, jogadores: [
+      { nickSnapshot: dados1.nick_capitao, contato: dados1.contato_capitao },
+      { nickSnapshot: nick_jogador2, contato: contato_jogador2 },
+      { nickSnapshot: nick_jogador3, contato: contato_jogador3 }
+    ] }, { origem: "MANUAL" });
+    global.__inscricao3v3Ext.delete(`${interaction.user.id}:${campeonato._id}`);
+    return interaction.editReply(embedInscricaoConfirmada({ time, capitao: { nickSnapshot: dados1.nick_capitao } }));
+  } catch (error) {
+    if (error instanceof InscricaoError || error instanceof ValidacaoInscricaoError) return interaction.editReply({ content: error.message });
+    console.error("[inscricao 3v3 externo]", error);
+    return interaction.editReply({ content: "Erro ao realizar inscri��o." });
+  }
+}

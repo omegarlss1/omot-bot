@@ -436,20 +436,55 @@ module.exports = {
 function embedPainelInscricao(campeonato, totalInscritos) {
   const rankLabel = config.ranks.find((rank) => rank.key === campeonato.rank)?.label || campeonato.rank || 'Campeonato';
   const numero = String(campeonato.nome || '').match(/#\s*(\d+)/)?.[1];
-  const modoDuelo = String(campeonato.modo || '').toLowerCase() === '1v1'
-    || Number(campeonato.maxJogadoresPorTime) <= 1;
+  const modoStr = String(campeonato.modo || '').toLowerCase();
+  const modoMatch = modoStr.match(/(\d+)v\1/);
+  const jogadoresPorTime = modoMatch ? Number(modoMatch[1]) : Number(campeonato.maxJogadoresPorTime) || 1;
   const limite = Number(campeonato.limiteInscricoes) || 0;
   const progresso = limite ? Math.min(1, (Number(totalInscritos) || 0) / limite) : 0;
   const barra = limite
     ? `${'🟩'.repeat(Math.round(progresso * 8))}${'⬛'.repeat(8 - Math.round(progresso * 8))}`
     : '♾️ Inscrições sem limite de vagas';
   const statusAberto = campeonato.status === 'INSCRICOES_ABERTAS';
+
+  let components = [];
+  if (jogadoresPorTime === 1) {
+    components = [[
+      { type: 2, style: 3, label: 'Inscrever', custom_id: `btn_camp_inscrever_1v1_${campeonato._id}`, emoji: { name: '✅' }, disabled: !statusAberto },
+      { type: 2, style: 1, label: 'Inscrever WhatsApp', custom_id: `btn_camp_inscrever_whatsapp_1v1_${campeonato._id}`, emoji: { name: '📱' }, disabled: !statusAberto }
+    ]];
+  } else if (jogadoresPorTime === 2) {
+    components = [[
+      { type: 2, style: 3, label: 'Inscrever Time', custom_id: `btn_camp_inscrever_time_2v2_${campeonato._id}`, emoji: { name: '👥' }, disabled: !statusAberto }
+    ], [
+      { type: 2, style: 1, label: 'Inscrever Externo', custom_id: `btn_camp_inscrever_externo_2v2_${campeonato._id}`, emoji: { name: '🛠️' }, disabled: !statusAberto }
+    ], [
+      { type: 2, style: 2, label: 'Inscrição Individual', custom_id: `btn_camp_inscricao_individual_2v2_${campeonato._id}`, emoji: { name: '🆔' }, disabled: !statusAberto }
+    ]];
+  } else if (jogadoresPorTime === 3) {
+    components = [[
+      { type: 2, style: 3, label: 'Inscrever Time (Discord)', custom_id: `btn_camp_inscrever_time_dc_3v3_${campeonato._id}`, emoji: { name: '👥' }, disabled: !statusAberto }
+    ], [
+      { type: 2, style: 1, label: 'Inscrever Externo', custom_id: `btn_camp_inscrever_externo_3v3_${campeonato._id}`, emoji: { name: '🛠️' }, disabled: !statusAberto }
+    ], [
+      { type: 2, style: 2, label: 'Inscrição Individual', custom_id: `btn_camp_inscricao_individual_3v3_${campeonato._id}`, emoji: { name: '🆔' }, disabled: !statusAberto }
+    ]];
+  } else {
+    components = [[
+      { type: 2, style: 3, label: 'Inscrever meu time', custom_id: `btn_camp_inscrever_time_${campeonato._id}`, emoji: { name: '✅' }, disabled: !statusAberto },
+      { type: 2, style: 2, label: 'Pedir inscrição manual', custom_id: `btn_camp_inscricao_manual_${campeonato._id}`, emoji: { name: '🛠️' }, disabled: !statusAberto }
+    ], [
+      { type: 2, style: 3, label: 'Inscrever Time (até 3)', custom_id: `btn_camp_inscrever_time_usuario_${campeonato._id}`, emoji: { name: '👥' }, disabled: !statusAberto },
+      { type: 2, style: 1, label: 'Inscrever WhatsApp', custom_id: `btn_camp_inscricao_whatsapp_${campeonato._id}`, emoji: { name: '📱' }, disabled: !statusAberto },
+      { type: 2, style: 1, label: 'Inscrição Individual', custom_id: `btn_camp_inscricao_individual_${campeonato._id}`, emoji: { name: '🆔' }, disabled: !statusAberto }
+    ]];
+  }
+
   return {
     embeds: [{
       title: `${statusAberto ? '🟢 Inscrições abertas' : '🔒 Inscrições encerradas'} — ${rankLabel}${numero ? ` #${numero}` : ''}`,
-      description: (modoDuelo
-        ? 'Inscreva-se com sua conta Discord.'
-        : 'Inscreva seu time e informe os jogadores.') +
+      description: (jogadoresPorTime === 1
+        ? 'Inscreva-se com sua conta Discord ou via WhatsApp.'
+        : 'Inscreva seu time conforme o modo escolhido.') +
         `\nCargo necessário: **${rankLabel}**.`,
       color: statusAberto ? 0x23A559 : 0x808080,
       fields: [
@@ -463,23 +498,7 @@ function embedPainelInscricao(campeonato, totalInscritos) {
         }
       ]
     }],
-    components: modoDuelo
-      ? [[
-          { type: 2, style: 3, label: 'Inscrever meu time', custom_id: 'btn_camp_inscrever_se', emoji: { name: '✅' }, disabled: !statusAberto },
-          { type: 2, style: 2, label: 'Pedir inscrição manual', custom_id: 'btn_camp_inscricao_manual', emoji: { name: '🛠️' }, disabled: !statusAberto }
-        ], [
-          { type: 2, style: 3, label: 'Inscrever Time (até 3)', custom_id: 'btn_camp_inscrever_time_usuario', emoji: { name: '👥' }, disabled: !statusAberto },
-          { type: 2, style: 1, label: 'Inscrever WhatsApp', custom_id: 'btn_camp_inscricao_whatsapp', emoji: { name: '📱' }, disabled: !statusAberto },
-          { type: 2, style: 1, label: 'Inscrição Individual', custom_id: 'btn_camp_inscricao_individual', emoji: { name: '🆔' }, disabled: !statusAberto }
-        ]]
-      : [[
-          { type: 2, style: 3, label: 'Inscrever meu time', custom_id: 'btn_camp_inscrever_time', emoji: { name: '✅' }, disabled: !statusAberto },
-          { type: 2, style: 2, label: 'Pedir inscrição manual', custom_id: 'btn_camp_inscricao_manual', emoji: { name: '🛠️' }, disabled: !statusAberto }
-        ], [
-          { type: 2, style: 3, label: 'Inscrever Time (até 3)', custom_id: 'btn_camp_inscrever_time_usuario', emoji: { name: '👥' }, disabled: !statusAberto },
-          { type: 2, style: 1, label: 'Inscrever WhatsApp', custom_id: 'btn_camp_inscricao_whatsapp', emoji: { name: '📱' }, disabled: !statusAberto },
-          { type: 2, style: 1, label: 'Inscrição Individual', custom_id: 'btn_camp_inscricao_individual', emoji: { name: '🆔' }, disabled: !statusAberto }
-        ]]
+    components
   };
 }
 
