@@ -465,10 +465,18 @@ function embedPainelInscricao(campeonato, totalInscritos) {
       ? [[
           { type: 2, style: 3, label: 'Inscrever meu time', custom_id: 'btn_camp_inscrever_se', emoji: { name: '✅' }, disabled: !statusAberto },
           { type: 2, style: 2, label: 'Pedir inscrição manual', custom_id: 'btn_camp_inscricao_manual', emoji: { name: '🛠️' }, disabled: !statusAberto }
+        ], [
+          { type: 2, style: 3, label: 'Inscrever Time (até 3)', custom_id: 'btn_camp_inscrever_time_usuario', emoji: { name: '👥' }, disabled: !statusAberto },
+          { type: 2, style: 1, label: 'Inscrever WhatsApp', custom_id: 'btn_camp_inscricao_whatsapp', emoji: { name: '📱' }, disabled: !statusAberto },
+          { type: 2, style: 1, label: 'Inscrição Individual', custom_id: 'btn_camp_inscricao_individual', emoji: { name: '🆔' }, disabled: !statusAberto }
         ]]
       : [[
           { type: 2, style: 3, label: 'Inscrever meu time', custom_id: 'btn_camp_inscrever_time', emoji: { name: '✅' }, disabled: !statusAberto },
           { type: 2, style: 2, label: 'Pedir inscrição manual', custom_id: 'btn_camp_inscricao_manual', emoji: { name: '🛠️' }, disabled: !statusAberto }
+        ], [
+          { type: 2, style: 3, label: 'Inscrever Time (até 3)', custom_id: 'btn_camp_inscrever_time_usuario', emoji: { name: '👥' }, disabled: !statusAberto },
+          { type: 2, style: 1, label: 'Inscrever WhatsApp', custom_id: 'btn_camp_inscricao_whatsapp', emoji: { name: '📱' }, disabled: !statusAberto },
+          { type: 2, style: 1, label: 'Inscrição Individual', custom_id: 'btn_camp_inscricao_individual', emoji: { name: '🆔' }, disabled: !statusAberto }
         ]]
   };
 }
