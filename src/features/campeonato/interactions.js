@@ -1648,7 +1648,12 @@ async function onSelecionarJogadorInscricaoTime(interaction) {
 
   await interaction.deferUpdate();
   try {
-    const campeonatoId = interaction.customId.match(/([a-f0-9]{24})\$/)?.[1]; let campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId); if (!campeonato && campeonatoId) campeonato = await Campeonato.findById(campeonatoId);
+  const campeonatoId = interaction.customId.match(/([a-f0-9]{24})$/)?.[1];
+  let campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId);
+  if (!campeonato && campeonatoId) {
+    const Campeonato = require('../../db/models/campeonato');
+    campeonato = await Campeonato.findById(campeonatoId);
+  }
     if (!campeonato || String(campeonato._id) !== state.campeonatoId) {
       throw new InscricaoError('Campeonato nao encontrado neste canal.', 'INSCRICAO_CAMP_NAO_ENCONTRADO');
     }
