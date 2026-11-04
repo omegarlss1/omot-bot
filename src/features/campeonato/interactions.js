@@ -1346,7 +1346,7 @@ async function onCancelarCriacao(interaction) {
 }
 
 async function onBotaoInscrever(interaction) {
-  const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId);
+  const campeonatoId = interaction.customId.match(/([a-f0-9]{24})\$/)?.[1]; let campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId); if (!campeonato && campeonatoId) campeonato = await Campeonato.findById(campeonatoId);
   if (!campeonato) {
     return interaction.reply({ content: 'Este canal nao e de inscricao de campeonato.', flags: 64 });
   }
@@ -1447,7 +1447,7 @@ async function onAbrirModalInscricao3v3ExternoEtapa1(interaction) {
   );
   return interaction.showModal(modal);
 }
-  const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId);
+  const campeonatoId = interaction.customId.match(/([a-f0-9]{24})\$/)?.[1]; let campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId); if (!campeonato && campeonatoId) campeonato = await Campeonato.findById(campeonatoId);
   if (!campeonato) return interaction.reply({ content: 'Este canal nao e de inscricao de campeonato.', flags: 64 });
   if (Number(campeonato.maxJogadoresPorTime) > 1) {
     return interaction.reply({ content: 'A inscrição individual está disponível apenas no modo duelos (1v1).', flags: 64 });
@@ -1515,7 +1515,7 @@ async function abrirFormularioInscricaoTime(interaction, campeonato) {
 }
 
 async function onBotaoInscreverTime(interaction) {
-  const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId);
+  const campeonatoId = interaction.customId.match(/([a-f0-9]{24})\$/)?.[1]; let campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId); if (!campeonato && campeonatoId) campeonato = await Campeonato.findById(campeonatoId);
   if (!campeonato) return interaction.reply({ content: 'Este canal nao e de inscricao de campeonato.', flags: 64 });
   return abrirFormularioInscricaoTime(interaction, campeonato);
 }
@@ -1565,7 +1565,7 @@ async function onSubmitInscricaoTime(interaction) {
   if (!match) return;
   const [, campeonatoId, etapaTexto] = match;
   const etapa = Number(etapaTexto);
-  const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId);
+  const campeonatoId = interaction.customId.match(/([a-f0-9]{24})\$/)?.[1]; let campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId); if (!campeonato && campeonatoId) campeonato = await Campeonato.findById(campeonatoId);
   if (!campeonato || String(campeonato._id) !== campeonatoId) {
     return interaction.reply({ content: 'Campeonato nao encontrado neste canal.', flags: 64 });
   }
@@ -1648,7 +1648,7 @@ async function onSelecionarJogadorInscricaoTime(interaction) {
 
   await interaction.deferUpdate();
   try {
-    const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId);
+    const campeonatoId = interaction.customId.match(/([a-f0-9]{24})\$/)?.[1]; let campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId); if (!campeonato && campeonatoId) campeonato = await Campeonato.findById(campeonatoId);
     if (!campeonato || String(campeonato._id) !== state.campeonatoId) {
       throw new InscricaoError('Campeonato nao encontrado neste canal.', 'INSCRICAO_CAMP_NAO_ENCONTRADO');
     }
@@ -1683,7 +1683,7 @@ async function onCancelarInscricaoTime(interaction) {
 }
 
 async function onBotaoInscreverTimeUsuario(interaction) {
-  const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId);
+  const campeonatoId = interaction.customId.match(/([a-f0-9]{24})\$/)?.[1]; let campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId); if (!campeonato && campeonatoId) campeonato = await Campeonato.findById(campeonatoId);
   if (!campeonato) {
     return interaction.reply({ content: 'Este canal nao e de inscricao de campeonato.', flags: 64 });
   }
@@ -1724,7 +1724,7 @@ async function onSubmitInscricaoTimeUsuario(interaction) {
   const match = interaction.customId.match(/^modal_camp_inscricao_time_usuario_([a-f0-9]{24})$/);
   if (!match) return;
   const campeonatoId = match[1];
-  const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId);
+  const campeonatoId = interaction.customId.match(/([a-f0-9]{24})\$/)?.[1]; let campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId); if (!campeonato && campeonatoId) campeonato = await Campeonato.findById(campeonatoId);
   if (!campeonato || String(campeonato._id) !== campeonatoId) {
     return interaction.reply({ content: 'Campeonato nao encontrado neste canal.', flags: 64 });
   }
@@ -1890,7 +1890,7 @@ async function onSelectJogador3TimeUsuario(interaction) {
 }
 
 async function onBotaoInscricaoWhatsApp(interaction) {
-  const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId);
+  const campeonatoId = interaction.customId.match(/([a-f0-9]{24})\$/)?.[1]; let campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId); if (!campeonato && campeonatoId) campeonato = await Campeonato.findById(campeonatoId);
   if (!campeonato) {
     return interaction.reply({ content: 'Este canal nao e de inscricao de campeonato.', flags: 64 });
   }
@@ -1930,7 +1930,7 @@ async function onBotaoInscricaoWhatsApp(interaction) {
 }
 
 async function onSubmitInscricaoWhatsApp(interaction) {
-  const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId);
+  const campeonatoId = interaction.customId.match(/([a-f0-9]{24})\$/)?.[1]; let campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId); if (!campeonato && campeonatoId) campeonato = await Campeonato.findById(campeonatoId);
   if (!campeonato) return interaction.editReply({ content: 'Campeonato nao encontrado neste canal.' });
   if (campeonato.status !== 'INSCRICOES_ABERTAS') {
     return interaction.editReply({ content: 'Inscricoes nao estao abertas.' });
@@ -1959,7 +1959,7 @@ async function onSubmitInscricaoWhatsApp(interaction) {
 }
 
 async function onBotaoInscreverIndividual(interaction) {
-  const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId);
+  const campeonatoId = interaction.customId.match(/([a-f0-9]{24})\$/)?.[1]; let campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId); if (!campeonato && campeonatoId) campeonato = await Campeonato.findById(campeonatoId);
   if (!campeonato) {
     return interaction.reply({ content: 'Este canal nao e de inscricao de campeonato.', flags: 64 });
   }
@@ -1976,7 +1976,7 @@ async function onBotaoInscreverIndividual(interaction) {
 }
 
 async function onSubmitInscricaoIndividual(interaction) {
-  const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId);
+  const campeonatoId = interaction.customId.match(/([a-f0-9]{24})\$/)?.[1]; let campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId); if (!campeonato && campeonatoId) campeonato = await Campeonato.findById(campeonatoId);
   if (!campeonato) return interaction.editReply({ content: 'Campeonato nao encontrado neste canal.' });
   if (campeonato.status !== 'INSCRICOES_ABERTAS') {
     return interaction.editReply({ content: 'Inscricoes nao estao abertas.' });
@@ -2001,7 +2001,7 @@ async function onBotaoInscricaoManual(interaction) {
   if (!temPermissaoOrganizador(interaction.member)) {
     return interaction.reply({ content: 'Apenas @OrganizadorCamps pode fazer inscrições manuais.', flags: 64 });
   }
-  const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId);
+  const campeonatoId = interaction.customId.match(/([a-f0-9]{24})\$/)?.[1]; let campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId); if (!campeonato && campeonatoId) campeonato = await Campeonato.findById(campeonatoId);
   if (!campeonato) {
     return interaction.reply({ content: 'Este canal nao e de inscricao de campeonato.', flags: 64 });
   }
@@ -2043,7 +2043,7 @@ async function onSubmitInscricaoManual(interaction) {
     return interaction.reply({ content: 'Apenas @OrganizadorCamps pode fazer inscrições manuais.', flags: 64 });
   }
   await interaction.deferReply({ flags: 64 });
-  const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId);
+  const campeonatoId = interaction.customId.match(/([a-f0-9]{24})\$/)?.[1]; let campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId); if (!campeonato && campeonatoId) campeonato = await Campeonato.findById(campeonatoId);
   if (!campeonato) return interaction.editReply({ content: 'Campeonato nao encontrado neste canal.' });
 
   try {
@@ -2249,7 +2249,7 @@ async function onBotaoCortar(interaction) {
   if (!temPermissaoOrganizador(interaction.member)) {
     return interaction.reply({ content: 'Apenas @OrganizadorCamps pode cortar.', flags: 64 });
   }
-  const campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId);
+  const campeonatoId = interaction.customId.match(/([a-f0-9]{24})\$/)?.[1]; let campeonato = await findCampeonatoPorCanalInscricao(interaction.channelId); if (!campeonato && campeonatoId) campeonato = await Campeonato.findById(campeonatoId);
   if (!campeonato) {
     return interaction.reply({ content: 'Campeonato nao encontrado.', flags: 64 });
   }

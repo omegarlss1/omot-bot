@@ -37,3 +37,5 @@ module.exports = {
     });
   }
 };
+
+module.exports.temPermissaoOrganizador = temPermissaoOrganizador;
